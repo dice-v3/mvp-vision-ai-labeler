@@ -8,6 +8,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import ClassSelectorModal from './ClassSelectorModal';
+import { createAnnotation } from '@/lib/api/annotations';
+import type { AnnotationCreateRequest } from '@/lib/api/annotations';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,6 +31,7 @@ export default function Canvas() {
     startDrawing,
     updateDrawing,
     finishDrawing,
+    addAnnotation,
     project,
   } = useAnnotationStore();
 
@@ -35,6 +39,9 @@ export default function Canvas() {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  const [showClassSelector, setShowClassSelector] = useState(false);
+  const [pendingBbox, setPendingBbox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Load image when currentImage changes
   useEffect(() => {
@@ -294,10 +301,97 @@ export default function Canvas() {
     }
 
     // Finish drawing
-    if (isDrawing) {
+    if (isDrawing && drawingStart && image) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const currentPos = canvasState.cursor;
+
+      // Calculate bbox in canvas coordinates
+      const x1 = Math.min(drawingStart.x, currentPos.x);
+      const y1 = Math.min(drawingStart.y, currentPos.y);
+      const w = Math.abs(currentPos.x - drawingStart.x);
+      const h = Math.abs(currentPos.y - drawingStart.y);
+
+      // Only create annotation if bbox has minimum size
+      if (w > 5 && h > 5) {
+        // Convert canvas coordinates to image coordinates
+        const { zoom, pan } = canvasState;
+        const scaledWidth = image.width * zoom;
+        const scaledHeight = image.height * zoom;
+        const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+        const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+        // Calculate bbox in image coordinates
+        const bboxX = (x1 - imgX) / zoom;
+        const bboxY = (y1 - imgY) / zoom;
+        const bboxW = w / zoom;
+        const bboxH = h / zoom;
+
+        // Store pending bbox and show class selector
+        setPendingBbox({ x: bboxX, y: bboxY, w: bboxW, h: bboxH });
+        setShowClassSelector(true);
+      }
+
       finishDrawing();
-      // TODO: Show class selector modal
     }
+  };
+
+  // Handle class selection
+  const handleClassSelect = async (classId: string, className: string) => {
+    if (!pendingBbox || !currentImage || !project) return;
+
+    setShowClassSelector(false);
+    setIsSaving(true);
+
+    try {
+      // Create annotation request
+      const annotationData: AnnotationCreateRequest = {
+        project_id: project.id,
+        image_id: currentImage.id,
+        annotation_type: 'bbox',
+        geometry: {
+          type: 'bbox',
+          bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
+        },
+        class_id: classId,
+        class_name: className,
+      };
+
+      // Save to backend
+      const savedAnnotation = await createAnnotation(annotationData);
+
+      // Add to store
+      addAnnotation({
+        id: savedAnnotation.id.toString(),
+        projectId: project.id,
+        imageId: currentImage.id,
+        classId: classId,
+        className: className,
+        geometry: {
+          type: 'bbox',
+          bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
+        },
+        confidence: savedAnnotation.confidence,
+        isVerified: savedAnnotation.is_verified,
+        attributes: savedAnnotation.attributes,
+        createdAt: savedAnnotation.created_at,
+        updatedAt: savedAnnotation.updated_at,
+      });
+
+      setPendingBbox(null);
+    } catch (err) {
+      console.error('Failed to save annotation:', err);
+      // TODO: Show error toast
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle class selector close
+  const handleClassSelectorClose = () => {
+    setShowClassSelector(false);
+    setPendingBbox(null);
   };
 
   // Mouse wheel handler (zoom)
@@ -373,6 +467,24 @@ export default function Canvas() {
           </svg>
         </div>
       )}
+
+      {/* Saving indicator */}
+      {isSaving && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+          <svg className="animate-spin h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="text-sm text-gray-300">Saving annotation...</span>
+        </div>
+      )}
+
+      {/* Class Selector Modal */}
+      <ClassSelectorModal
+        isOpen={showClassSelector}
+        onClose={handleClassSelectorClose}
+        onSelect={handleClassSelect}
+      />
     </div>
   );
 }

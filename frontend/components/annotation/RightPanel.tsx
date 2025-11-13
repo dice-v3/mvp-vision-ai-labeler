@@ -7,9 +7,29 @@
 'use client';
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
+import { useState } from 'react';
 
 export default function RightPanel() {
   const { panels, annotations, selectedAnnotationId, selectAnnotation, deleteAnnotation, toggleRightPanel } = useAnnotationStore();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (annotationId: string) => {
+    if (!confirm('Delete this annotation?')) return;
+
+    setDeletingId(annotationId);
+    try {
+      // Delete from backend
+      await deleteAnnotationAPI(annotationId);
+      // Delete from store
+      deleteAnnotation(annotationId);
+    } catch (err) {
+      console.error('Failed to delete annotation:', err);
+      // TODO: Show error toast
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (!panels.right) {
     return (
@@ -69,13 +89,12 @@ export default function RightPanel() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm('Delete this annotation?')) {
-                    deleteAnnotation(ann.id);
-                  }
+                  handleDelete(ann.id);
                 }}
-                className="text-red-400 hover:text-red-300 text-xs"
+                disabled={deletingId === ann.id}
+                className="text-red-400 hover:text-red-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                🗑
+                {deletingId === ann.id ? '⏳' : '🗑'}
               </button>
             </div>
 

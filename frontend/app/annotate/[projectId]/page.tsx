@@ -14,6 +14,7 @@ import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { getProjectById } from '@/lib/api/projects';
 import { getProjectImages } from '@/lib/api/projects';
 import { getProjectAnnotations } from '@/lib/api/annotations';
+import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
 import TopBar from '@/components/annotation/TopBar';
 import LeftPanel from '@/components/annotation/LeftPanel';
 import Canvas from '@/components/annotation/Canvas';
@@ -37,6 +38,9 @@ export default function AnnotationPage() {
     loadPreferences,
     currentImage,
   } = useAnnotationStore();
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts();
 
   useEffect(() => {
     // Redirect to login if not authenticated

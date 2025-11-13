@@ -7,6 +7,8 @@
 'use client';
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
+import { useState } from 'react';
 
 export default function BottomBar() {
   const {
@@ -18,13 +20,28 @@ export default function BottomBar() {
     clearAnnotations,
   } = useAnnotationStore();
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const canGoPrev = currentIndex > 0;
   const canGoNext = currentIndex < images.length - 1;
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (annotations.length === 0) return;
-    if (confirm(`Delete all ${annotations.length} annotations on this image?`)) {
+    if (!confirm(`Delete all ${annotations.length} annotations on this image?`)) return;
+
+    setIsDeleting(true);
+    try {
+      // Delete all from backend
+      await Promise.all(
+        annotations.map((ann) => deleteAnnotationAPI(ann.id))
+      );
+      // Clear from store
       clearAnnotations();
+    } catch (err) {
+      console.error('Failed to delete annotations:', err);
+      // TODO: Show error toast
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -72,15 +89,15 @@ export default function BottomBar() {
       <div className="flex items-center gap-3">
         <button
           onClick={handleClearAll}
-          disabled={annotations.length === 0}
+          disabled={annotations.length === 0 || isDeleting}
           className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-            annotations.length > 0
+            annotations.length > 0 && !isDeleting
               ? 'bg-red-600 hover:bg-red-700 text-white'
               : 'bg-gray-700 text-gray-500 cursor-not-allowed'
           }`}
           title="Delete All Annotations"
         >
-          🗑 Delete All
+          {isDeleting ? '⏳ Deleting...' : '🗑 Delete All'}
         </button>
 
         <button
