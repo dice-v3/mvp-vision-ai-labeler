@@ -3,10 +3,12 @@
 import uuid
 import json
 import boto3
+from botocore.client import Config
 from typing import List, Optional, Dict, Set
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from pydantic import BaseModel
 
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
@@ -19,6 +21,53 @@ from app.schemas.project import ProjectResponse
 router = APIRouter()
 
 
+class ImageResponse(BaseModel):
+    """Image response with presigned URL."""
+    id: int
+    file_name: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    url: str  # Presigned URL for viewing
+
+    class Config:
+        from_attributes = True
+
+
+def generate_distinct_color(index: int, total: int) -> str:
+    """Generate visually distinct colors using HSL color space."""
+    # Use golden ratio conjugate for better color distribution
+    golden_ratio = 0.618033988749895
+    hue = (index * golden_ratio) % 1.0
+
+    # Use high saturation and medium lightness for vibrant, distinguishable colors
+    saturation = 0.7
+    lightness = 0.5
+
+    # Convert HSL to RGB
+    def hsl_to_rgb(h, s, l):
+        c = (1 - abs(2 * l - 1)) * s
+        x = c * (1 - abs((h * 6) % 2 - 1))
+        m = l - c / 2
+
+        if h < 1/6:
+            r, g, b = c, x, 0
+        elif h < 2/6:
+            r, g, b = x, c, 0
+        elif h < 3/6:
+            r, g, b = 0, c, x
+        elif h < 4/6:
+            r, g, b = 0, x, c
+        elif h < 5/6:
+            r, g, b = x, 0, c
+        else:
+            r, g, b = c, 0, x
+
+        r, g, b = int((r + m) * 255), int((g + m) * 255), int((b + m) * 255)
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    return hsl_to_rgb(hue, saturation, lightness)
+
+
 def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
     """Load annotations.json from S3/MinIO storage."""
     try:
@@ -27,7 +76,8 @@ def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
             endpoint_url=settings.S3_ENDPOINT,
             aws_access_key_id=settings.S3_ACCESS_KEY,
             aws_secret_access_key=settings.S3_SECRET_KEY,
-            region_name=settings.S3_REGION
+            region_name=settings.S3_REGION,
+            config=Config(signature_version='s3v4')
         )
 
         response = s3_client.get_object(
@@ -187,16 +237,35 @@ async def get_or_create_project_for_dataset(
                     annotated_image_ids.add(ann.get('image_id'))
                 annotated_images = len(annotated_image_ids)
 
-                # Extract classes from categories
+                # Calculate per-class statistics
+                from collections import defaultdict
+                class_stats = defaultdict(lambda: {'image_ids': set(), 'bbox_count': 0})
+
+                for ann in annotations_list:
+                    cat_id = ann.get('category_id')
+                    img_id = ann.get('image_id')
+                    class_stats[cat_id]['image_ids'].add(img_id)
+                    class_stats[cat_id]['bbox_count'] += 1
+
+                # Extract classes from categories with generated colors and statistics
                 categories = annotations_data.get('categories', [])
                 if categories:
-                    classes = {
-                        str(cat['id']): {
+                    total_categories = len(categories)
+                    classes = {}
+                    for idx, cat in enumerate(categories):
+                        cat_id = str(cat['id'])
+                        # Generate distinct color or use provided color
+                        color = cat.get('color') or generate_distinct_color(idx, total_categories)
+
+                        # Get statistics for this class
+                        stats = class_stats.get(cat['id'], {'image_ids': set(), 'bbox_count': 0})
+
+                        classes[cat_id] = {
                             'name': cat['name'],
-                            'color': cat.get('color', '#3b82f6'),  # Default blue
+                            'color': color,
+                            'image_count': len(stats['image_ids']),
+                            'bbox_count': stats['bbox_count'],
                         }
-                        for cat in categories
-                    }
 
                 # Determine task types based on annotation structure
                 # If annotations have 'bbox', it's detection
@@ -223,6 +292,7 @@ async def get_or_create_project_for_dataset(
             annotated_images=annotated_images,
             total_annotations=total_annotations,
             status="active",
+            last_updated_by=current_user.id,
         )
         labeler_db.add(project)
         labeler_db.commit()
@@ -230,6 +300,15 @@ async def get_or_create_project_for_dataset(
 
     # Get dataset name from Platform DB
     dataset_name = dataset.name
+
+    # Fetch user info if last_updated_by is set
+    last_updated_by_name = None
+    last_updated_by_email = None
+    if project.last_updated_by:
+        user = platform_db.query(User).filter(User.id == project.last_updated_by).first()
+        if user:
+            last_updated_by_name = user.full_name
+            last_updated_by_email = user.email
 
     # Build response
     return ProjectResponse(
@@ -248,5 +327,93 @@ async def get_or_create_project_for_dataset(
         status=project.status,
         created_at=project.created_at,
         updated_at=project.updated_at,
+        last_updated_by=project.last_updated_by,
+        last_updated_by_name=last_updated_by_name,
+        last_updated_by_email=last_updated_by_email,
         dataset_name=dataset_name,
+        dataset_num_items=dataset.num_images,
     )
+
+
+@router.get("/{dataset_id}/images", response_model=List[ImageResponse], tags=["Datasets"])
+async def list_dataset_images(
+    dataset_id: str,
+    limit: int = 12,
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get list of images for a dataset with presigned URLs.
+
+    - **dataset_id**: Dataset ID
+    - **limit**: Maximum number of images to return (default 12)
+    """
+    # Verify dataset exists
+    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Load annotations.json to get image list
+    if not dataset.annotation_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} has no annotations",
+        )
+
+    annotations_data = load_annotations_from_s3(dataset.annotation_path)
+    if not annotations_data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load annotations",
+        )
+
+    images = annotations_data.get('images', [])
+    if not images:
+        return []
+
+    # Limit number of images
+    images = images[:limit]
+
+    # Generate presigned URLs
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=settings.S3_ENDPOINT,
+        aws_access_key_id=settings.S3_ACCESS_KEY,
+        aws_secret_access_key=settings.S3_SECRET_KEY,
+        region_name=settings.S3_REGION,
+        config=Config(signature_version='s3v4')
+    )
+
+    result = []
+    for img in images:
+        try:
+            # Construct S3 key: datasets/{dataset_id}/images/{file_name}
+            s3_key = f"{dataset.storage_path.rstrip('/')}/images/{img['file_name']}"
+            print(f"DEBUG: Generating presigned URL for s3_key: {s3_key}")
+
+            # Generate presigned URL (valid for 1 hour)
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': settings.S3_BUCKET_DATASETS,
+                    'Key': s3_key
+                },
+                ExpiresIn=3600
+            )
+            print(f"DEBUG: Generated URL: {url}")
+
+            result.append(ImageResponse(
+                id=img['id'],
+                file_name=img['file_name'],
+                width=img.get('width'),
+                height=img.get('height'),
+                url=url
+            ))
+        except Exception as e:
+            print(f"Error generating presigned URL for {img.get('file_name')}: {e}")
+            continue
+
+    return result

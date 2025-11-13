@@ -43,10 +43,15 @@ class ProjectResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    last_updated_by: Optional[int] = None
 
     # Dataset information (joined)
     dataset_name: Optional[str] = None
     dataset_num_items: Optional[int] = None
+
+    # User information (joined from Platform DB)
+    last_updated_by_name: Optional[str] = None
+    last_updated_by_email: Optional[str] = None
 
     class Config:
         from_attributes = True

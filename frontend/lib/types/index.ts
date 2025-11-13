@@ -79,9 +79,12 @@ export interface Project {
   status: string;
   created_at: string;
   updated_at: string;
+  last_updated_by?: number;
   // Joined fields
   dataset_name?: string;
   dataset_num_items?: number;
+  last_updated_by_name?: string;
+  last_updated_by_email?: string;
 }
 
 export interface ProjectCreate {

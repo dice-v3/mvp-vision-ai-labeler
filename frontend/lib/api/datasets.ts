@@ -37,3 +37,21 @@ export async function getDataset(datasetId: string): Promise<Dataset> {
 export async function getProjectForDataset(datasetId: string): Promise<Project> {
   return apiClient.get<Project>(`/api/v1/datasets/${datasetId}/project`);
 }
+
+export interface DatasetImage {
+  id: number;
+  file_name: string;
+  width?: number;
+  height?: number;
+  url: string;
+}
+
+/**
+ * Get list of images for a dataset
+ */
+export async function getDatasetImages(
+  datasetId: string,
+  limit: number = 12
+): Promise<DatasetImage[]> {
+  return apiClient.get<DatasetImage[]>(`/api/v1/datasets/${datasetId}/images?limit=${limit}`);
+}

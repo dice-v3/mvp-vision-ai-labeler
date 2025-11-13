@@ -50,6 +50,9 @@ class AnnotationProject(LabelerBase):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # History tracking
+    last_updated_by = Column(Integer, index=True)  # Platform User ID (no FK constraint)
+
     __table_args__ = (
         Index("ix_annotation_projects_owner_id_created_at", "owner_id", "created_at"),
     )
