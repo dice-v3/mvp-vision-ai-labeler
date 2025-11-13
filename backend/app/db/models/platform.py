@@ -67,7 +67,7 @@ class Snapshot(PlatformBase):
     dataset_id = Column(String(50), nullable=False, index=True)
     snapshot_type = Column(String(50), nullable=False)
     storage_path = Column(Text, nullable=False)
-    metadata = Column(Text)  # JSONB stored as Text for read-only access
+    snapshot_metadata = Column("metadata", Text)  # JSONB stored as Text for read-only access
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):

@@ -59,12 +59,13 @@ async def health_check():
 @app.get("/health/db", tags=["Health"])
 async def database_health():
     """Check database connectivity."""
+    from sqlalchemy import text
     from app.core.database import platform_engine, labeler_engine
 
     try:
         # Test Platform DB connection
         with platform_engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         platform_db_status = "connected"
     except Exception as e:
         platform_db_status = f"error: {str(e)}"
@@ -72,7 +73,7 @@ async def database_health():
     try:
         # Test Labeler DB connection
         with labeler_engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         labeler_db_status = "connected"
     except Exception as e:
         labeler_db_status = f"error: {str(e)}"
@@ -106,16 +107,16 @@ async def internal_error_handler(request, exc):
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup."""
-    print(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"📝 Environment: {settings.ENVIRONMENT}")
-    print(f"📚 API Docs: http://{settings.API_HOST}:{settings.API_PORT}/docs")
+    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"Environment: {settings.ENVIRONMENT}")
+    print(f"API Docs: http://{settings.API_HOST}:{settings.API_PORT}/docs")
 
 
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     """Run on application shutdown."""
-    print(f"👋 Shutting down {settings.APP_NAME}")
+    print(f"Shutting down {settings.APP_NAME}")
 
 
 if __name__ == "__main__":

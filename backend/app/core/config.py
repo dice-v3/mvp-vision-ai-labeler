@@ -4,7 +4,8 @@ Application Configuration
 Manages environment variables and application settings.
 """
 
-from typing import List
+from typing import List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,10 +26,14 @@ class Settings(BaseSettings):
     API_WORKERS: int = 1
 
     # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3001",
-        "http://localhost:3000",
-    ]
+    CORS_ORIGINS: Union[List[str], str] = "http://localhost:3001,http://localhost:3000"
+
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(',')]
+        return v
 
     # Platform Database (Read-Only)
     PLATFORM_DB_HOST: str = "localhost"
@@ -90,6 +95,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields from .env (like NEXT_PUBLIC_*)
 
 
 # Global settings instance

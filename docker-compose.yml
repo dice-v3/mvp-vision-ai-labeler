@@ -12,7 +12,7 @@ services:
       POSTGRES_USER: platform_user
       POSTGRES_PASSWORD: platform_password
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_platform_data:/var/lib/postgresql/data
       - ./scripts/init-platform-db.sql:/docker-entrypoint-initdb.d/01-init.sql
@@ -34,7 +34,7 @@ services:
       POSTGRES_USER: labeler_user
       POSTGRES_PASSWORD: labeler_password
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - postgres_labeler_data:/var/lib/postgresql/data
     healthcheck:
@@ -51,7 +51,7 @@ services:
     container_name: labeler-redis
     command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -71,8 +71,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"  # API
-      - "9001:9001"  # Console
+      - "9002:9000"  # API
+      - "9003:9001"  # Console
     volumes:
       - minio_data:/data
     healthcheck:
