@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Note: Platform DB (postgres) and MinIO are provided by the Platform
+  # Platform services should be running on:
+  #   - PostgreSQL: localhost:5432
+  #   - MinIO: localhost:9000-9001
+  #   - Redis: localhost:6379
+
+  # PostgreSQL - Labeler DB (Independent)
+  # This is the Labeler's own database
+  postgres-labeler:
+    image: postgres:16-alpine
+    container_name: labeler-postgres-labeler
+    environment:
+      POSTGRES_DB: labeler
+      POSTGRES_USER: labeler_user
+      POSTGRES_PASSWORD: labeler_password
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_labeler_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labeler_user -d labeler"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - labeler-network
+
+  # Note: Redis and MinIO are provided by the Platform
+
+volumes:
+  postgres_labeler_data:
+    driver: local
+
+networks:
+  labeler-network:
+    driver: bridge

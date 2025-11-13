@@ -191,8 +191,8 @@ CREATE TABLE annotation_projects (
     name VARCHAR(255) NOT NULL,
     description TEXT,
 
-    -- Dataset link
-    dataset_id VARCHAR(50) NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    -- Dataset link (1:1 relationship - Changed: 2025-11-13)
+    dataset_id VARCHAR(50) NOT NULL UNIQUE REFERENCES datasets(id) ON DELETE CASCADE,
 
     -- Task configuration
     task_types VARCHAR(50)[] NOT NULL,  -- ['classification', 'detection', 'segmentation']
@@ -224,7 +224,7 @@ CREATE TABLE annotation_projects (
     CONSTRAINT completion_percentage_range CHECK (completion_percentage BETWEEN 0 AND 100)
 );
 
-CREATE INDEX idx_annotation_projects_dataset ON annotation_projects(dataset_id);
+CREATE UNIQUE INDEX idx_annotation_projects_dataset ON annotation_projects(dataset_id);  -- Changed: 2025-11-13
 CREATE INDEX idx_annotation_projects_owner ON annotation_projects(owner_id);
 CREATE INDEX idx_annotation_projects_status ON annotation_projects(status);
 CREATE INDEX idx_annotation_projects_created_at ON annotation_projects(created_at DESC);
@@ -640,10 +640,12 @@ users → annotations (annotator)
 users → annotation_tasks (assignee)
 users → comments (author)
 
-datasets → annotation_projects (one dataset, many projects)
 annotation_projects → annotations
 annotation_projects → annotation_tasks
 annotation_projects → comments
+
+-- 1:1 relationships (Changed: 2025-11-13)
+datasets ↔ annotation_projects (one dataset, one project)
 
 -- N:M relationships
 users ↔ annotation_projects (via project_members)
@@ -976,5 +978,14 @@ USING (
 
 ---
 
-**Last Updated**: 2025-01-13
-**Status**: Design (ready for implementation)
+## Change Log
+
+- **2025-11-13**: Changed dataset:project relationship from 1:N to 1:1
+  - Added UNIQUE constraint to `annotation_projects.dataset_id`
+  - Auto-create project when accessing dataset
+  - Simplifies MVP user experience
+
+---
+
+**Last Updated**: 2025-11-13
+**Status**: Implemented

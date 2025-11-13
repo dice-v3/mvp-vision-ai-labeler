@@ -68,8 +68,8 @@ snapshots (id, dataset_id, snapshot_type, created_at, ...)
 
 **Labeler Schema** (new):
 ```sql
--- Annotation projects
-annotation_projects (id, dataset_id, task_type, classes, ...)
+-- Annotation projects (Changed: 2025-11-13 - 1:1 with datasets)
+annotation_projects (id, dataset_id UNIQUE, task_type, classes, ...)
 
 -- Annotations (for fast queries)
 annotations (id, project_id, image_id, geometry, class_id, ...)
@@ -882,5 +882,14 @@ kubectl create secret generic platform-secrets \
 
 ---
 
-**Last Updated**: 2025-01-13
-**Status**: Design (ready for implementation)
+## Change Log
+
+- **2025-11-13**: Simplified dataset:project relationship
+  - Changed from 1:N to 1:1 (one dataset = one annotation project)
+  - Updated schema to use UNIQUE constraint on dataset_id
+  - Reduces complexity for MVP deployment
+
+---
+
+**Last Updated**: 2025-11-13
+**Status**: Design (updated)
