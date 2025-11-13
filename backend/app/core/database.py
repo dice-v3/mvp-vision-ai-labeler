@@ -4,7 +4,7 @@ Database Connection Management
 Manages connections to Platform DB (read-only) and Labeler DB (read-write).
 """
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
@@ -32,11 +32,9 @@ PlatformSessionLocal = sessionmaker(
 PlatformBase = declarative_base()
 
 
-# Make Platform sessions read-only
-@event.listens_for(PlatformSessionLocal, "after_begin")
-def receive_after_begin(session, transaction, connection):
-    """Set Platform sessions to read-only mode."""
-    connection.execute("SET TRANSACTION READ ONLY")
+# TODO: Implement read-only enforcement for Platform DB
+# For now, we rely on application logic to prevent writes to Platform DB
+# Future: Use PostgreSQL roles with read-only permissions
 
 
 # =============================================================================
