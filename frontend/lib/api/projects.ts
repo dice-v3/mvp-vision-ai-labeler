@@ -54,3 +54,30 @@ export async function updateProject(
 export async function deleteProject(projectId: string): Promise<void> {
   return apiClient.delete<void>(`/api/v1/projects/${projectId}`);
 }
+
+/**
+ * Get project by ID (alias for getProject)
+ */
+export async function getProjectById(projectId: string): Promise<Project> {
+  return getProject(projectId);
+}
+
+/**
+ * Get images for a project
+ */
+export interface ImageListResponse {
+  images: Array<{
+    id: string;
+    file_name: string;
+    url: string;
+    width?: number;
+    height?: number;
+  }>;
+  total: number;
+  dataset_id: string;
+  project_id: string;
+}
+
+export async function getProjectImages(projectId: string, limit: number = 1000): Promise<ImageListResponse> {
+  return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}`);
+}
