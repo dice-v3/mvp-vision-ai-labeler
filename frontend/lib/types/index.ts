@@ -11,12 +11,17 @@
 export interface User {
   id: number;
   email: string;
-  username: string;
-  full_name: string;
+  username?: string; // Optional - Platform DB doesn't have this field
+  full_name?: string; // Platform DB uses this instead of username
+  company?: string;
+  division?: string;
+  department?: string;
+  system_role?: string; // 'admin' or 'user' in Platform DB
   is_active: boolean;
-  is_admin: boolean;
+  is_admin: boolean; // Derived from system_role
   badge_color: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface LoginRequest {

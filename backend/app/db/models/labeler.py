@@ -25,7 +25,7 @@ class AnnotationProject(LabelerBase):
     id = Column(String(50), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    dataset_id = Column(String(50), nullable=False, index=True)
+    dataset_id = Column(String(50), nullable=False, unique=True, index=True)  # 1:1 with Dataset
     owner_id = Column(Integer, nullable=False, index=True)
 
     # Task configuration

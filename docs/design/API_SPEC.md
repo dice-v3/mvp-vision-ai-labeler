@@ -161,6 +161,53 @@ GET /api/v1/projects?status=active&page=1&page_size=20
 
 ---
 
+## Datasets API
+
+### Get or Create Project for Dataset
+
+```http
+GET /api/v1/datasets/{dataset_id}/project
+```
+
+**Description**: Returns the annotation project for a dataset, auto-creating it if it doesn't exist (1:1 relationship).
+
+**Path Parameters**:
+- `dataset_id` (string): Dataset ID
+
+**Response** (200 OK):
+```json
+{
+  "id": "proj_abc123",
+  "name": "Pet Detection Project",
+  "description": "Annotation project for Pet Images",
+  "dataset_id": "dataset-xyz789",
+  "dataset_name": "Pet Images",
+  "owner_id": 123,
+  "task_types": ["classification"],
+  "task_config": {
+    "classification": {
+      "multi_label": false,
+      "show_confidence": false
+    }
+  },
+  "classes": {},
+  "settings": {},
+  "total_images": 1000,
+  "annotated_images": 0,
+  "total_annotations": 0,
+  "status": "active",
+  "created_at": "2025-11-13T10:00:00Z",
+  "updated_at": "2025-11-13T10:00:00Z"
+}
+```
+
+**Note**:
+- Changed: 2025-11-13 - Implements 1:1 dataset:project relationship
+- If project doesn't exist, creates automatically with default configuration
+- Only one project per dataset (enforced by unique constraint)
+
+---
+
 ## Projects API
 
 ### List Projects
@@ -1149,5 +1196,14 @@ ws.send(JSON.stringify({
 
 ---
 
-**Last Updated**: 2025-01-13
-**Status**: Design (ready for implementation)
+## Change Log
+
+- **2025-11-13**: Added dataset:project auto-create endpoint
+  - New endpoint: `GET /api/v1/datasets/{dataset_id}/project`
+  - Implements 1:1 relationship (one project per dataset)
+  - Auto-creates project with default configuration if not exists
+
+---
+
+**Last Updated**: 2025-11-13
+**Status**: Implemented (partial)

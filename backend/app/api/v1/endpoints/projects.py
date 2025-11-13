@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
+from app.core.storage import storage_client
 from app.db.models.platform import User, Dataset
 from app.db.models.labeler import AnnotationProject
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.schemas.image import ImageListResponse, ImageMetadata
 
 router = APIRouter()
 
@@ -102,6 +104,63 @@ async def list_projects(
         result.append(ProjectResponse.model_validate(response_dict))
 
     return result
+
+
+@router.get("/{project_id}/images", response_model=ImageListResponse, tags=["Projects"])
+async def list_project_images(
+    project_id: str,
+    limit: int = 1000,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get list of images in a project.
+
+    Returns all images from the dataset with presigned URLs for browser access.
+
+    - **project_id**: Project ID
+    - **limit**: Maximum number of images to return (default: 1000)
+    """
+    # Get project
+    project = labeler_db.query(AnnotationProject).filter(AnnotationProject.id == project_id).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Check ownership
+    if project.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this project",
+        )
+
+    # Get images from storage
+    try:
+        images_data = storage_client.list_dataset_images(
+            dataset_id=project.dataset_id,
+            prefix="images/",
+            max_keys=min(limit, 1000)
+        )
+
+        # Convert to ImageMetadata objects
+        images = [ImageMetadata(**img) for img in images_data]
+
+        return ImageListResponse(
+            images=images,
+            total=len(images),
+            dataset_id=project.dataset_id,
+            project_id=project_id
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list images: {str(e)}"
+        )
 
 
 @router.get("/{project_id}", response_model=ProjectResponse, tags=["Projects"])

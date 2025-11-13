@@ -5,7 +5,7 @@
  */
 
 import { apiClient } from './client';
-import type { Dataset } from '../types';
+import type { Dataset, Project } from '../types';
 
 /**
  * Get list of datasets
@@ -29,4 +29,11 @@ export async function listDatasets(params?: {
  */
 export async function getDataset(datasetId: string): Promise<Dataset> {
   return apiClient.get<Dataset>(`/api/v1/datasets/${datasetId}`);
+}
+
+/**
+ * Get or create annotation project for dataset (1:1 relationship)
+ */
+export async function getProjectForDataset(datasetId: string): Promise<Project> {
+  return apiClient.get<Project>(`/api/v1/datasets/${datasetId}/project`);
 }
