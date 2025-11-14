@@ -584,12 +584,36 @@
   - **Estimate**: 1 hour
   - **File**: `frontend/components/annotation/ImageList.tsx`
 
+- [ ] **Frontend: Image status icons in ImageList** ⭐ NEW
+  - Simple icons for not-started / in-progress / completed
+  - Display in both thumbnail view and table view
+  - Icon placement: top-right corner (thumbnail), column (table)
+  - Icons: ⚪ (not-started), 🔄 (in-progress), ✓ (completed)
+  - **Estimate**: 1 hour
+  - **File**: `frontend/components/annotation/ImageList.tsx`
+
 - [ ] **Frontend: Fix image filter by status**
   - Update `getImageStatus()` function
   - Use actual image_annotation_status from API
   - Filter works correctly: not-started / in-progress / completed
   - **Estimate**: 2 hours
   - **File**: `frontend/components/annotation/ImageList.tsx`
+
+- [ ] **Frontend: Annotation History panel** ⭐ NEW
+  - Add panel above ImageList in LeftPanel
+  - Collapsible section with header
+  - Table display: Date, Action, User, Annotations count
+  - Shows recent annotation changes/versions
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/annotation/AnnotationHistory.tsx`
+
+- [ ] **Frontend: History panel integration**
+  - Fetch annotation history from API (placeholder for now)
+  - Display in LeftPanel above ImageList
+  - Collapsible toggle
+  - Scroll independently from ImageList
+  - **Estimate**: 1 hour
+  - **File**: `frontend/components/annotation/LeftPanel.tsx`
 
 - [ ] **Frontend: Annotation state in store**
   - Add annotation_state to Zustand store
