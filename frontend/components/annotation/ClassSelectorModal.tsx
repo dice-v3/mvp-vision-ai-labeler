@@ -116,7 +116,7 @@ export default function ClassSelectorModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div
         ref={modalRef}
-        className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-[400px] max-h-[600px] flex flex-col"
+        className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl w-[400px] max-h-[600px] flex flex-col"
         style={
           position
             ? {
@@ -129,15 +129,15 @@ export default function ClassSelectorModal({
         }
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Select Class</h2>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="px-4 py-3 border-b border-gray-300 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Select Class</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Use arrow keys to navigate, Enter to select, or press 1-9 for quick selection
           </p>
         </div>
 
         {/* Search */}
-        <div className="px-4 py-3 border-b border-gray-700">
+        <div className="px-4 py-3 border-b border-gray-300 dark:border-gray-700">
           <input
             ref={inputRef}
             type="text"
@@ -147,14 +147,14 @@ export default function ClassSelectorModal({
               setSelectedIndex(0);
             }}
             placeholder="Search classes..."
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500"
+            className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:border-violet-500"
           />
         </div>
 
         {/* Class List */}
         <div className="flex-1 overflow-y-auto">
           {filteredClasses.length === 0 ? (
-            <div className="px-4 py-8 text-center text-gray-400">
+            <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
               {search ? 'No classes match your search' : 'No classes available'}
             </div>
           ) : (
@@ -166,7 +166,7 @@ export default function ClassSelectorModal({
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                     index === selectedIndex
                       ? 'bg-violet-500/20 border border-violet-500'
-                      : 'hover:bg-gray-700 border border-transparent'
+                      : 'hover:bg-gray-200 dark:hover:bg-gray-700 border border-transparent'
                   }`}
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
@@ -177,7 +177,7 @@ export default function ClassSelectorModal({
                   />
 
                   {/* Class name */}
-                  <span className="flex-1 text-white">{classInfo.name}</span>
+                  <span className="flex-1 text-gray-900 dark:text-white">{classInfo.name}</span>
 
                   {/* Shortcut hint (for first 9 classes) */}
                   {index < 9 && (
@@ -197,10 +197,10 @@ export default function ClassSelectorModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-2">
+        <div className="px-4 py-3 border-t border-gray-300 dark:border-gray-700 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             Cancel (Esc)
           </button>

@@ -86,32 +86,24 @@ export function useKeyboardShortcuts() {
       // Regular shortcuts (no modifiers)
       switch (e.key.toLowerCase()) {
         case 'arrowup':
-          // Pan up (only if no annotation selected)
-          if (!selectedAnnotationId) {
-            e.preventDefault();
-            setPan({ x: canvas.pan.x, y: canvas.pan.y + 50 });
-          }
+          // Previous image (when in list view or general navigation)
+          e.preventDefault();
+          goToPrevImage();
           break;
         case 'arrowdown':
-          // Pan down (only if no annotation selected)
-          if (!selectedAnnotationId) {
-            e.preventDefault();
-            setPan({ x: canvas.pan.x, y: canvas.pan.y - 50 });
-          }
+          // Next image (when in list view or general navigation)
+          e.preventDefault();
+          goToNextImage();
           break;
         case 'arrowleft':
-          // Pan left (only if no annotation selected)
-          if (!selectedAnnotationId) {
-            e.preventDefault();
-            setPan({ x: canvas.pan.x + 50, y: canvas.pan.y });
-          }
+          // Previous image
+          e.preventDefault();
+          goToPrevImage();
           break;
         case 'arrowright':
-          // Pan right (only if no annotation selected)
-          if (!selectedAnnotationId) {
-            e.preventDefault();
-            setPan({ x: canvas.pan.x - 50, y: canvas.pan.y });
-          }
+          // Next image
+          e.preventDefault();
+          goToNextImage();
           break;
         case 'a':
           // Previous image

@@ -104,6 +104,7 @@ export interface Preferences {
   showGrid: boolean;
   darkMode: boolean;
   autoSelectClass: boolean;
+  imageListView: 'grid' | 'list';
 }
 
 export interface AnnotationSnapshot {
@@ -159,6 +160,10 @@ interface AnnotationState {
 
   // Last selected class (for auto-select)
   lastSelectedClassId: string | null;
+
+  // Visibility
+  hiddenAnnotationIds: Set<string>;
+  showAllAnnotations: boolean;
 
   // ========================================================================
   // Actions
@@ -227,6 +232,11 @@ interface AnnotationState {
   copyAnnotation: (annotation: Annotation) => void;
   pasteAnnotation: () => void;
 
+  // Visibility
+  toggleAnnotationVisibility: (id: string) => void;
+  toggleAllAnnotationsVisibility: () => void;
+  isAnnotationVisible: (id: string) => boolean;
+
   // Reset
   reset: () => void;
 }
@@ -242,6 +252,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   showGrid: false,
   darkMode: true,
   autoSelectClass: true,
+  imageListView: 'grid',
 };
 
 const initialState = {
@@ -276,6 +287,8 @@ const initialState = {
   loading: false,
   error: null,
   lastSelectedClassId: null,
+  hiddenAnnotationIds: new Set(),
+  showAllAnnotations: true,
 };
 
 // ============================================================================
@@ -632,6 +645,32 @@ export const useAnnotationStore = create<AnnotationState>()(
         }
 
         get().addAnnotation(newAnnotation);
+      },
+
+      // ======================================================================
+      // Visibility
+      // ======================================================================
+
+      toggleAnnotationVisibility: (id) => {
+        const { hiddenAnnotationIds } = get();
+        const newHidden = new Set(hiddenAnnotationIds);
+        if (newHidden.has(id)) {
+          newHidden.delete(id);
+        } else {
+          newHidden.add(id);
+        }
+        set({ hiddenAnnotationIds: newHidden });
+      },
+
+      toggleAllAnnotationsVisibility: () => {
+        const { showAllAnnotations } = get();
+        set({ showAllAnnotations: !showAllAnnotations, hiddenAnnotationIds: new Set() });
+      },
+
+      isAnnotationVisible: (id) => {
+        const { hiddenAnnotationIds, showAllAnnotations } = get();
+        if (!showAllAnnotations) return false;
+        return !hiddenAnnotationIds.has(id);
       },
 
       // ======================================================================

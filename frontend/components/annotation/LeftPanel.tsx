@@ -16,37 +16,41 @@ export default function LeftPanel() {
     return (
       <button
         onClick={toggleLeftPanel}
-        className="w-8 h-full bg-gray-800 border-r border-gray-700 flex items-center justify-center hover:bg-gray-700 transition-colors"
+        className="w-8 h-full bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors group"
         title="Show Left Panel ([)"
       >
-        <span className="text-gray-400 text-xs">▶</span>
+        <svg className="w-4 h-4 text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
       </button>
     );
   }
 
   return (
-    <div className="w-[280px] bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
+    <div className="w-[280px] bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
       {/* Header */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-300">Tools</h3>
+      <div className="p-4 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tools</h3>
         <button
           onClick={toggleLeftPanel}
-          className="text-gray-400 hover:text-white text-xs"
+          className="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
           title="Hide Left Panel ([)"
         >
-          ◀
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
         </button>
       </div>
 
       {/* Tools Section */}
-      <div className="p-4 border-b border-gray-700">
+      <div className="p-4 border-b border-gray-300 dark:border-gray-700">
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setTool('select')}
             className={`p-3 rounded-lg border-2 transition-all ${
               tool === 'select'
-                ? 'border-violet-500 bg-violet-500/20 text-violet-400'
-                : 'border-gray-700 hover:border-gray-600 text-gray-400'
+                ? 'border-violet-500 bg-violet-500/20 text-violet-600 dark:text-violet-400'
+                : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400'
             }`}
             title="Select Tool (V)"
           >
@@ -57,8 +61,8 @@ export default function LeftPanel() {
             onClick={() => setTool('bbox')}
             className={`p-3 rounded-lg border-2 transition-all ${
               tool === 'bbox'
-                ? 'border-violet-500 bg-violet-500/20 text-violet-400'
-                : 'border-gray-700 hover:border-gray-600 text-gray-400'
+                ? 'border-violet-500 bg-violet-500/20 text-violet-600 dark:text-violet-400'
+                : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400'
             }`}
             title="Bounding Box (R)"
           >
@@ -69,35 +73,8 @@ export default function LeftPanel() {
       </div>
 
       {/* Image List Section */}
-      <div className="border-b border-gray-700 h-[300px]">
+      <div className="flex-1 overflow-y-auto">
         <ImageList />
-      </div>
-
-      {/* Class List Section */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <h4 className="text-xs font-semibold text-gray-400 mb-2">Classes</h4>
-        {project && Object.entries(project.classes).map(([classId, classInfo], index) => (
-          <div
-            key={classId}
-            className="flex items-center gap-2 p-2 rounded hover:bg-gray-700 cursor-pointer mb-1"
-          >
-            <div
-              className="w-4 h-4 rounded"
-              style={{ backgroundColor: classInfo.color }}
-            ></div>
-            <span className="text-sm text-gray-300 flex-1">{classInfo.name}</span>
-            <span className="text-xs text-gray-500">{index + 1}</span>
-          </div>
-        ))}
-        {(!project || Object.keys(project.classes).length === 0) && (
-          <div className="text-xs text-gray-500">No classes defined</div>
-        )}
-      </div>
-
-      {/* Settings Section */}
-      <div className="p-4 border-t border-gray-700">
-        <h4 className="text-xs font-semibold text-gray-400 mb-2">Settings</h4>
-        <div className="text-xs text-gray-500">Settings coming soon...</div>
       </div>
     </div>
   );

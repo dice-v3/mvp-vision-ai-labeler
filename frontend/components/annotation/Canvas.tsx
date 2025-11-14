@@ -33,6 +33,11 @@ export default function Canvas() {
     finishDrawing,
     addAnnotation,
     project,
+    isAnnotationVisible,
+    currentIndex,
+    images,
+    goToNextImage,
+    goToPrevImage,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -78,8 +83,8 @@ export default function Canvas() {
     canvas.width = rect.width;
     canvas.height = rect.height;
 
-    // Clear canvas
-    ctx.fillStyle = '#1f2937'; // gray-800
+    // Clear canvas with dark/light mode aware color
+    ctx.fillStyle = preferences.darkMode ? '#1f2937' : '#f3f4f6'; // gray-800 : gray-100
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Calculate image position (centered and scaled)
@@ -150,6 +155,9 @@ export default function Canvas() {
     if (!project) return;
 
     annotations.forEach((ann) => {
+      // Skip if annotation is hidden
+      if (!isAnnotationVisible(ann.id)) return;
+
       if (ann.geometry.type === 'bbox') {
         const [x, y, w, h] = ann.geometry.bbox;
         const scaledX = x * zoom + offsetX;
@@ -253,7 +261,14 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // If space key is held, start panning
+    // If select tool is active, start panning
+    if (tool === 'select') {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
+    // If middle button or shift+click, start panning
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
@@ -413,10 +428,16 @@ export default function Canvas() {
   }
 
   return (
-    <div ref={containerRef} className="flex-1 bg-gray-900 relative overflow-hidden">
+    <div ref={containerRef} className="flex-1 bg-white dark:bg-gray-900 relative overflow-hidden">
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className={`w-full h-full ${
+          tool === 'select'
+            ? isPanning
+              ? 'cursor-grabbing'
+              : 'cursor-grab'
+            : 'cursor-crosshair'
+        }`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -424,46 +445,85 @@ export default function Canvas() {
       />
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 left-4 bg-gray-800 rounded-lg p-2 flex items-center gap-2">
+      <div className="absolute bottom-4 left-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 flex items-center gap-2 shadow-lg">
         <button
           onClick={() => setZoom(canvasState.zoom - 0.25)}
-          className="w-8 h-8 flex items-center justify-center hover:bg-gray-700 rounded transition-colors"
+          className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-900 dark:text-white"
           title="Zoom Out (Ctrl+-)"
         >
           −
         </button>
-        <span className="text-xs text-gray-400 w-12 text-center">
+        <span className="text-xs text-gray-600 dark:text-gray-400 w-12 text-center">
           {Math.round(canvasState.zoom * 100)}%
         </span>
         <button
           onClick={() => setZoom(canvasState.zoom + 0.25)}
-          className="w-8 h-8 flex items-center justify-center hover:bg-gray-700 rounded transition-colors"
+          className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-900 dark:text-white"
           title="Zoom In (Ctrl++)"
         >
           +
         </button>
-        <div className="w-px h-6 bg-gray-700 mx-1"></div>
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
         <button
           onClick={() => {
             setZoom(1.0);
             setPan({ x: 0, y: 0 });
           }}
-          className="px-3 h-8 flex items-center justify-center hover:bg-gray-700 rounded transition-colors text-xs"
+          className="px-3 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-xs text-gray-900 dark:text-white"
           title="Fit to Screen (Ctrl+0)"
         >
           Fit
         </button>
       </div>
 
+      {/* Navigation controls */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-3 shadow-lg">
+        <button
+          onClick={goToPrevImage}
+          disabled={currentIndex === 0}
+          className="text-gray-900 dark:text-white disabled:text-gray-400 dark:disabled:text-gray-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:cursor-not-allowed"
+          title="Previous Image (←)"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <span className="text-sm text-gray-900 dark:text-white font-medium min-w-[60px] text-center">
+          {currentIndex + 1} / {images.length}
+        </span>
+        <button
+          onClick={goToNextImage}
+          disabled={currentIndex >= images.length - 1}
+          className="text-gray-900 dark:text-white disabled:text-gray-400 dark:disabled:text-gray-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:cursor-not-allowed"
+          title="Next Image (→)"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
       {/* Image info */}
       {image && (
-        <div className="absolute bottom-4 right-4 bg-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400">
+        <div className="absolute bottom-4 right-20 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 text-xs text-gray-600 dark:text-gray-400 shadow-lg">
           {image.width} x {image.height} px
         </div>
       )}
 
+      {/* AI Assistant button */}
+      <div className="absolute bottom-4 right-4">
+        <button
+          className="w-12 h-12 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105"
+          title="AI Assistant"
+        >
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </button>
+      </div>
+
       {!imageLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-900 bg-opacity-50">
           <svg className="animate-spin h-8 w-8 text-violet-600" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -473,12 +533,12 @@ export default function Canvas() {
 
       {/* Saving indicator */}
       {isSaving && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
           <svg className="animate-spin h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <span className="text-sm text-gray-300">Saving annotation...</span>
+          <span className="text-sm text-gray-900 dark:text-gray-300">Saving annotation...</span>
         </div>
       )}
 

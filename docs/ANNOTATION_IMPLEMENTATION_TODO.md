@@ -1041,6 +1041,7 @@ By end of Phase 5, we should achieve:
 - ✅ Full annotation page with 4-panel layout
 - ✅ Canvas with zoom/pan/grid/crosshair (mouse wheel, buttons, keyboard)
 - ✅ Pan with Shift+Drag, Middle mouse, Arrow keys (50px increments)
+- ✅ Pan with Select tool + Drag (added 2025-11-14)
 - ✅ Bbox drawing tool with dimensions tooltip
 - ✅ Bbox rendering with class colors, labels, and resize handles
 - ✅ Class selector modal with search and keyboard navigation (1-9, arrows, Enter, Esc)
@@ -1050,13 +1051,46 @@ By end of Phase 5, we should achieve:
 - ✅ Panel collapse/expand with '[' and ']' keys (smooth 300ms animation)
 - ✅ Comprehensive keyboard shortcuts:
   - Tools: R (select), V (bbox)
-  - Navigation: A/D (prev/next image), Arrow keys (pan)
+  - Navigation: Arrow keys (prev/next image - changed from pan)
   - Editing: Delete/Backspace (delete selected)
   - Zoom: Ctrl+0/+/-
   - Undo/Redo: Ctrl+Z/Y
   - Panels: [ ] (toggle)
   - Escape: Deselect
 - ✅ All UI components (TopBar, LeftPanel with ImageList, RightPanel, BottomBar)
+- ✅ Dark/Light mode toggle with full support across all components
+- ✅ Annotation visibility toggles (individual + global show/hide)
+- ✅ Image list view toggle (grid/table views)
+- ✅ Canvas layout redesign with overlay controls (zoom, navigation, AI button)
+
+**UI/UX Improvements (2025-11-14)**:
+- ✅ Dark/Light mode implementation
+  - Class-based dark mode (`darkMode: 'class'` in tailwind.config.ts)
+  - Dynamic document class management
+  - Canvas background color responds to theme (gray-800 / gray-100)
+  - All components with dark: prefix patterns
+- ✅ Class selector modal dark mode support
+- ✅ Image list enhancements
+  - Grid/list toggle with table view
+  - Table shows: image #, filename, annotation count
+  - Annotation counts fixed and display correctly
+- ✅ Canvas overlay controls redesign
+  - Bottom-left: Zoom controls (-, 100%, +, Fit)
+  - Bottom-center: Navigation (< 1/32 >)
+  - Bottom-right: Image dimensions + AI Assistant button (circular)
+  - BottomBar component hidden (navigation moved to Canvas)
+- ✅ Annotation visibility controls
+  - Individual hide/show toggle per annotation (eye icon)
+  - Global show/hide all annotations toggle
+  - Set-based state management for hidden annotations
+- ✅ Keyboard navigation
+  - Arrow keys (↑↓←→) navigate between images
+  - Select tool + drag to pan image
+- ✅ Compressed class table with tighter spacing and smaller fonts
+- ✅ Right panel improvements
+  - Fixed "Unlabeled" display (supports snake_case and camelCase)
+  - Compressed annotation cards to 1 row
+  - Current image classes shown at top with separator
 
 **Remaining (Deferred to Phase 2)**:
 - ⏸️ Bbox resize & move interaction (handles rendered, drag not implemented)
@@ -1066,10 +1100,12 @@ By end of Phase 5, we should achieve:
 - `b6838bd` - feat: Phase 1 core canvas implementation
 - `7c6dea4` - feat: Implement bbox save and keyboard shortcuts
 - `1d112e7` - feat: Complete Phase 1 - Image list, arrow keys pan, panel toggle
+- `d020aae` - docs: Update TODO - Phase 1 complete (98%)
+- `731d1aa` - fix: Correct Project type definitions and field access
 
 ---
 
 **Last Updated**: 2025-11-14
 **Next Review**: 2025-11-17 (End of Week 1)
 **Progress**: Phase 1 is 98% complete (44/45 tasks) ✅
-**Status**: Ready for testing and production use. Bbox resize/move deferred to Phase 2.
+**Status**: Ready for testing and production use. Comprehensive UI/UX improvements completed. Dark mode fully functional. Bbox resize/move deferred to Phase 2.
