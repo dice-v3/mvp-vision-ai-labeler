@@ -1,14 +1,17 @@
 """Annotation endpoints."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, distinct
+import boto3
+from botocore.config import Config
 
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
-from app.db.models.platform import User
+from app.core.config import settings
+from app.db.models.platform import User, Dataset
 from app.db.models.labeler import Annotation, AnnotationHistory, AnnotationProject
 from app.schemas.annotation import (
     AnnotationCreate,
@@ -562,3 +565,177 @@ async def list_annotation_history(
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
     return result
+
+
+def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
+    """Load annotations.json from S3/MinIO storage."""
+    try:
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=settings.S3_ENDPOINT,
+            aws_access_key_id=settings.S3_ACCESS_KEY,
+            aws_secret_access_key=settings.S3_SECRET_KEY,
+            region_name=settings.S3_REGION,
+            config=Config(signature_version='s3v4')
+        )
+
+        response = s3_client.get_object(
+            Bucket=settings.S3_BUCKET_DATASETS,
+            Key=annotation_path
+        )
+        import json
+        content = response['Body'].read().decode('utf-8')
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error loading annotations from S3: {e}")
+        return None
+
+
+@router.post("/import/project/{project_id}", tags=["Annotations"])
+async def import_annotations_from_json(
+    project_id: str,
+    force: bool = Query(False, description="Force re-import by deleting existing annotations"),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import annotations from annotations.json to database.
+
+    This endpoint loads the annotations.json file from S3 storage
+    and imports all annotations into the database for the given project.
+    """
+    # Get project
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Get dataset
+    dataset = platform_db.query(Dataset).filter(
+        Dataset.id == project.dataset_id
+    ).first()
+
+    if not dataset or not dataset.annotation_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset or annotations.json not found"
+        )
+
+    # Load annotations.json from S3
+    annotations_data = load_annotations_from_s3(dataset.annotation_path)
+
+    if not annotations_data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load annotations.json from storage"
+        )
+
+    # Check if annotations already exist for this project
+    existing_count = labeler_db.query(func.count(Annotation.id)).filter(
+        Annotation.project_id == project_id
+    ).scalar()
+
+    if existing_count > 0:
+        if force:
+            # Delete existing annotations
+            labeler_db.query(Annotation).filter(
+                Annotation.project_id == project_id
+            ).delete()
+            labeler_db.commit()
+            print(f"Deleted {existing_count} existing annotations for project {project_id}")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Project already has {existing_count} annotations. Use force=true to re-import."
+            )
+
+    # Import annotations
+    annotations_list = annotations_data.get('annotations', [])
+    categories = annotations_data.get('categories', [])
+
+    # Create category_id -> category_name mapping
+    cat_lookup = {cat['id']: cat for cat in categories}
+
+    imported_count = 0
+    skipped_count = 0
+
+    for ann_data in annotations_list:
+        try:
+            # Extract annotation data
+            image_id = str(ann_data.get('image_id'))
+            category_id = str(ann_data.get('category_id'))
+            bbox = ann_data.get('bbox', [])  # [x, y, width, height]
+
+            # Skip if essential data is missing
+            if not image_id or not category_id or not bbox or len(bbox) != 4:
+                skipped_count += 1
+                continue
+
+            # Get category info
+            category = cat_lookup.get(ann_data.get('category_id'))
+            if not category:
+                skipped_count += 1
+                continue
+
+            # Convert COCO bbox format [x, y, w, h] to our format
+            x, y, w, h = bbox
+
+            # Create annotation
+            annotation = Annotation(
+                project_id=project_id,
+                image_id=image_id,
+                annotation_type='bbox',
+                geometry={
+                    'type': 'bbox',
+                    'bbox': [x, y, w, h],
+                    'area': ann_data.get('area'),
+                },
+                class_id=category_id,
+                class_name=category['name'],
+                metadata={
+                    'coco_annotation_id': ann_data.get('id'),
+                    'area': ann_data.get('area'),
+                    'iscrowd': ann_data.get('iscrowd', 0),
+                    'imported_from': 'annotations.json',
+                },
+                created_by=current_user.id,
+                updated_by=current_user.id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+
+            labeler_db.add(annotation)
+            imported_count += 1
+
+        except Exception as e:
+            print(f"Error importing annotation {ann_data.get('id')}: {e}")
+            skipped_count += 1
+            continue
+
+    # Commit all annotations
+    try:
+        labeler_db.commit()
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save annotations to database: {str(e)}"
+        )
+
+    # Update project statistics
+    await update_project_stats(labeler_db, project_id, current_user.id)
+    labeler_db.commit()
+
+    return {
+        "status": "success",
+        "project_id": project_id,
+        "imported": imported_count,
+        "skipped": skipped_count,
+        "total": len(annotations_list),
+    }

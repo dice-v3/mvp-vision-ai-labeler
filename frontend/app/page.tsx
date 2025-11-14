@@ -106,8 +106,8 @@ export default function DashboardPage() {
   };
 
   const handleStartLabeling = () => {
-    if (selectedDatasetId) {
-      router.push(`/annotate/${selectedDatasetId}`);
+    if (project) {
+      router.push(`/annotate/${project.id}`);
     }
   };
 
