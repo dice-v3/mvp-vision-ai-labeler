@@ -39,9 +39,9 @@ export default function TopBar() {
           <span className="text-sm font-medium text-white">
             {project?.name || 'Loading...'}
           </span>
-          {project && (
+          {project && project.task_types && project.task_types.length > 0 && (
             <span className="text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-400">
-              {project.taskTypes.join(', ')}
+              {project.task_types.join(', ')}
             </span>
           )}
         </div>
