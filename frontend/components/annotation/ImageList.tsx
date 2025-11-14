@@ -23,13 +23,14 @@ export default function ImageList() {
 
   const [filter, setFilter] = useState<FilterType>('all');
 
-  // Get annotation counts per image (simplified - would need to fetch from API in production)
+  // Phase 2.7: Get image status from real data
   const getImageStatus = (img: any): 'not-started' | 'in-progress' | 'completed' => {
-    // Temporary logic based on annotation_count
-    // TODO: Replace with actual image_annotation_status from API
+    // Use status from image_annotation_status table
+    if (img.status) {
+      return img.status as 'not-started' | 'in-progress' | 'completed';
+    }
+    // Fallback for images without status entry
     const count = img.annotation_count || 0;
-
-    // Check if image has is_confirmed flag (to be added later)
     if (img.is_confirmed) return 'completed';
     if (count > 0) return 'in-progress';
     return 'not-started';

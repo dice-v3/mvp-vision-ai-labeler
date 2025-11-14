@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
-import { getProjectById } from '@/lib/api/projects';
+import { getProjectById, getProjectImageStatuses } from '@/lib/api/projects';
 import { getDatasetImages } from '@/lib/api/datasets';
 import { getProjectAnnotations, importAnnotationsFromJson } from '@/lib/api/annotations';
 import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
@@ -92,12 +92,26 @@ export default function AnnotationPage() {
           annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
         });
 
-        // Convert DatasetImage[] to ImageData[] (number id -> string id) and add annotation counts
-        const convertedImages = imagesData.map(img => ({
-          ...img,
-          id: String(img.id),
-          annotation_count: annotationCountMap.get(String(img.id)) || 0,
-        }));
+        // Phase 2.7: Load image statuses
+        const imageStatusesResponse = await getProjectImageStatuses(projectId);
+        const imageStatusMap = new Map(
+          imageStatusesResponse.statuses.map(s => [s.image_id, s])
+        );
+
+        // Convert DatasetImage[] to ImageData[] (number id -> string id) and add annotation counts + status
+        const convertedImages = imagesData.map(img => {
+          const imgId = String(img.id);
+          const status = imageStatusMap.get(imgId);
+          return {
+            ...img,
+            id: imgId,
+            annotation_count: annotationCountMap.get(imgId) || 0,
+            // Phase 2.7: Add status info
+            is_confirmed: status?.is_image_confirmed || false,
+            status: status?.status || 'not-started',
+            confirmed_at: status?.confirmed_at,
+          };
+        });
 
         setImages(convertedImages || []);
 

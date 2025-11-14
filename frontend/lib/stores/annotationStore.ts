@@ -29,6 +29,11 @@ export interface ImageData {
   height?: number;
   annotated?: boolean;
   annotation_count?: number;
+
+  // Phase 2.7: Image status fields
+  is_confirmed?: boolean;
+  status?: string;  // not-started, in-progress, completed
+  confirmed_at?: string;
 }
 
 export interface BboxGeometry {

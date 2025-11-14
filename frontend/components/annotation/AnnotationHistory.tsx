@@ -6,7 +6,9 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { getProjectHistory, type AnnotationHistory as APIHistoryEntry } from '@/lib/api/annotations';
 
 interface HistoryEntry {
   id: string;
@@ -19,32 +21,55 @@ interface HistoryEntry {
 
 export default function AnnotationHistory() {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const { project, currentImage } = useAnnotationStore();
 
-  // TODO: Replace with actual API call to fetch history
-  const historyEntries: HistoryEntry[] = [
-    {
-      id: '1',
-      timestamp: '2025-11-14 14:30',
-      action: 'Created annotations',
-      user: 'User',
-      annotationCount: 5,
-    },
-    {
-      id: '2',
-      timestamp: '2025-11-14 14:25',
-      action: 'Deleted annotation',
-      user: 'User',
-      annotationCount: 3,
-    },
-    {
-      id: '3',
-      timestamp: '2025-11-14 14:20',
-      action: 'Confirmed image',
-      user: 'User',
-      annotationCount: 4,
-      version: 'v1.0',
-    },
-  ];
+  // Phase 2.7: Load history from API
+  useEffect(() => {
+    if (!project?.id) return;
+
+    const loadHistory = async () => {
+      try {
+        setLoading(true);
+        const history = await getProjectHistory(project.id, 0, 20);
+
+        // Convert API history to UI format
+        const converted: HistoryEntry[] = history.map((entry: APIHistoryEntry) => ({
+          id: String(entry.id),
+          timestamp: new Date(entry.timestamp).toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          action: formatAction(entry.action),
+          user: entry.changed_by_name || 'Unknown',
+          annotationCount: 0, // Could calculate from state if needed
+        }));
+
+        setHistoryEntries(converted);
+      } catch (error) {
+        console.error('Failed to load history:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadHistory();
+  }, [project?.id]);
+
+  const formatAction = (action: string): string => {
+    const actions: Record<string, string> = {
+      create: 'Created annotation',
+      update: 'Updated annotation',
+      delete: 'Deleted annotation',
+      confirm: 'Confirmed annotation',
+      unconfirm: 'Unconfirmed annotation',
+    };
+    return actions[action] || action;
+  };
 
   return (
     <div className="border-b border-gray-300 dark:border-gray-700">
@@ -76,7 +101,11 @@ export default function AnnotationHistory() {
       {/* History Table */}
       {!isCollapsed && (
         <div className="max-h-48 overflow-y-auto">
-          {historyEntries.length === 0 ? (
+          {loading ? (
+            <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
+              Loading history...
+            </div>
+          ) : historyEntries.length === 0 ? (
             <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
               No history available
             </div>
