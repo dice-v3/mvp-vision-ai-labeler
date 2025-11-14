@@ -44,12 +44,19 @@ class AnnotationResponse(BaseModel):
     updated_by: Optional[int] = None
     is_verified: bool
     notes: Optional[str] = None
+
+    # Phase 2.7: Confirmation fields
+    annotation_state: str = "draft"  # draft, confirmed, verified
+    confirmed_at: Optional[datetime] = None
+    confirmed_by: Optional[int] = None
+
     created_at: datetime
     updated_at: datetime
 
     # User information (joined from Platform DB)
     created_by_name: Optional[str] = None
     updated_by_name: Optional[str] = None
+    confirmed_by_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -84,4 +91,32 @@ class AnnotationBatchResponse(BaseModel):
     created: int
     failed: int
     annotation_ids: List[int]
+    errors: List[str] = []
+
+
+# Phase 2.7: Confirmation Schemas
+class AnnotationConfirmRequest(BaseModel):
+    """Confirm annotation request."""
+    pass  # No additional fields needed - just POST to confirm
+
+
+class BulkConfirmRequest(BaseModel):
+    """Bulk confirm annotations request."""
+    annotation_ids: List[int]
+
+
+class ConfirmResponse(BaseModel):
+    """Confirmation response."""
+    annotation_id: int
+    annotation_state: str
+    confirmed_at: Optional[datetime] = None
+    confirmed_by: Optional[int] = None
+    confirmed_by_name: Optional[str] = None
+
+
+class BulkConfirmResponse(BaseModel):
+    """Bulk confirm response."""
+    confirmed: int
+    failed: int
+    results: List[ConfirmResponse]
     errors: List[str] = []
