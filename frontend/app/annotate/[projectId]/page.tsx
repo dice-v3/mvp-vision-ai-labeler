@@ -12,8 +12,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { getProjectById } from '@/lib/api/projects';
-import { getProjectImages } from '@/lib/api/projects';
-import { getProjectAnnotations } from '@/lib/api/annotations';
+import { getDatasetImages } from '@/lib/api/datasets';
+import { getProjectAnnotations, importAnnotationsFromJson } from '@/lib/api/annotations';
 import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
 import TopBar from '@/components/annotation/TopBar';
 import LeftPanel from '@/components/annotation/LeftPanel';
@@ -66,15 +66,26 @@ export default function AnnotationPage() {
       const projectData = await getProjectById(projectId);
       setProject(projectData);
 
-      // Load images
-      const imagesData = await getProjectImages(projectId);
-      setImages(imagesData.images || []);
+      // Load images using dataset_id from project
+      if (projectData.dataset_id) {
+        const imagesData = await getDatasetImages(projectData.dataset_id, 1000);
 
-      // Load annotations for first image if available
-      if (imagesData.images && imagesData.images.length > 0) {
-        const firstImageId = imagesData.images[0].id;
-        const annotationsData = await getProjectAnnotations(projectId, firstImageId);
-        setAnnotations(annotationsData || []);
+        // Convert DatasetImage[] to ImageData[] (number id -> string id)
+        const convertedImages = imagesData.map(img => ({
+          ...img,
+          id: String(img.id),
+        }));
+
+        setImages(convertedImages || []);
+
+        // Load annotations for first image if available
+        if (convertedImages && convertedImages.length > 0) {
+          const firstImageId = convertedImages[0].id;
+
+          // Load annotations for current image
+          const annotationsData = await getProjectAnnotations(projectId, firstImageId);
+          setAnnotations(annotationsData || []);
+        }
       }
 
       setLoading(false);

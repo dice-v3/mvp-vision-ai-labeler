@@ -158,7 +158,10 @@ export default function Canvas() {
         const scaledH = h * zoom;
 
         const isSelected = ann.id === selectedAnnotationId;
-        const classInfo = ann.classId ? project.classes[ann.classId] : null;
+        // Support both camelCase and snake_case
+        const classId = (ann as any).classId || (ann as any).class_id;
+        const className = (ann as any).className || (ann as any).class_name;
+        const classInfo = classId ? project.classes[classId] : null;
         const color = classInfo?.color || '#9333ea';
 
         // Draw bbox
@@ -167,12 +170,12 @@ export default function Canvas() {
         ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
 
         // Draw label
-        if (preferences.showLabels && ann.className) {
+        if (preferences.showLabels && className) {
           ctx.fillStyle = color;
-          ctx.fillRect(scaledX, scaledY - 20, ctx.measureText(ann.className).width + 8, 20);
+          ctx.fillRect(scaledX, scaledY - 20, ctx.measureText(className).width + 8, 20);
           ctx.fillStyle = '#ffffff';
           ctx.font = '12px sans-serif';
-          ctx.fillText(ann.className, scaledX + 4, scaledY - 6);
+          ctx.fillText(className, scaledX + 4, scaledY - 6);
         }
 
         // Draw handles if selected

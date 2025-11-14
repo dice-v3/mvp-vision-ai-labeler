@@ -86,10 +86,25 @@ export async function getProjectAnnotations(
     params.set('image_id', imageId);
   }
 
-  const response = await apiClient.get(
+  return apiClient.get<Annotation[]>(
     `/api/v1/annotations/project/${projectId}?${params.toString()}`
   );
-  return response.data;
+}
+
+/**
+ * Import annotations from annotations.json to database
+ */
+export async function importAnnotationsFromJson(
+  projectId: string,
+  force: boolean = false
+): Promise<{
+  status: string;
+  project_id: string;
+  imported: number;
+  skipped: number;
+  total: number;
+}> {
+  return apiClient.post(`/api/v1/annotations/import/project/${projectId}?force=${force}`, {});
 }
 
 /**
