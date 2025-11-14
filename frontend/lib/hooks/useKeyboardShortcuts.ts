@@ -23,6 +23,10 @@ export function useKeyboardShortcuts() {
     undo,
     redo,
     history,
+    canvas,
+    setPan,
+    toggleLeftPanel,
+    toggleRightPanel,
   } = useAnnotationStore();
 
   useEffect(() => {
@@ -81,6 +85,34 @@ export function useKeyboardShortcuts() {
 
       // Regular shortcuts (no modifiers)
       switch (e.key.toLowerCase()) {
+        case 'arrowup':
+          // Pan up (only if no annotation selected)
+          if (!selectedAnnotationId) {
+            e.preventDefault();
+            setPan({ x: canvas.pan.x, y: canvas.pan.y + 50 });
+          }
+          break;
+        case 'arrowdown':
+          // Pan down (only if no annotation selected)
+          if (!selectedAnnotationId) {
+            e.preventDefault();
+            setPan({ x: canvas.pan.x, y: canvas.pan.y - 50 });
+          }
+          break;
+        case 'arrowleft':
+          // Pan left (only if no annotation selected)
+          if (!selectedAnnotationId) {
+            e.preventDefault();
+            setPan({ x: canvas.pan.x + 50, y: canvas.pan.y });
+          }
+          break;
+        case 'arrowright':
+          // Pan right (only if no annotation selected)
+          if (!selectedAnnotationId) {
+            e.preventDefault();
+            setPan({ x: canvas.pan.x - 50, y: canvas.pan.y });
+          }
+          break;
         case 'a':
           // Previous image
           e.preventDefault();
@@ -124,6 +156,16 @@ export function useKeyboardShortcuts() {
           e.preventDefault();
           selectAnnotation(null);
           break;
+        case '[':
+          // Toggle left panel
+          e.preventDefault();
+          toggleLeftPanel();
+          break;
+        case ']':
+          // Toggle right panel
+          e.preventDefault();
+          toggleRightPanel();
+          break;
       }
     };
 
@@ -143,5 +185,9 @@ export function useKeyboardShortcuts() {
     undo,
     redo,
     history,
+    canvas,
+    setPan,
+    toggleLeftPanel,
+    toggleRightPanel,
   ]);
 }

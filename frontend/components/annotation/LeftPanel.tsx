@@ -7,6 +7,7 @@
 'use client';
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import ImageList from './ImageList';
 
 export default function LeftPanel() {
   const { panels, tool, setTool, project, toggleLeftPanel } = useAnnotationStore();
@@ -24,7 +25,7 @@ export default function LeftPanel() {
   }
 
   return (
-    <div className="w-[280px] bg-gray-800 border-r border-gray-700 flex flex-col">
+    <div className="w-[280px] bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-300">Tools</h3>
@@ -68,9 +69,8 @@ export default function LeftPanel() {
       </div>
 
       {/* Image List Section */}
-      <div className="border-b border-gray-700 p-4">
-        <h4 className="text-xs font-semibold text-gray-400 mb-2">Images</h4>
-        <div className="text-xs text-gray-500">Image list coming soon...</div>
+      <div className="border-b border-gray-700 h-[300px]">
+        <ImageList />
       </div>
 
       {/* Class List Section */}

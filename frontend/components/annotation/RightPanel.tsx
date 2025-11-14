@@ -44,7 +44,7 @@ export default function RightPanel() {
   }
 
   return (
-    <div className="w-[320px] bg-gray-800 border-l border-gray-700 flex flex-col">
+    <div className="w-[320px] bg-gray-800 border-l border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-300">Annotations ({annotations.length})</h3>
