@@ -17,10 +17,10 @@
 | Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
 | Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 51/183 tasks (28%)
+**Overall Progress**: 54/183 tasks (30%)
 **Phase 2 Breakdown**:
-- 2.7 Confirmation: 7/13 tasks (10h completed, 11h remaining) ✅ Core APIs Done
-- 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Priority
+- 2.7 Confirmation: 10/13 tasks (14.5h completed, 6.5h remaining) ✅ Backend + Frontend Confirm UI Done
+- 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Next Priority
 - Other features: 0/45 tasks (96h)
 
 ---
@@ -522,7 +522,7 @@
 
 **Goal**: Track image status accurately, enable annotation confirmation
 **Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
-**Status**: 7/13 tasks complete ✅ Core backend APIs done
+**Status**: 10/13 tasks complete ✅ Core backend + frontend confirmation UI done
 
 - [x] **Database migrations** ✅ COMPLETED
   - Create `image_annotation_status` table
@@ -561,26 +561,39 @@
   - **File**: `backend/app/api/v1/endpoints/projects.py:295-503`
   - **Schemas**: `backend/app/schemas/image.py`
 
-- [ ] **Backend: Image status tracking logic**
+- [x] **Backend: Image status tracking logic** ✅ COMPLETED
   - Auto-update `image_annotation_status` on annotation changes
-  - Database trigger or service layer
+  - Service layer implementation
   - Status transition rules (see design doc section 4.1)
+  - Integrated with all annotation CRUD endpoints
   - **Estimate**: 2 hours
-  - **File**: `backend/app/services/image_status_service.py`
+  - **Actual**: 2 hours
+  - **Files**:
+    - `backend/app/services/image_status_service.py` (new service)
+    - `backend/app/api/v1/endpoints/annotations.py` (integrated)
+    - `backend/app/api/v1/endpoints/projects.py` (integrated)
 
-- [ ] **Frontend: Individual annotation confirm toggle**
+- [x] **Frontend: Individual annotation confirm toggle** ✅ COMPLETED
   - Add [✓] button to each annotation in RightPanel
   - Toggle annotation state: draft ↔ confirmed
-  - Visual indicator (checkmark icon, different color)
-  - API integration
+  - Visual indicator (checkmark icon, green/gray color)
+  - API integration (confirmAnnotation/unconfirmAnnotation)
+  - Loading state with spinner
+  - Draft/Confirmed label display
   - **Estimate**: 2 hours
+  - **Actual**: 1.5 hours
   - **File**: `frontend/components/annotation/RightPanel.tsx`
 
-- [ ] **Frontend: Bulk confirm annotations**
-  - "Confirm All" button in RightPanel
+- [x] **Frontend: Bulk confirm annotations** ✅ COMPLETED
+  - "Confirm All (N draft)" button in RightPanel
   - Confirm all draft annotations on current image
   - Show confirmation dialog with count
+  - API integration (bulkConfirmAnnotations)
+  - Disabled when no draft annotations
+  - Loading state with spinner
   - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+  - **File**: `frontend/components/annotation/RightPanel.tsx`
 
 - [ ] **Frontend: Confirm Image button**
   - Add button to Canvas bottom controls or TopBar
@@ -1375,30 +1388,31 @@ POST /api/v1/storage/upload
 
 **Last Updated**: 2025-11-16
 **Next Review**: 2025-11-20
-**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 54% complete (7/13 tasks) 🔄
-**Status**: Phase 1 complete. Phase 2.7 core backend APIs and data loading complete.
+**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 77% complete (10/13 tasks) 🔄
+**Status**: Phase 1 complete. Phase 2.7 backend + frontend confirmation UI complete.
 
 **Phase 2.7 Status** (Updated 2025-11-16):
-✅ **Completed Tasks (7/13)**:
+✅ **Completed Tasks (10/13)**:
 - Database migrations (image_annotation_status table, annotation_state column)
 - Backend annotation confirmation APIs (confirm/unconfirm/bulk-confirm)
 - Backend image status management APIs (status list, confirm/unconfirm image)
+- **Backend image status auto-update service** (NEW!)
 - Frontend API client integration
 - Image status display with real data (ImageList icons)
 - Annotation history panel with real API data
 - Data structure updates (Zustand store, TypeScript interfaces)
+- **Frontend individual annotation confirm toggle** (NEW!)
+- **Frontend bulk confirm all annotations button** (NEW!)
 
-⏸️ **Remaining Tasks (6/13)** - ~11 hours:
-- Backend: Auto-update image status on annotation changes
-- Frontend: Individual annotation confirm toggle in RightPanel
-- Frontend: Bulk confirm all annotations button
-- Frontend: Confirm Image button with keyboard shortcut (Ctrl+Enter)
-- Frontend: Image status badges
-- Testing: End-to-end confirmation workflow
+⏸️ **Remaining Tasks (3/13)** - ~6.5 hours:
+- Frontend: Confirm Image button with keyboard shortcut (Ctrl+Enter) - 2 hours
+- Frontend: Enhanced image status badges - 1 hour
+- Testing: End-to-end confirmation workflow - 3.5 hours
 
 **Git Commits (Phase 2.7)**:
 - `799e60c` - feat: Phase 2.7 Backend - Annotation & Image Confirmation API
 - `7d0cf5d` - feat: Phase 2.7 Frontend - API Integration & Real Data Display
+- (pending) - feat: Phase 2.7 Backend - Image Status Auto-Update + Frontend Confirmation UI
 
 **Phase 2 Priority**: Annotation Confirmation (2.7) and Version Management (2.8) - 42h total
 **Storage Strategy**: S3 direct access (Phase 2) → Platform API migration (Phase 4)

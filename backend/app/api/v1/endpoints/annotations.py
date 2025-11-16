@@ -25,6 +25,7 @@ from app.schemas.annotation import (
     ConfirmResponse,
     BulkConfirmResponse,
 )
+from app.services.image_status_service import update_image_status
 
 router = APIRouter()
 
@@ -156,6 +157,13 @@ async def create_annotation(
         user_id=current_user.id,
     )
 
+    # Phase 2.7: Update image annotation status
+    await update_image_status(
+        db=labeler_db,
+        project_id=annotation.project_id,
+        image_id=annotation.image_id,
+    )
+
     labeler_db.commit()
     labeler_db.refresh(new_annotation)
 
@@ -284,6 +292,13 @@ async def update_annotation(
         user_id=current_user.id,
     )
 
+    # Phase 2.7: Update image annotation status
+    await update_image_status(
+        db=labeler_db,
+        project_id=annotation.project_id,
+        image_id=annotation.image_id,
+    )
+
     labeler_db.commit()
     labeler_db.refresh(annotation)
 
@@ -330,6 +345,7 @@ async def delete_annotation(
         )
 
     project_id = annotation.project_id
+    image_id = annotation.image_id  # Phase 2.7: Store image_id before deletion
 
     # Store state before deletion
     previous_state = {
@@ -358,6 +374,13 @@ async def delete_annotation(
         db=labeler_db,
         project_id=project_id,
         user_id=current_user.id,
+    )
+
+    # Phase 2.7: Update image annotation status after deletion
+    await update_image_status(
+        db=labeler_db,
+        project_id=project_id,
+        image_id=image_id,
     )
 
     labeler_db.commit()
@@ -632,6 +655,13 @@ async def confirm_annotation(
         changed_by=current_user.id,
     )
 
+    # Phase 2.7: Update image annotation status
+    await update_image_status(
+        db=labeler_db,
+        project_id=annotation.project_id,
+        image_id=annotation.image_id,
+    )
+
     labeler_db.commit()
     labeler_db.refresh(annotation)
 
@@ -685,6 +715,13 @@ async def unconfirm_annotation(
         changed_by=current_user.id,
     )
 
+    # Phase 2.7: Update image annotation status
+    await update_image_status(
+        db=labeler_db,
+        project_id=annotation.project_id,
+        image_id=annotation.image_id,
+    )
+
     labeler_db.commit()
     labeler_db.refresh(annotation)
 
@@ -714,6 +751,7 @@ async def bulk_confirm_annotations(
     errors = []
     confirmed_count = 0
     failed_count = 0
+    affected_images = set()  # Phase 2.7: Track affected images for status update
 
     for annotation_id in request.annotation_ids:
         try:
@@ -744,6 +782,9 @@ async def bulk_confirm_annotations(
                 changed_by=current_user.id,
             )
 
+            # Phase 2.7: Track affected image for status update
+            affected_images.add((annotation.project_id, annotation.image_id))
+
             confirmed_count += 1
             results.append(ConfirmResponse(
                 annotation_id=annotation.id,
@@ -756,6 +797,14 @@ async def bulk_confirm_annotations(
         except Exception as e:
             errors.append(f"Annotation {annotation_id}: {str(e)}")
             failed_count += 1
+
+    # Phase 2.7: Update image annotation status for all affected images
+    for project_id, image_id in affected_images:
+        await update_image_status(
+            db=labeler_db,
+            project_id=project_id,
+            image_id=image_id,
+        )
 
     labeler_db.commit()
 

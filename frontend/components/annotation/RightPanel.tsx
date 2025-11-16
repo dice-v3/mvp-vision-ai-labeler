@@ -7,7 +7,12 @@
 'use client';
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
-import { deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
+import {
+  deleteAnnotation as deleteAnnotationAPI,
+  confirmAnnotation,
+  unconfirmAnnotation,
+  bulkConfirmAnnotations,
+} from '@/lib/api/annotations';
 import { useState } from 'react';
 
 export default function RightPanel() {
@@ -25,6 +30,83 @@ export default function RightPanel() {
     showAllAnnotations,
   } = useAnnotationStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+
+  // Phase 2.7: Get draft annotation count
+  const draftAnnotations = annotations.filter(ann => {
+    const state = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
+    return state === 'draft';
+  });
+  const draftCount = draftAnnotations.length;
+
+  const handleBulkConfirm = async () => {
+    if (draftCount === 0) return;
+
+    if (!confirm(`Confirm all ${draftCount} draft annotations?`)) return;
+
+    setBulkConfirming(true);
+    try {
+      const draftIds = draftAnnotations.map(ann => parseInt(ann.id));
+      await bulkConfirmAnnotations(draftIds);
+
+      // Update local state - mark all draft as confirmed
+      const updatedAnnotations = annotations.map(ann => {
+        const state = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
+        if (state === 'draft') {
+          return {
+            ...ann,
+            annotation_state: 'confirmed',
+            confirmed_at: new Date().toISOString(),
+          };
+        }
+        return ann;
+      });
+
+      useAnnotationStore.setState({ annotations: updatedAnnotations });
+
+    } catch (err) {
+      console.error('Failed to bulk confirm annotations:', err);
+      // TODO: Show error toast
+    } finally {
+      setBulkConfirming(false);
+    }
+  };
+
+  const handleConfirmToggle = async (annotationId: string, currentState: string) => {
+    setConfirmingId(annotationId);
+    try {
+      const isConfirmed = currentState === 'confirmed';
+
+      if (isConfirmed) {
+        // Unconfirm: confirmed → draft
+        await unconfirmAnnotation(annotationId);
+      } else {
+        // Confirm: draft → confirmed
+        await confirmAnnotation(annotationId);
+      }
+
+      // Update local state
+      const updatedAnnotations = annotations.map(ann =>
+        ann.id === annotationId
+          ? {
+              ...ann,
+              annotation_state: isConfirmed ? 'draft' : 'confirmed',
+              confirmed_at: isConfirmed ? undefined : new Date().toISOString(),
+            }
+          : ann
+      );
+
+      // Update store (we'll need to add this function to the store)
+      useAnnotationStore.setState({ annotations: updatedAnnotations });
+
+    } catch (err) {
+      console.error('Failed to toggle confirmation:', err);
+      // TODO: Show error toast
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   const handleDelete = async (annotationId: string) => {
     if (!confirm('Delete this annotation?')) return;
@@ -97,6 +179,34 @@ export default function RightPanel() {
 
       {/* Annotations List */}
       <div className="overflow-y-auto p-4 border-b border-gray-300 dark:border-gray-700">
+        {/* Phase 2.7: Bulk Actions */}
+        {annotations.length > 0 && draftCount > 0 && (
+          <div className="mb-3 pb-3 border-b border-gray-300 dark:border-gray-600">
+            <button
+              onClick={handleBulkConfirm}
+              disabled={bulkConfirming}
+              className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 text-white text-xs font-medium rounded transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {bulkConfirming ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Confirming...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                  </svg>
+                  <span>Confirm All ({draftCount} draft)</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {annotations.length === 0 && (
           <div className="text-center py-8 text-gray-500 dark:text-gray-500">
             <p className="text-sm">No annotations yet</p>
@@ -111,6 +221,10 @@ export default function RightPanel() {
           const classInfo = classId && project ? project.classes[classId] : null;
           const color = classInfo?.color || '#6b7280';
           const isVisible = isAnnotationVisible(ann.id);
+
+          // Phase 2.7: Get annotation state
+          const annotationState = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
+          const isConfirmed = annotationState === 'confirmed';
 
           return (
             <div
@@ -131,6 +245,12 @@ export default function RightPanel() {
                   <span className="text-xs font-medium text-gray-900 dark:text-gray-300 truncate">
                     {className || 'Unlabeled'}
                   </span>
+                  {isConfirmed && (
+                    <span className="text-green-500 text-[10px]" title="Confirmed">✓</span>
+                  )}
+                  {!isConfirmed && (
+                    <span className="text-gray-400 dark:text-gray-500 text-[10px]" title="Draft">(draft)</span>
+                  )}
                   {ann.geometry.type === 'bbox' && (
                     <span className="text-[10px] text-gray-600 dark:text-gray-500">
                       {Math.round(ann.geometry.bbox[2])}×{Math.round(ann.geometry.bbox[3])}
@@ -138,6 +258,35 @@ export default function RightPanel() {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  {/* Phase 2.7: Confirm/Unconfirm button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleConfirmToggle(ann.id, annotationState);
+                    }}
+                    disabled={confirmingId === ann.id}
+                    className={`p-1 transition-colors flex-shrink-0 ${
+                      isConfirmed
+                        ? 'text-green-500 hover:text-green-600 dark:text-green-400 dark:hover:text-green-300'
+                        : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={isConfirmed ? 'Unconfirm annotation' : 'Confirm annotation'}
+                  >
+                    {confirmingId === ann.id ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : isConfirmed ? (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="2" />
+                      </svg>
+                    )}
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
