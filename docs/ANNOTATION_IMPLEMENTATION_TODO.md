@@ -12,12 +12,16 @@
 | Phase | Status | Progress | Target Week |
 |-------|--------|----------|-------------|
 | Phase 1: Core Canvas | ✅ Complete | 44/45 (98%) | Week 1 |
-| Phase 2: Advanced Features | ⏸️ Pending | 0/27 | Week 2 |
-| Phase 3: AI Integration | ⏸️ Pending | 0/16 | Week 3 |
-| Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 4 |
-| Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 5-6 |
+| Phase 2: Advanced Features | 🔄 In Progress | 0/69 (+42 tasks) | Week 2-3 |
+| Phase 3: AI Integration | ⏸️ Pending | 0/16 | Week 4 |
+| Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
+| Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 44/141 tasks (31%)
+**Overall Progress**: 51/183 tasks (28%)
+**Phase 2 Breakdown**:
+- 2.7 Confirmation: 7/13 tasks (10h completed, 11h remaining) ✅ Core APIs Done
+- 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Priority
+- Other features: 0/45 tasks (96h)
 
 ---
 
@@ -349,10 +353,11 @@
 
 ---
 
-## Phase 2: Advanced Features (Week 2)
+## Phase 2: Advanced Features (Week 2-3)
 
-**Goal**: Full keyboard support, undo/redo, advanced UI components
-**Target Completion**: 2025-11-28
+**Goal**: Annotation confirmation, version management, keyboard support, undo/redo
+**Target Completion**: 2025-12-05
+**New Priority**: Confirmation & versioning before advanced shortcuts
 
 ### 2.1 Complete Keyboard Shortcuts
 
@@ -513,7 +518,235 @@
   - Show in floating selector
   - **Estimate**: 2 hours
 
-### 2.7 Settings Panel
+### 2.7 Image & Annotation Confirmation ⭐ NEW
+
+**Goal**: Track image status accurately, enable annotation confirmation
+**Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
+**Status**: 7/13 tasks complete ✅ Core backend APIs done
+
+- [x] **Database migrations** ✅ COMPLETED
+  - Create `image_annotation_status` table
+  - Add `annotation_state` column to `annotations` table
+  - Add `confirmed_at`, `confirmed_by` columns to `annotations`
+  - Create indexes for performance
+  - Data migration for existing annotations
+  - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **Files**:
+    - `backend/alembic/versions/20251114_1600_add_annotation_confirmation.py`
+    - `backend/alembic/versions/20251114_1601_migrate_existing_data.py`
+    - `backend/app/db/models/labeler.py`
+
+- [x] **Backend API: Annotation confirmation** ✅ COMPLETED
+  - `POST /api/v1/annotations/{annotationId}/confirm`
+  - `POST /api/v1/annotations/{annotationId}/unconfirm`
+  - `POST /api/v1/annotations/bulk-confirm`
+  - Update annotation state: draft → confirmed
+  - Record confirmed_at timestamp and confirmed_by user
+  - History tracking for confirmation actions
+  - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **File**: `backend/app/api/v1/endpoints/annotations.py:575-748`
+  - **Schemas**: `backend/app/schemas/annotation.py`
+
+- [x] **Backend API: Image status management** ✅ COMPLETED
+  - `GET /api/v1/projects/{projectId}/images/status`
+  - `POST /api/v1/projects/{projectId}/images/{imageId}/confirm`
+  - `POST /api/v1/projects/{projectId}/images/{imageId}/unconfirm`
+  - Calculate status: not-started / in-progress / completed
+  - Update annotation counts (total, confirmed, draft)
+  - Track first_modified_at, last_modified_at, confirmed_at
+  - **Estimate**: 3 hours
+  - **Actual**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/projects.py:295-503`
+  - **Schemas**: `backend/app/schemas/image.py`
+
+- [ ] **Backend: Image status tracking logic**
+  - Auto-update `image_annotation_status` on annotation changes
+  - Database trigger or service layer
+  - Status transition rules (see design doc section 4.1)
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/services/image_status_service.py`
+
+- [ ] **Frontend: Individual annotation confirm toggle**
+  - Add [✓] button to each annotation in RightPanel
+  - Toggle annotation state: draft ↔ confirmed
+  - Visual indicator (checkmark icon, different color)
+  - API integration
+  - **Estimate**: 2 hours
+  - **File**: `frontend/components/annotation/RightPanel.tsx`
+
+- [ ] **Frontend: Bulk confirm annotations**
+  - "Confirm All" button in RightPanel
+  - Confirm all draft annotations on current image
+  - Show confirmation dialog with count
+  - **Estimate**: 1 hour
+
+- [ ] **Frontend: Confirm Image button**
+  - Add button to Canvas bottom controls or TopBar
+  - Keyboard shortcut: `Ctrl + Enter`
+  - Confirms all annotations + marks image as completed
+  - Auto-navigate to next not-started image (optional)
+  - **Estimate**: 2 hours
+  - **File**: `frontend/components/annotation/Canvas.tsx`
+
+- [ ] **Frontend: Image status badges**
+  - ✓ Completed badge (green)
+  - ⚠ In Progress badge (yellow)
+  - Visual indicators in ImageList
+  - **Estimate**: 1 hour
+  - **File**: `frontend/components/annotation/ImageList.tsx`
+
+- [x] **Frontend: Image status icons in ImageList** ✅ COMPLETED
+  - Simple icons for not-started / in-progress / completed
+  - Display in both thumbnail view and table view
+  - Icon placement: top-right corner (thumbnail), column (table)
+  - Icons: ⚪ (not-started), 🔄 (in-progress), ✓ (completed)
+  - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+  - **File**: `frontend/components/annotation/ImageList.tsx:38-60`
+
+- [x] **Frontend: Fix image filter by status** ✅ COMPLETED
+  - Update `getImageStatus()` function
+  - Use actual image_annotation_status from API
+  - Filter works correctly: not-started / in-progress / completed
+  - Load image statuses on project initialization
+  - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **Files**:
+    - `frontend/components/annotation/ImageList.tsx:26-37`
+    - `frontend/app/annotate/[projectId]/page.tsx:95-114`
+    - `frontend/lib/api/projects.ts` (added getProjectImageStatuses)
+
+- [x] **Frontend: Annotation History panel** ✅ COMPLETED
+  - Add panel above ImageList in LeftPanel
+  - Collapsible section with header
+  - Table display: Date, Action, User, Annotations count
+  - Shows recent annotation changes/versions
+  - Fetch real data from API with loading state
+  - **Estimate**: 3 hours
+  - **Actual**: 3 hours
+  - **File**: `frontend/components/annotation/AnnotationHistory.tsx`
+
+- [x] **Frontend: History panel integration** ✅ COMPLETED
+  - Fetch annotation history from API
+  - Display in LeftPanel above ImageList
+  - Collapsible toggle
+  - Scroll independently from ImageList
+  - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+  - **File**: `frontend/components/annotation/LeftPanel.tsx`
+
+- [x] **Frontend: Annotation state in store** ✅ COMPLETED
+  - Add is_confirmed, status, confirmed_at to ImageData interface
+  - Update API client with confirmation functions
+  - Handle confirm/unconfirm in annotation schemas
+  - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+  - **Files**:
+    - `frontend/lib/stores/annotationStore.ts:33-37`
+    - `frontend/lib/api/annotations.ts:65-70, 185-232`
+    - `frontend/lib/api/projects.ts:89-137`
+
+- [ ] **Data migration: Existing annotations**
+  - Migrate existing annotations to 'confirmed' state
+  - Calculate image_annotation_status for existing data
+  - **Estimate**: 1 hour
+
+- [ ] **Testing: Confirmation flow**
+  - Test annotation confirm/unconfirm
+  - Test image status transitions
+  - Test filter by status
+  - Edge cases: delete all annotations after confirm
+  - **Estimate**: 2 hours
+
+**Subtotal**: 21 hours
+
+### 2.8 Version Management Foundation ⭐ NEW
+
+**Goal**: Basic version management for annotation export
+**Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
+
+- [ ] **Database migrations**
+  - Create `annotation_versions` table
+  - Create `annotation_snapshots` table
+  - **Estimate**: 1 hour
+  - **File**: `backend/app/db/migrations/`
+
+- [ ] **Backend: COCO export service**
+  - Convert DB annotations to COCO format
+  - Handle images, annotations, categories
+  - **Estimate**: 3 hours
+  - **File**: `backend/app/services/coco_export_service.py`
+
+- [ ] **Backend: YOLO export service**
+  - Convert DB annotations to YOLO format
+  - Generate .txt files per image
+  - classes.txt file
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/services/yolo_export_service.py`
+
+- [ ] **Backend: Export API (current S3 direct)**
+  - `POST /api/v1/projects/{projectId}/annotations/export`
+  - Generate export file (COCO/YOLO)
+  - Upload to S3 directly (temporary, until platform API ready)
+  - Return presigned download URL
+  - **Estimate**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/export.py`
+
+- [ ] **Backend: Version creation API**
+  - `POST /api/v1/projects/{projectId}/versions/publish`
+  - Create version record in DB
+  - Trigger export
+  - Store export metadata
+  - **Estimate**: 2 hours
+
+- [ ] **Backend: Version list API**
+  - `GET /api/v1/projects/{projectId}/versions`
+  - List all published versions
+  - Include download URLs (regenerate if expired)
+  - **Estimate**: 1 hour
+
+- [ ] **Backend: Presigned URL regeneration**
+  - Check if download_url expired
+  - Generate new presigned URL
+  - Update DB
+  - **Estimate**: 1 hour
+
+- [ ] **Frontend: Export button**
+  - Add "Export" button to project page or TopBar
+  - Modal with format selection (COCO / YOLO)
+  - Trigger export API
+  - Show download link
+  - **Estimate**: 2 hours
+  - **File**: `frontend/components/annotation/ExportModal.tsx`
+
+- [ ] **Frontend: Version history UI**
+  - List published versions
+  - Show: version number, date, annotation count, format
+  - Download button per version
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/project/VersionHistory.tsx`
+
+- [ ] **Documentation: Export formats**
+  - COCO format specification
+  - YOLO format specification
+  - Export workflow guide
+  - **Estimate**: 1 hour
+
+- [ ] **Testing: Export & versioning**
+  - Test COCO export correctness
+  - Test YOLO export correctness
+  - Test version creation
+  - Test download URL expiration
+  - **Estimate**: 2 hours
+
+**Subtotal**: 21 hours
+
+**Note**: Phase 2.8 uses S3 direct access temporarily. Will migrate to Platform API in Phase 4 when available.
+**Migration Plan**: See `docs/design/PRODUCTION_STORAGE_STRATEGY.md`
+
+### 2.9 Settings Panel
 
 - [ ] **Settings UI**
   - Bottom of left panel
@@ -977,23 +1210,28 @@
 | Phase | Tasks | Hours |
 |-------|-------|-------|
 | Phase 1: Core Canvas | 45 tasks | 90 hours |
-| Phase 2: Advanced Features | 27 tasks | 54 hours |
+| Phase 2: Advanced Features | 69 tasks (+42) | 138 hours (+84) |
+|   - 2.7 Confirmation | 13 tasks | 21 hours |
+|   - 2.8 Version Mgmt | 11 tasks | 21 hours |
+|   - Other features | 45 tasks | 96 hours |
 | Phase 3: AI Integration | 16 tasks | 32 hours |
-| Phase 4: Polish | 20 tasks | 40 hours |
+| Phase 4: Polish & Platform Migration | 20 tasks | 40 hours (+storage migration) |
 | Phase 5: Multi-Task | 18 tasks | 36 hours |
 | Testing | 8 tasks | 23 hours |
 | Documentation | 3 tasks | 12 hours |
 | Deployment | 4 tasks | 8 hours |
-| **TOTAL** | **141 tasks** | **295 hours** |
+| **TOTAL** | **183 tasks** (+42) | **379 hours** (+84) |
 
 ### Timeline
 
-- **Week 1** (Nov 14-21): Phase 1 (90h → 2 devs × 45h/week)
-- **Week 2** (Nov 22-28): Phase 2 (54h)
-- **Week 3** (Nov 29-Dec 5): Phase 3 (32h)
-- **Week 4** (Dec 6-12): Phase 4 (40h)
-- **Week 5-6** (Dec 13-19): Phase 5 (36h) + Testing (23h) + Docs (12h)
-- **Week 6** (Dec 20-26): Deployment (8h) + Buffer
+- **Week 1** (Nov 14-21): Phase 1 (90h) ✅ Complete
+- **Week 2-3** (Nov 22-Dec 5): Phase 2 (138h)
+  - Priority: 2.7 Confirmation + 2.8 Version Mgmt (42h) ⭐
+  - Secondary: Shortcuts, Undo/Redo, Settings (96h)
+- **Week 4** (Dec 6-12): Phase 3 (32h)
+- **Week 5** (Dec 13-19): Phase 4 (40h) + Platform API Migration
+- **Week 6-7** (Dec 20-26): Phase 5 (36h) + Testing (23h)
+- **Week 7-8** (Dec 27-Jan 2): Docs (12h) + Deployment (8h) + Buffer
 
 ### Success Metrics
 
@@ -1020,6 +1258,7 @@ By end of Phase 5, we should achieve:
 ### Dependencies
 
 - **Phase 2** depends on Phase 1 completion
+- **Phase 2.7-2.8** (Confirmation & Version) are **P0** for production
 - **Phase 3** can run parallel to Phase 2 (backend team)
 - **Phase 4** depends on Phases 1-3
 - **Phase 5** depends on Phase 1 (tool abstraction)
@@ -1030,6 +1269,35 @@ By end of Phase 5, we should achieve:
 2. **Scope creep**: Stick to P0/P1 tasks for MVP
 3. **AI integration delays**: Phase 3 is optional for initial launch
 4. **Browser compatibility**: Test on Chrome, Edge, Firefox regularly
+
+### Storage Strategy ⭐ NEW
+
+**Current Approach** (Development):
+- S3 direct access with IAM credentials
+- Presigned URLs for image loading
+- Direct file upload for exports
+
+**Production Migration Plan**:
+- **Phase 2**: Continue with S3 direct access (temporary)
+- **Phase 4**: Migrate to Platform Backend API
+  - Platform provides: `POST /api/v1/storage/upload`
+  - Labeler uploads export files via Platform API
+  - Platform manages S3 bucket: `s3://platform-storage/labeler-exports/`
+- **Migration Impact**: Minimal code changes (only endpoint URLs)
+
+**Design Documents**:
+- `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md` - Confirmation & version management
+- `docs/design/PRODUCTION_STORAGE_STRATEGY.md` - Storage architecture & migration
+
+**Platform API Requirements** (ETA: Phase 4):
+```
+POST /api/v1/storage/upload
+  - Upload annotation export files to S3
+  - Return presigned download URL
+  - Rate limit: 10/min per user
+```
+
+**Alternative Fallback**: MinIO (self-hosted S3-compatible storage) if platform API unavailable
 
 ---
 
@@ -1105,7 +1373,32 @@ By end of Phase 5, we should achieve:
 
 ---
 
-**Last Updated**: 2025-11-14
-**Next Review**: 2025-11-17 (End of Week 1)
-**Progress**: Phase 1 is 98% complete (44/45 tasks) ✅
-**Status**: Ready for testing and production use. Comprehensive UI/UX improvements completed. Dark mode fully functional. Bbox resize/move deferred to Phase 2.
+**Last Updated**: 2025-11-16
+**Next Review**: 2025-11-20
+**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 54% complete (7/13 tasks) 🔄
+**Status**: Phase 1 complete. Phase 2.7 core backend APIs and data loading complete.
+
+**Phase 2.7 Status** (Updated 2025-11-16):
+✅ **Completed Tasks (7/13)**:
+- Database migrations (image_annotation_status table, annotation_state column)
+- Backend annotation confirmation APIs (confirm/unconfirm/bulk-confirm)
+- Backend image status management APIs (status list, confirm/unconfirm image)
+- Frontend API client integration
+- Image status display with real data (ImageList icons)
+- Annotation history panel with real API data
+- Data structure updates (Zustand store, TypeScript interfaces)
+
+⏸️ **Remaining Tasks (6/13)** - ~11 hours:
+- Backend: Auto-update image status on annotation changes
+- Frontend: Individual annotation confirm toggle in RightPanel
+- Frontend: Bulk confirm all annotations button
+- Frontend: Confirm Image button with keyboard shortcut (Ctrl+Enter)
+- Frontend: Image status badges
+- Testing: End-to-end confirmation workflow
+
+**Git Commits (Phase 2.7)**:
+- `799e60c` - feat: Phase 2.7 Backend - Annotation & Image Confirmation API
+- `7d0cf5d` - feat: Phase 2.7 Frontend - API Integration & Real Data Display
+
+**Phase 2 Priority**: Annotation Confirmation (2.7) and Version Management (2.8) - 42h total
+**Storage Strategy**: S3 direct access (Phase 2) → Platform API migration (Phase 4)

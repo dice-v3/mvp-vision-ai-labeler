@@ -20,6 +20,10 @@ from app.schemas.annotation import (
     AnnotationHistoryResponse,
     AnnotationBatchCreate,
     AnnotationBatchResponse,
+    AnnotationConfirmRequest,
+    BulkConfirmRequest,
+    ConfirmResponse,
+    BulkConfirmResponse,
 )
 
 router = APIRouter()
@@ -159,6 +163,7 @@ async def create_annotation(
     response_dict = {
         **new_annotation.__dict__,
         "created_by_name": current_user.full_name,
+        "confirmed_by_name": None,  # New annotations are in draft state
     }
 
     return AnnotationResponse.model_validate(response_dict)
@@ -185,6 +190,7 @@ async def get_annotation(
     # Fetch user info
     created_by_name = None
     updated_by_name = None
+    confirmed_by_name = None
 
     if annotation.created_by:
         user = platform_db.query(User).filter(User.id == annotation.created_by).first()
@@ -196,10 +202,16 @@ async def get_annotation(
         if user:
             updated_by_name = user.full_name
 
+    if annotation.confirmed_by:
+        user = platform_db.query(User).filter(User.id == annotation.confirmed_by).first()
+        if user:
+            confirmed_by_name = user.full_name
+
     response_dict = {
         **annotation.__dict__,
         "created_by_name": created_by_name,
         "updated_by_name": updated_by_name,
+        "confirmed_by_name": confirmed_by_name,
     }
 
     return AnnotationResponse.model_validate(response_dict)
@@ -278,15 +290,23 @@ async def update_annotation(
     # Add user info
     updated_by_name = current_user.full_name
     created_by_name = None
+    confirmed_by_name = None
+
     if annotation.created_by:
         user = platform_db.query(User).filter(User.id == annotation.created_by).first()
         if user:
             created_by_name = user.full_name
 
+    if annotation.confirmed_by:
+        user = platform_db.query(User).filter(User.id == annotation.confirmed_by).first()
+        if user:
+            confirmed_by_name = user.full_name
+
     response_dict = {
         **annotation.__dict__,
         "created_by_name": created_by_name,
         "updated_by_name": updated_by_name,
+        "confirmed_by_name": confirmed_by_name,
     }
 
     return AnnotationResponse.model_validate(response_dict)
@@ -377,6 +397,8 @@ async def list_project_annotations(
             user_ids.add(ann.created_by)
         if ann.updated_by:
             user_ids.add(ann.updated_by)
+        if ann.confirmed_by:
+            user_ids.add(ann.confirmed_by)
 
     users = {}
     if user_ids:
@@ -390,6 +412,7 @@ async def list_project_annotations(
             **ann.__dict__,
             "created_by_name": users.get(ann.created_by),
             "updated_by_name": users.get(ann.updated_by),
+            "confirmed_by_name": users.get(ann.confirmed_by),
         }
         result.append(AnnotationResponse.model_validate(response_dict))
 
@@ -565,6 +588,183 @@ async def list_annotation_history(
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
     return result
+
+
+# Phase 2.7: Annotation Confirmation Endpoints
+@router.post("/{annotation_id}/confirm", response_model=ConfirmResponse, tags=["Annotation Confirmation"])
+async def confirm_annotation(
+    annotation_id: int,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Confirm an annotation.
+
+    Changes annotation state from 'draft' to 'confirmed'.
+    Records who confirmed and when.
+    """
+    annotation = labeler_db.query(Annotation).filter(
+        Annotation.id == annotation_id
+    ).first()
+
+    if not annotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Annotation {annotation_id} not found",
+        )
+
+    # Update annotation state
+    previous_state = annotation.annotation_state
+    annotation.annotation_state = "confirmed"
+    annotation.confirmed_at = datetime.utcnow()
+    annotation.confirmed_by = current_user.id
+    annotation.updated_at = datetime.utcnow()
+
+    # Create history entry
+    await create_history_entry(
+        db=labeler_db,
+        annotation_id=annotation_id,
+        project_id=annotation.project_id,
+        action="confirm",
+        previous_state={"annotation_state": previous_state},
+        new_state={"annotation_state": "confirmed"},
+        changed_by=current_user.id,
+    )
+
+    labeler_db.commit()
+    labeler_db.refresh(annotation)
+
+    return ConfirmResponse(
+        annotation_id=annotation.id,
+        annotation_state=annotation.annotation_state,
+        confirmed_at=annotation.confirmed_at,
+        confirmed_by=annotation.confirmed_by,
+        confirmed_by_name=current_user.full_name,
+    )
+
+
+@router.post("/{annotation_id}/unconfirm", response_model=ConfirmResponse, tags=["Annotation Confirmation"])
+async def unconfirm_annotation(
+    annotation_id: int,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Unconfirm an annotation.
+
+    Changes annotation state from 'confirmed' back to 'draft'.
+    Clears confirmation metadata.
+    """
+    annotation = labeler_db.query(Annotation).filter(
+        Annotation.id == annotation_id
+    ).first()
+
+    if not annotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Annotation {annotation_id} not found",
+        )
+
+    # Update annotation state
+    previous_state = annotation.annotation_state
+    annotation.annotation_state = "draft"
+    annotation.confirmed_at = None
+    annotation.confirmed_by = None
+    annotation.updated_at = datetime.utcnow()
+
+    # Create history entry
+    await create_history_entry(
+        db=labeler_db,
+        annotation_id=annotation_id,
+        project_id=annotation.project_id,
+        action="unconfirm",
+        previous_state={"annotation_state": previous_state},
+        new_state={"annotation_state": "draft"},
+        changed_by=current_user.id,
+    )
+
+    labeler_db.commit()
+    labeler_db.refresh(annotation)
+
+    return ConfirmResponse(
+        annotation_id=annotation.id,
+        annotation_state=annotation.annotation_state,
+        confirmed_at=annotation.confirmed_at,
+        confirmed_by=annotation.confirmed_by,
+        confirmed_by_name=None,
+    )
+
+
+@router.post("/bulk-confirm", response_model=BulkConfirmResponse, tags=["Annotation Confirmation"])
+async def bulk_confirm_annotations(
+    request: BulkConfirmRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Bulk confirm multiple annotations.
+
+    Confirms all specified annotations in a single transaction.
+    Returns success/failure counts and details.
+    """
+    results = []
+    errors = []
+    confirmed_count = 0
+    failed_count = 0
+
+    for annotation_id in request.annotation_ids:
+        try:
+            annotation = labeler_db.query(Annotation).filter(
+                Annotation.id == annotation_id
+            ).first()
+
+            if not annotation:
+                errors.append(f"Annotation {annotation_id} not found")
+                failed_count += 1
+                continue
+
+            # Update annotation state
+            previous_state = annotation.annotation_state
+            annotation.annotation_state = "confirmed"
+            annotation.confirmed_at = datetime.utcnow()
+            annotation.confirmed_by = current_user.id
+            annotation.updated_at = datetime.utcnow()
+
+            # Create history entry
+            await create_history_entry(
+                db=labeler_db,
+                annotation_id=annotation_id,
+                project_id=annotation.project_id,
+                action="confirm",
+                previous_state={"annotation_state": previous_state},
+                new_state={"annotation_state": "confirmed"},
+                changed_by=current_user.id,
+            )
+
+            confirmed_count += 1
+            results.append(ConfirmResponse(
+                annotation_id=annotation.id,
+                annotation_state=annotation.annotation_state,
+                confirmed_at=annotation.confirmed_at,
+                confirmed_by=annotation.confirmed_by,
+                confirmed_by_name=current_user.full_name,
+            ))
+
+        except Exception as e:
+            errors.append(f"Annotation {annotation_id}: {str(e)}")
+            failed_count += 1
+
+    labeler_db.commit()
+
+    return BulkConfirmResponse(
+        confirmed=confirmed_count,
+        failed=failed_count,
+        results=results,
+        errors=errors,
+    )
 
 
 def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:

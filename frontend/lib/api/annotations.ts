@@ -61,6 +61,13 @@ export interface Annotation {
   confidence?: number;
   is_verified?: boolean;
   notes?: string;
+
+  // Phase 2.7: Confirmation fields
+  annotation_state?: string;  // draft, confirmed, verified
+  confirmed_at?: string;
+  confirmed_by?: number;
+  confirmed_by_name?: string;
+
   created_by?: number;
   created_by_name?: string;
   updated_by?: number;
@@ -173,4 +180,53 @@ export async function updateAnnotation(
  */
 export async function deleteAnnotation(annotationId: string): Promise<void> {
   await apiClient.delete(`/api/v1/annotations/${annotationId}`);
+}
+
+// ============================================================================
+// Phase 2.7: Annotation Confirmation API
+// ============================================================================
+
+export interface ConfirmResponse {
+  annotation_id: number;
+  annotation_state: string;
+  confirmed_at?: string;
+  confirmed_by?: number;
+  confirmed_by_name?: string;
+}
+
+export interface BulkConfirmRequest {
+  annotation_ids: number[];
+}
+
+export interface BulkConfirmResponse {
+  confirmed: number;
+  failed: number;
+  results: ConfirmResponse[];
+  errors: string[];
+}
+
+/**
+ * Confirm an annotation (draft -> confirmed)
+ */
+export async function confirmAnnotation(annotationId: string): Promise<ConfirmResponse> {
+  const response = await apiClient.post(`/api/v1/annotations/${annotationId}/confirm`, {});
+  return response.data;
+}
+
+/**
+ * Unconfirm an annotation (confirmed -> draft)
+ */
+export async function unconfirmAnnotation(annotationId: string): Promise<ConfirmResponse> {
+  const response = await apiClient.post(`/api/v1/annotations/${annotationId}/unconfirm`, {});
+  return response.data;
+}
+
+/**
+ * Bulk confirm multiple annotations
+ */
+export async function bulkConfirmAnnotations(annotationIds: number[]): Promise<BulkConfirmResponse> {
+  const response = await apiClient.post('/api/v1/annotations/bulk-confirm', {
+    annotation_ids: annotationIds
+  });
+  return response.data;
 }

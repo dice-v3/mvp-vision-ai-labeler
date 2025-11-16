@@ -92,6 +92,11 @@ class Annotation(LabelerBase):
     is_verified = Column(Boolean, default=False)
     notes = Column(Text)
 
+    # Phase 2.7: Annotation confirmation
+    annotation_state = Column(String(20), nullable=False, default="draft", index=True)  # draft, confirmed, verified
+    confirmed_at = Column(DateTime)
+    confirmed_by = Column(Integer)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -103,7 +108,7 @@ class Annotation(LabelerBase):
     )
 
     def __repr__(self):
-        return f"<Annotation(id={self.id}, type='{self.annotation_type}')>"
+        return f"<Annotation(id={self.id}, type='{self.annotation_type}', state='{self.annotation_state}')>"
 
 
 class AnnotationHistory(LabelerBase):
@@ -176,6 +181,39 @@ class AnnotationTask(LabelerBase):
 
     def __repr__(self):
         return f"<AnnotationTask(id='{self.id}', name='{self.name}')>"
+
+
+class ImageAnnotationStatus(LabelerBase):
+    """Phase 2.7: Image annotation status tracking."""
+
+    __tablename__ = "image_annotation_status"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(String(50), nullable=False, index=True)
+    image_id = Column(String(255), nullable=False, index=True)
+
+    # Status: not-started, in-progress, completed
+    status = Column(String(20), nullable=False, default="not-started", index=True)
+
+    # Timestamps
+    first_modified_at = Column(DateTime)  # First time annotation was created
+    last_modified_at = Column(DateTime)   # Last modification
+    confirmed_at = Column(DateTime)       # When image was confirmed
+
+    # Annotation counts
+    total_annotations = Column(Integer, nullable=False, default=0)
+    confirmed_annotations = Column(Integer, nullable=False, default=0)
+    draft_annotations = Column(Integer, nullable=False, default=0)
+
+    # Image confirmation flag
+    is_image_confirmed = Column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        Index("ix_image_annotation_status_project_status", "project_id", "status"),
+    )
+
+    def __repr__(self):
+        return f"<ImageAnnotationStatus(image_id='{self.image_id}', status='{self.status}', total={self.total_annotations})>"
 
 
 class Comment(LabelerBase):

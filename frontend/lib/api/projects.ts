@@ -81,3 +81,57 @@ export interface ImageListResponse {
 export async function getProjectImages(projectId: string, limit: number = 1000): Promise<ImageListResponse> {
   return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}`);
 }
+
+// ============================================================================
+// Phase 2.7: Image Status Management API
+// ============================================================================
+
+export interface ImageStatus {
+  id: number;
+  project_id: string;
+  image_id: string;
+  status: string;  // not-started, in-progress, completed
+  first_modified_at?: string;
+  last_modified_at?: string;
+  confirmed_at?: string;
+  total_annotations: number;
+  confirmed_annotations: number;
+  draft_annotations: number;
+  is_image_confirmed: boolean;
+}
+
+export interface ImageStatusListResponse {
+  statuses: ImageStatus[];
+  total: number;
+  project_id: string;
+}
+
+export interface ImageConfirmResponse {
+  image_id: string;
+  is_confirmed: boolean;
+  confirmed_at?: string;
+  status: string;
+  total_annotations: number;
+  confirmed_annotations: number;
+}
+
+/**
+ * Get image annotation statuses for a project
+ */
+export async function getProjectImageStatuses(projectId: string): Promise<ImageStatusListResponse> {
+  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status`);
+}
+
+/**
+ * Confirm an image (marks all annotations as confirmed)
+ */
+export async function confirmImage(projectId: string, imageId: string): Promise<ImageConfirmResponse> {
+  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/confirm`, {});
+}
+
+/**
+ * Unconfirm an image (reverts annotations to draft)
+ */
+export async function unconfirmImage(projectId: string, imageId: string): Promise<ImageConfirmResponse> {
+  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/unconfirm`, {});
+}
