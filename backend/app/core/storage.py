@@ -330,6 +330,51 @@ class StorageClient:
             logger.error(f"Failed to regenerate presigned URL for {s3_key}: {e}")
             raise Exception(f"Failed to regenerate presigned URL: {str(e)}")
 
+    def update_platform_annotations(
+        self,
+        dataset_id: str,
+        dice_data: bytes,
+        version_number: str
+    ) -> str:
+        """
+        Update official annotations.json in Platform S3.
+
+        This is the authoritative DICE format file that Platform uses.
+
+        Args:
+            dataset_id: Dataset ID
+            dice_data: DICE format data as bytes
+            version_number: Version number for metadata
+
+        Returns:
+            S3 key
+        """
+        try:
+            # S3 key: datasets/{dataset_id}/annotations.json
+            key = f"{dataset_id}/annotations.json"
+
+            # Upload to Platform datasets bucket
+            self.s3_client.put_object(
+                Bucket=self.datasets_bucket,
+                Key=key,
+                Body=dice_data,
+                ContentType='application/json',
+                Metadata={
+                    'dataset_id': dataset_id,
+                    'version': version_number,
+                    'format': 'dice',
+                    'updated_at': datetime.utcnow().isoformat(),
+                    'source': 'labeler_publish'
+                }
+            )
+
+            logger.info(f"Updated Platform S3 annotations: {key} (version: {version_number})")
+            return key
+
+        except ClientError as e:
+            logger.error(f"Failed to update Platform annotations for {dataset_id}: {e}")
+            raise Exception(f"Failed to update Platform annotations: {str(e)}")
+
 
 # Global storage client instance
 storage_client = StorageClient()

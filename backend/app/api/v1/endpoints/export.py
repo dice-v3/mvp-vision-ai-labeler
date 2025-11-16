@@ -3,10 +3,13 @@
 import json
 import io
 import zipfile
+import logging
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
@@ -22,6 +25,7 @@ from app.schemas.version import (
 )
 from app.services.coco_export_service import export_to_coco, get_export_stats as get_coco_stats
 from app.services.yolo_export_service import export_to_yolo, get_export_stats as get_yolo_stats
+from app.services.dice_export_service import export_to_dice, get_export_stats as get_dice_stats
 
 router = APIRouter()
 
@@ -65,7 +69,15 @@ async def export_annotations(
     export_format = export_request.export_format.lower()
 
     try:
-        if export_format == "coco":
+        if export_format == "dice":
+            export_data, stats, filename = _export_dice(
+                labeler_db=labeler_db,
+                platform_db=platform_db,
+                project_id=project_id,
+                include_draft=export_request.include_draft,
+                image_ids=export_request.image_ids,
+            )
+        elif export_format == "coco":
             export_data, stats, filename = _export_coco(
                 labeler_db=labeler_db,
                 platform_db=platform_db,
@@ -83,7 +95,7 @@ async def export_annotations(
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported export format: {export_format}. Supported: coco, yolo",
+                detail=f"Unsupported export format: {export_format}. Supported: dice, coco, yolo",
             )
 
         # Upload to S3
@@ -112,6 +124,36 @@ async def export_annotations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to export annotations: {str(e)}",
         )
+
+
+def _export_dice(
+    labeler_db: Session,
+    platform_db: Session,
+    project_id: str,
+    include_draft: bool,
+    image_ids: Optional[list[str]],
+) -> tuple[bytes, dict, str]:
+    """Export to DICE format."""
+    # Generate DICE JSON
+    dice_data = export_to_dice(
+        db=labeler_db,
+        platform_db=platform_db,
+        project_id=project_id,
+        include_draft=include_draft,
+        image_ids=image_ids,
+    )
+
+    # Convert to JSON bytes
+    json_str = json.dumps(dice_data, indent=2)
+    export_data = json_str.encode('utf-8')
+
+    # Get statistics
+    stats = get_dice_stats(dice_data)
+
+    # Filename
+    filename = "annotations.json"  # Standard DICE format filename
+
+    return export_data, stats, filename
 
 
 def _export_coco(
@@ -269,8 +311,28 @@ async def publish_version(
         # Count unique images
         unique_image_ids = list(set([ann.image_id for ann in annotations]))
 
-        # Generate export
+        # Generate DICE export (always - this is our primary format)
+        dice_data, dice_stats, dice_filename = _export_dice(
+            labeler_db=labeler_db,
+            platform_db=platform_db,
+            project_id=project_id,
+            include_draft=publish_request.include_draft,
+            image_ids=None,
+        )
+
+        # Upload DICE to S3
+        dice_s3_key, dice_download_url, dice_expires_at = storage_client.upload_export(
+            project_id=project_id,
+            version_number=new_version_number,
+            export_data=dice_data,
+            export_format='dice',
+            filename=dice_filename,
+        )
+
+        # Generate additional format if requested (COCO or YOLO)
         export_format = publish_request.export_format.lower()
+        additional_s3_key = None
+
         if export_format == "coco":
             export_data, stats, filename = _export_coco(
                 labeler_db=labeler_db,
@@ -279,6 +341,13 @@ async def publish_version(
                 include_draft=publish_request.include_draft,
                 image_ids=None,
             )
+            additional_s3_key, _, _ = storage_client.upload_export(
+                project_id=project_id,
+                version_number=new_version_number,
+                export_data=export_data,
+                export_format=export_format,
+                filename=filename,
+            )
         elif export_format == "yolo":
             export_data, stats, filename = _export_yolo(
                 labeler_db=labeler_db,
@@ -286,22 +355,20 @@ async def publish_version(
                 include_draft=publish_request.include_draft,
                 image_ids=None,
             )
-        else:
+            additional_s3_key, _, _ = storage_client.upload_export(
+                project_id=project_id,
+                version_number=new_version_number,
+                export_data=export_data,
+                export_format=export_format,
+                filename=filename,
+            )
+        elif export_format != "dice":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported export format: {export_format}",
+                detail=f"Unsupported export format: {export_format}. Supported: dice, coco, yolo",
             )
 
-        # Upload export to S3
-        s3_key, download_url, expires_at = storage_client.upload_export(
-            project_id=project_id,
-            version_number=new_version_number,
-            export_data=export_data,
-            export_format=export_format,
-            filename=filename,
-        )
-
-        # Create version record
+        # Create version record (use DICE as primary export)
         version = AnnotationVersion(
             project_id=project_id,
             version_number=new_version_number,
@@ -310,10 +377,10 @@ async def publish_version(
             description=publish_request.description,
             annotation_count=len(annotations),
             image_count=len(unique_image_ids),
-            export_format=export_format,
-            export_path=s3_key,
-            download_url=download_url,
-            download_url_expires_at=expires_at,
+            export_format='dice',  # Primary format
+            export_path=dice_s3_key,
+            download_url=dice_download_url,
+            download_url_expires_at=dice_expires_at,
         )
 
         labeler_db.add(version)
@@ -337,6 +404,18 @@ async def publish_version(
                 }
             )
             labeler_db.add(snapshot)
+
+        # Update Platform S3 with official DICE annotations.json
+        try:
+            storage_client.update_platform_annotations(
+                dataset_id=project.dataset_id,
+                dice_data=dice_data,
+                version_number=new_version_number
+            )
+        except Exception as e:
+            # Log error but don't fail the publish
+            # Version is still created in Labeler, just Platform sync failed
+            logger.error(f"Failed to update Platform S3: {e}")
 
         labeler_db.commit()
         labeler_db.refresh(version)

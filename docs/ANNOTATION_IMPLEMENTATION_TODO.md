@@ -17,10 +17,10 @@
 | Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
 | Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 64/183 tasks (35%)
+**Overall Progress**: 68/183 tasks (37%)
 **Phase 2 Breakdown**:
 - 2.7 Confirmation: 12/13 tasks (17h completed, 3.5h remaining) ✅ Feature Complete!
-- 2.8 Version Mgmt: 8/11 tasks (11h completed, 10h remaining) ✅ Backend Complete!
+- 2.8 Version Mgmt: 12/15 tasks (15h completed, 6h remaining) ✅ Backend Complete!
 - Other features: 0/45 tasks (96h)
 
 ---
@@ -686,8 +686,8 @@
 ### 2.8 Version Management Foundation ⭐ NEW
 
 **Goal**: Basic version management for annotation export
-**Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
-**Status**: 8/11 tasks complete ✅ Backend Complete!
+**Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`, `docs/design/DATA_MANAGEMENT_STRATEGY.md`
+**Status**: 12/15 tasks complete (80%) ✅ Backend Complete with DICE!
 
 - [x] **Database migrations** ✅ COMPLETED
   - Create `annotation_versions` table
@@ -750,8 +750,35 @@
 - [x] **Backend: Storage client extensions** ✅ COMPLETED
   - Upload export files to S3
   - Generate presigned URLs for exports
+  - Update Platform S3 annotations
+  - **Actual**: 1 hour
+  - **File**: `backend/app/core/storage.py:243-376`
+
+- [x] **Backend: DICE export service** ✅ COMPLETED
+  - Convert DB annotations to DICE format
+  - Handle images, annotations, classes, metadata
+  - Calculate statistics
+  - **Actual**: 2 hours
+  - **File**: `backend/app/services/dice_export_service.py`
+
+- [x] **Backend: DICE format in export API** ✅ COMPLETED
+  - Add DICE to export endpoint
+  - Support dice/coco/yolo formats
   - **Actual**: 0.5 hours
-  - **File**: `backend/app/core/storage.py:243-331`
+  - **File**: `backend/app/api/v1/endpoints/export.py:126-153`
+
+- [x] **Backend: DICE in version publish** ✅ COMPLETED
+  - Always generate DICE format
+  - Optionally generate COCO/YOLO
+  - Upload DICE to Platform S3
+  - **Actual**: 1 hour
+  - **File**: `backend/app/api/v1/endpoints/export.py:311-416`
+
+- [x] **Backend: Platform S3 sync** ✅ COMPLETED
+  - Update datasets/{id}/annotations.json on publish
+  - Store version metadata
+  - **Actual**: 0.5 hours
+  - **File**: `backend/app/core/storage.py:333-376`
 
 - [ ] **Frontend: Export button**
   - Add "Export" button to project page or TopBar
@@ -775,13 +802,15 @@
   - **Estimate**: 1 hour
 
 - [ ] **Testing: Export & versioning**
+  - Test DICE export correctness
   - Test COCO export correctness
   - Test YOLO export correctness
   - Test version creation
   - Test download URL expiration
-  - **Estimate**: 2 hours
+  - Test Platform S3 sync
+  - **Estimate**: 3 hours
 
-**Subtotal**: 21 hours (11h backend complete, 10h frontend/docs/testing remaining)
+**Subtotal**: 25 hours (15h backend complete, 6h frontend/docs/testing remaining)
 
 **Note**: Phase 2.8 uses S3 direct access temporarily. Will migrate to Platform API in Phase 4 when available.
 **Migration Plan**: See `docs/design/PRODUCTION_STORAGE_STRATEGY.md`
