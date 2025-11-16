@@ -6,11 +6,12 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ClassSelectorModal from './ClassSelectorModal';
 import { createAnnotation } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest } from '@/lib/api/annotations';
+import { confirmImage } from '@/lib/api/projects';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,6 +48,15 @@ export default function Canvas() {
   const [showClassSelector, setShowClassSelector] = useState(false);
   const [pendingBbox, setPendingBbox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmingImage, setConfirmingImage] = useState(false);
+
+  // Phase 2.7: Calculate draft annotation count
+  const draftAnnotations = annotations.filter(ann => {
+    const state = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
+    return state === 'draft';
+  });
+  const draftCount = draftAnnotations.length;
+  const isImageConfirmed = currentImage ? (currentImage as any).is_confirmed : false;
 
   // Load image when currentImage changes
   useEffect(() => {
@@ -384,6 +394,7 @@ export default function Canvas() {
         id: savedAnnotation.id.toString(),
         projectId: project.id,
         imageId: currentImage.id,
+        annotationType: 'bbox',
         classId: classId,
         className: className,
         geometry: {
@@ -391,10 +402,9 @@ export default function Canvas() {
           bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
         },
         confidence: savedAnnotation.confidence,
-        isVerified: savedAnnotation.is_verified,
         attributes: savedAnnotation.attributes,
-        createdAt: savedAnnotation.created_at,
-        updatedAt: savedAnnotation.updated_at,
+        createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+        updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
       });
 
       setPendingBbox(null);
@@ -411,6 +421,76 @@ export default function Canvas() {
     setShowClassSelector(false);
     setPendingBbox(null);
   };
+
+  // Phase 2.7: Confirm Image handler
+  const handleConfirmImage = useCallback(async () => {
+    if (!currentImage || !project) return;
+    if (confirmingImage) return;
+
+    setConfirmingImage(true);
+    try {
+      // Call API to confirm image (will also confirm all draft annotations)
+      await confirmImage(project.id, currentImage.id);
+
+      // Update local state - mark all annotations as confirmed
+      const updatedAnnotations = annotations.map(ann => ({
+        ...ann,
+        annotation_state: 'confirmed',
+        confirmed_at: new Date().toISOString(),
+      }));
+
+      useAnnotationStore.setState({ annotations: updatedAnnotations });
+
+      // Update current image status
+      const updatedImages = images.map(img =>
+        img.id === currentImage.id
+          ? {
+              ...img,
+              is_confirmed: true,
+              status: 'completed',
+              confirmed_at: new Date().toISOString(),
+            }
+          : img
+      );
+
+      useAnnotationStore.setState({ images: updatedImages });
+
+      // Auto-navigate to next not-started image
+      const nextNotStartedIndex = images.findIndex((img, idx) => {
+        if (idx <= currentIndex) return false;
+        const status = (img as any).status || 'not-started';
+        return status === 'not-started';
+      });
+
+      if (nextNotStartedIndex !== -1) {
+        // Navigate to next not-started image
+        useAnnotationStore.setState({ currentIndex: nextNotStartedIndex });
+      } else {
+        // No more not-started images, just go to next image
+        goToNextImage();
+      }
+
+    } catch (err) {
+      console.error('Failed to confirm image:', err);
+      // TODO: Show error toast
+    } finally {
+      setConfirmingImage(false);
+    }
+  }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage]);
+
+  // Phase 2.7: Keyboard shortcut for Confirm Image (Ctrl+Enter)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Enter: Confirm Image
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirmImage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleConfirmImage]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -507,6 +587,58 @@ export default function Canvas() {
       {image && (
         <div className="absolute bottom-4 right-20 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 text-xs text-gray-600 dark:text-gray-400 shadow-lg">
           {image.width} x {image.height} px
+        </div>
+      )}
+
+      {/* Phase 2.7: Confirm Image button */}
+      {annotations.length > 0 && !isImageConfirmed && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 ml-20">
+          <button
+            onClick={handleConfirmImage}
+            disabled={confirmingImage}
+            className={`px-6 py-3 rounded-lg shadow-lg font-medium text-sm transition-all flex items-center gap-2 ${
+              draftCount > 0
+                ? 'bg-green-500 hover:bg-green-600 disabled:bg-green-400 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white'
+            } disabled:cursor-not-allowed`}
+            title="Confirm Image (Ctrl+Enter)"
+          >
+            {confirmingImage ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Confirming...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                </svg>
+                <span>
+                  {draftCount > 0
+                    ? `Confirm & Next (${draftCount} draft)`
+                    : 'Mark Complete & Next'}
+                </span>
+                <kbd className="ml-1 px-1.5 py-0.5 text-xs bg-white bg-opacity-20 rounded">
+                  Ctrl+Enter
+                </kbd>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Image already confirmed */}
+      {isImageConfirmed && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 ml-20">
+          <div className="px-6 py-3 rounded-lg shadow-lg bg-gray-500 text-white font-medium text-sm flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+            </svg>
+            <span>Image Confirmed</span>
+          </div>
         </div>
       )}
 

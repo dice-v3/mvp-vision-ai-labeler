@@ -247,3 +247,60 @@ class Comment(LabelerBase):
 
     def __repr__(self):
         return f"<Comment(id={self.id}, author_id={self.author_id})>"
+
+
+class AnnotationVersion(LabelerBase):
+    """Phase 2.8: Annotation version tracking."""
+
+    __tablename__ = "annotation_versions"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(String(50), nullable=False, index=True)
+
+    # Version info
+    version_number = Column(String(20), nullable=False)  # "v1.0", "v1.1", etc.
+    version_type = Column(String(20), nullable=False)     # 'working' | 'published'
+
+    # Metadata
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_by = Column(Integer)  # Platform User ID (no FK constraint)
+    description = Column(Text)
+
+    # Snapshot counts
+    annotation_count = Column(Integer)
+    image_count = Column(Integer)
+
+    # Export info (for published versions)
+    export_format = Column(String(20))  # 'coco' | 'yolo' | 'voc'
+    export_path = Column(Text)
+    download_url = Column(Text)  # Presigned S3 URL
+    download_url_expires_at = Column(DateTime)  # When the presigned URL expires
+
+    __table_args__ = (
+        Index("ix_annotation_versions_project_version", "project_id", "version_number", unique=True),
+        Index("ix_annotation_versions_project_type", "project_id", "version_type"),
+    )
+
+    def __repr__(self):
+        return f"<AnnotationVersion(id={self.id}, version='{self.version_number}', type='{self.version_type}')>"
+
+
+class AnnotationSnapshot(LabelerBase):
+    """Phase 2.8: Immutable snapshot of annotations for each version."""
+
+    __tablename__ = "annotation_snapshots"
+
+    id = Column(BigInteger, primary_key=True)
+    version_id = Column(Integer, nullable=False, index=True)
+    annotation_id = Column(BigInteger, nullable=False, index=True)
+
+    # Snapshot data (full annotation state as JSON)
+    snapshot_data = Column(JSONB, nullable=False)
+
+    __table_args__ = (
+        Index("ix_annotation_snapshots_version", "version_id"),
+        Index("ix_annotation_snapshots_annotation", "annotation_id"),
+    )
+
+    def __repr__(self):
+        return f"<AnnotationSnapshot(id={self.id}, version_id={self.version_id}, annotation_id={self.annotation_id})>"

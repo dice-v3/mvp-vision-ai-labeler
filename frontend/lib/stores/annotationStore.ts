@@ -115,7 +115,7 @@ export interface Preferences {
 export interface AnnotationSnapshot {
   timestamp: Date;
   annotations: Annotation[];
-  action: 'create' | 'update' | 'delete' | 'move' | 'resize';
+  action: 'create' | 'update' | 'delete' | 'move' | 'resize' | 'undo' | 'redo';
   affectedIds: string[];
 }
 
@@ -292,7 +292,7 @@ const initialState = {
   loading: false,
   error: null,
   lastSelectedClassId: null,
-  hiddenAnnotationIds: new Set(),
+  hiddenAnnotationIds: new Set<string>(),
   showAllAnnotations: true,
 };
 
@@ -608,7 +608,7 @@ export const useAnnotationStore = create<AnnotationState>()(
       // ======================================================================
 
       setSaveStatus: (status) => {
-        set({ saveStatus });
+        set({ saveStatus: status });
         if (status === 'saved') {
           set({ lastSaved: new Date() });
         }

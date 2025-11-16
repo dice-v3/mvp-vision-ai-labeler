@@ -25,13 +25,9 @@ export async function getProjectHistory(
   skip: number = 0,
   limit: number = 20
 ): Promise<AnnotationHistory[]> {
-  const response = await apiClient.get(
-    `/api/v1/annotations/history/project/${projectId}`,
-    {
-      params: { skip, limit }
-    }
+  return apiClient.get<AnnotationHistory[]>(
+    `/api/v1/annotations/history/project/${projectId}?skip=${skip}&limit=${limit}`
   );
-  return response.data;
 }
 
 /**
@@ -40,10 +36,9 @@ export async function getProjectHistory(
 export async function getAnnotationHistory(
   annotationId: number
 ): Promise<AnnotationHistory[]> {
-  const response = await apiClient.get(
+  return apiClient.get<AnnotationHistory[]>(
     `/api/v1/annotations/history/annotation/${annotationId}`
   );
-  return response.data;
 }
 
 /**
@@ -141,8 +136,7 @@ export interface AnnotationCreateRequest {
 export async function createAnnotation(
   data: AnnotationCreateRequest
 ): Promise<Annotation> {
-  const response = await apiClient.post('/api/v1/annotations', data);
-  return response.data;
+  return apiClient.post<Annotation>('/api/v1/annotations', data);
 }
 
 /**
@@ -171,8 +165,7 @@ export async function updateAnnotation(
   annotationId: string,
   data: AnnotationUpdateRequest
 ): Promise<Annotation> {
-  const response = await apiClient.put(`/api/v1/annotations/${annotationId}`, data);
-  return response.data;
+  return apiClient.patch<Annotation>(`/api/v1/annotations/${annotationId}`, data);
 }
 
 /**
@@ -209,24 +202,21 @@ export interface BulkConfirmResponse {
  * Confirm an annotation (draft -> confirmed)
  */
 export async function confirmAnnotation(annotationId: string): Promise<ConfirmResponse> {
-  const response = await apiClient.post(`/api/v1/annotations/${annotationId}/confirm`, {});
-  return response.data;
+  return apiClient.post<ConfirmResponse>(`/api/v1/annotations/${annotationId}/confirm`, {});
 }
 
 /**
  * Unconfirm an annotation (confirmed -> draft)
  */
 export async function unconfirmAnnotation(annotationId: string): Promise<ConfirmResponse> {
-  const response = await apiClient.post(`/api/v1/annotations/${annotationId}/unconfirm`, {});
-  return response.data;
+  return apiClient.post<ConfirmResponse>(`/api/v1/annotations/${annotationId}/unconfirm`, {});
 }
 
 /**
  * Bulk confirm multiple annotations
  */
 export async function bulkConfirmAnnotations(annotationIds: number[]): Promise<BulkConfirmResponse> {
-  const response = await apiClient.post('/api/v1/annotations/bulk-confirm', {
+  return apiClient.post<BulkConfirmResponse>('/api/v1/annotations/bulk-confirm', {
     annotation_ids: annotationIds
   });
-  return response.data;
 }

@@ -21,6 +21,7 @@ from app.schemas.image import (
     ImageConfirmRequest,
     ImageConfirmResponse,
 )
+from app.services.image_status_service import confirm_image_status, unconfirm_image_status
 
 router = APIRouter()
 
@@ -405,12 +406,12 @@ async def confirm_image(
         annotation.updated_at = datetime.utcnow()
         confirmed_count += 1
 
-    # Update image status
-    status_entry.is_image_confirmed = True
-    status_entry.confirmed_at = datetime.utcnow()
-    status_entry.status = "completed" if status_entry.total_annotations > 0 else "not-started"
-    status_entry.confirmed_annotations = status_entry.total_annotations
-    status_entry.draft_annotations = 0
+    # Phase 2.7: Use service to update image status
+    status_entry = await confirm_image_status(
+        db=labeler_db,
+        project_id=project_id,
+        image_id=image_id,
+    )
 
     labeler_db.commit()
     labeler_db.refresh(status_entry)
@@ -483,12 +484,12 @@ async def unconfirm_image(
         annotation.confirmed_by = None
         annotation.updated_at = datetime.utcnow()
 
-    # Update image status
-    status_entry.is_image_confirmed = False
-    status_entry.confirmed_at = None
-    status_entry.status = "in-progress" if status_entry.total_annotations > 0 else "not-started"
-    status_entry.confirmed_annotations = 0
-    status_entry.draft_annotations = status_entry.total_annotations
+    # Phase 2.7: Use service to update image status
+    status_entry = await unconfirm_image_status(
+        db=labeler_db,
+        project_id=project_id,
+        image_id=image_id,
+    )
 
     labeler_db.commit()
     labeler_db.refresh(status_entry)
