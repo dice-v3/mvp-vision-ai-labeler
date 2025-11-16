@@ -17,9 +17,9 @@
 | Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
 | Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 54/183 tasks (30%)
+**Overall Progress**: 55/183 tasks (30%)
 **Phase 2 Breakdown**:
-- 2.7 Confirmation: 10/13 tasks (14.5h completed, 6.5h remaining) ✅ Backend + Frontend Confirm UI Done
+- 2.7 Confirmation: 11/13 tasks (16.5h completed, 4.5h remaining) ✅ All Core Features Done!
 - 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Next Priority
 - Other features: 0/45 tasks (96h)
 
@@ -522,7 +522,7 @@
 
 **Goal**: Track image status accurately, enable annotation confirmation
 **Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
-**Status**: 10/13 tasks complete ✅ Core backend + frontend confirmation UI done
+**Status**: 11/13 tasks complete ✅ All core features complete!
 
 - [x] **Database migrations** ✅ COMPLETED
   - Create `image_annotation_status` table
@@ -595,12 +595,16 @@
   - **Actual**: 1 hour
   - **File**: `frontend/components/annotation/RightPanel.tsx`
 
-- [ ] **Frontend: Confirm Image button**
-  - Add button to Canvas bottom controls or TopBar
+- [x] **Frontend: Confirm Image button** ✅ COMPLETED
+  - Add button to Canvas bottom controls
   - Keyboard shortcut: `Ctrl + Enter`
-  - Confirms all annotations + marks image as completed
-  - Auto-navigate to next not-started image (optional)
+  - Confirms all draft annotations + marks image as completed
+  - Auto-navigate to next not-started image
+  - Loading state with spinner
+  - Dynamic button text based on draft count
+  - Shows "Image Confirmed" badge when already confirmed
   - **Estimate**: 2 hours
+  - **Actual**: 2 hours
   - **File**: `frontend/components/annotation/Canvas.tsx`
 
 - [ ] **Frontend: Image status badges**
@@ -1388,31 +1392,32 @@ POST /api/v1/storage/upload
 
 **Last Updated**: 2025-11-16
 **Next Review**: 2025-11-20
-**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 77% complete (10/13 tasks) 🔄
-**Status**: Phase 1 complete. Phase 2.7 backend + frontend confirmation UI complete.
+**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 85% complete (11/13 tasks) 🔄
+**Status**: Phase 1 complete. Phase 2.7 all core features complete!
 
 **Phase 2.7 Status** (Updated 2025-11-16):
-✅ **Completed Tasks (10/13)**:
+✅ **Completed Tasks (11/13)**:
 - Database migrations (image_annotation_status table, annotation_state column)
 - Backend annotation confirmation APIs (confirm/unconfirm/bulk-confirm)
 - Backend image status management APIs (status list, confirm/unconfirm image)
-- **Backend image status auto-update service** (NEW!)
+- Backend image status auto-update service
 - Frontend API client integration
 - Image status display with real data (ImageList icons)
 - Annotation history panel with real API data
 - Data structure updates (Zustand store, TypeScript interfaces)
-- **Frontend individual annotation confirm toggle** (NEW!)
-- **Frontend bulk confirm all annotations button** (NEW!)
+- Frontend individual annotation confirm toggle
+- Frontend bulk confirm all annotations button
+- **Frontend confirm image button with Ctrl+Enter** (NEW!)
 
-⏸️ **Remaining Tasks (3/13)** - ~6.5 hours:
-- Frontend: Confirm Image button with keyboard shortcut (Ctrl+Enter) - 2 hours
-- Frontend: Enhanced image status badges - 1 hour
+⏸️ **Remaining Tasks (2/13)** - ~4.5 hours:
+- Frontend: Enhanced image status badges (visual improvements) - 1 hour
 - Testing: End-to-end confirmation workflow - 3.5 hours
 
 **Git Commits (Phase 2.7)**:
 - `799e60c` - feat: Phase 2.7 Backend - Annotation & Image Confirmation API
 - `7d0cf5d` - feat: Phase 2.7 Frontend - API Integration & Real Data Display
-- (pending) - feat: Phase 2.7 Backend - Image Status Auto-Update + Frontend Confirmation UI
+- `89212d5` - feat: Phase 2.7 - Image Status Auto-Update + Frontend Confirmation UI
+- (pending) - feat: Phase 2.7 - Confirm Image Button with Auto-Navigation
 
 **Phase 2 Priority**: Annotation Confirmation (2.7) and Version Management (2.8) - 42h total
 **Storage Strategy**: S3 direct access (Phase 2) → Platform API migration (Phase 4)
