@@ -17,9 +17,9 @@
 | Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
 | Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 44/183 tasks (24%)
+**Overall Progress**: 51/183 tasks (28%)
 **Phase 2 Breakdown**:
-- 2.7 Confirmation: 0/13 tasks (21h) ⭐ Priority
+- 2.7 Confirmation: 7/13 tasks (10h completed, 11h remaining) ✅ Core APIs Done
 - 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Priority
 - Other features: 0/45 tasks (96h)
 
@@ -522,31 +522,44 @@
 
 **Goal**: Track image status accurately, enable annotation confirmation
 **Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
+**Status**: 7/13 tasks complete ✅ Core backend APIs done
 
-- [ ] **Database migrations**
+- [x] **Database migrations** ✅ COMPLETED
   - Create `image_annotation_status` table
   - Add `annotation_state` column to `annotations` table
   - Add `confirmed_at`, `confirmed_by` columns to `annotations`
   - Create indexes for performance
+  - Data migration for existing annotations
   - **Estimate**: 2 hours
-  - **File**: `backend/app/db/migrations/`
+  - **Actual**: 2 hours
+  - **Files**:
+    - `backend/alembic/versions/20251114_1600_add_annotation_confirmation.py`
+    - `backend/alembic/versions/20251114_1601_migrate_existing_data.py`
+    - `backend/app/db/models/labeler.py`
 
-- [ ] **Backend API: Annotation confirmation**
+- [x] **Backend API: Annotation confirmation** ✅ COMPLETED
   - `POST /api/v1/annotations/{annotationId}/confirm`
+  - `POST /api/v1/annotations/{annotationId}/unconfirm`
   - `POST /api/v1/annotations/bulk-confirm`
   - Update annotation state: draft → confirmed
-  - Record confirmed_at timestamp
+  - Record confirmed_at timestamp and confirmed_by user
+  - History tracking for confirmation actions
   - **Estimate**: 2 hours
-  - **File**: `backend/app/api/v1/endpoints/annotations.py`
+  - **Actual**: 2 hours
+  - **File**: `backend/app/api/v1/endpoints/annotations.py:575-748`
+  - **Schemas**: `backend/app/schemas/annotation.py`
 
-- [ ] **Backend API: Image status management**
+- [x] **Backend API: Image status management** ✅ COMPLETED
   - `GET /api/v1/projects/{projectId}/images/status`
-  - `POST /api/v1/images/{imageId}/confirm`
+  - `POST /api/v1/projects/{projectId}/images/{imageId}/confirm`
+  - `POST /api/v1/projects/{projectId}/images/{imageId}/unconfirm`
   - Calculate status: not-started / in-progress / completed
   - Update annotation counts (total, confirmed, draft)
-  - Track first_modified_at, last_modified_at
+  - Track first_modified_at, last_modified_at, confirmed_at
   - **Estimate**: 3 hours
-  - **File**: `backend/app/api/v1/endpoints/images.py`
+  - **Actual**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/projects.py:295-503`
+  - **Schemas**: `backend/app/schemas/image.py`
 
 - [ ] **Backend: Image status tracking logic**
   - Auto-update `image_annotation_status` on annotation changes
@@ -584,43 +597,56 @@
   - **Estimate**: 1 hour
   - **File**: `frontend/components/annotation/ImageList.tsx`
 
-- [ ] **Frontend: Image status icons in ImageList** ⭐ NEW
+- [x] **Frontend: Image status icons in ImageList** ✅ COMPLETED
   - Simple icons for not-started / in-progress / completed
   - Display in both thumbnail view and table view
   - Icon placement: top-right corner (thumbnail), column (table)
   - Icons: ⚪ (not-started), 🔄 (in-progress), ✓ (completed)
   - **Estimate**: 1 hour
-  - **File**: `frontend/components/annotation/ImageList.tsx`
+  - **Actual**: 1 hour
+  - **File**: `frontend/components/annotation/ImageList.tsx:38-60`
 
-- [ ] **Frontend: Fix image filter by status**
+- [x] **Frontend: Fix image filter by status** ✅ COMPLETED
   - Update `getImageStatus()` function
   - Use actual image_annotation_status from API
   - Filter works correctly: not-started / in-progress / completed
+  - Load image statuses on project initialization
   - **Estimate**: 2 hours
-  - **File**: `frontend/components/annotation/ImageList.tsx`
+  - **Actual**: 2 hours
+  - **Files**:
+    - `frontend/components/annotation/ImageList.tsx:26-37`
+    - `frontend/app/annotate/[projectId]/page.tsx:95-114`
+    - `frontend/lib/api/projects.ts` (added getProjectImageStatuses)
 
-- [ ] **Frontend: Annotation History panel** ⭐ NEW
+- [x] **Frontend: Annotation History panel** ✅ COMPLETED
   - Add panel above ImageList in LeftPanel
   - Collapsible section with header
   - Table display: Date, Action, User, Annotations count
   - Shows recent annotation changes/versions
+  - Fetch real data from API with loading state
   - **Estimate**: 3 hours
+  - **Actual**: 3 hours
   - **File**: `frontend/components/annotation/AnnotationHistory.tsx`
 
-- [ ] **Frontend: History panel integration**
-  - Fetch annotation history from API (placeholder for now)
+- [x] **Frontend: History panel integration** ✅ COMPLETED
+  - Fetch annotation history from API
   - Display in LeftPanel above ImageList
   - Collapsible toggle
   - Scroll independently from ImageList
   - **Estimate**: 1 hour
+  - **Actual**: 1 hour
   - **File**: `frontend/components/annotation/LeftPanel.tsx`
 
-- [ ] **Frontend: Annotation state in store**
-  - Add annotation_state to Zustand store
-  - Update API calls to include state
-  - Handle confirm/unconfirm actions
+- [x] **Frontend: Annotation state in store** ✅ COMPLETED
+  - Add is_confirmed, status, confirmed_at to ImageData interface
+  - Update API client with confirmation functions
+  - Handle confirm/unconfirm in annotation schemas
   - **Estimate**: 1 hour
-  - **File**: `frontend/lib/stores/annotationStore.ts`
+  - **Actual**: 1 hour
+  - **Files**:
+    - `frontend/lib/stores/annotationStore.ts:33-37`
+    - `frontend/lib/api/annotations.ts:65-70, 185-232`
+    - `frontend/lib/api/projects.ts:89-137`
 
 - [ ] **Data migration: Existing annotations**
   - Migrate existing annotations to 'confirmed' state
@@ -1347,10 +1373,32 @@ POST /api/v1/storage/upload
 
 ---
 
-**Last Updated**: 2025-11-14
-**Next Review**: 2025-11-17 (End of Week 1)
-**Progress**: Phase 1 is 98% complete (44/45 tasks) ✅
-**Status**: Ready for testing and production use. Comprehensive UI/UX improvements completed. Dark mode fully functional. Bbox resize/move deferred to Phase 2.
+**Last Updated**: 2025-11-16
+**Next Review**: 2025-11-20
+**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 54% complete (7/13 tasks) 🔄
+**Status**: Phase 1 complete. Phase 2.7 core backend APIs and data loading complete.
+
+**Phase 2.7 Status** (Updated 2025-11-16):
+✅ **Completed Tasks (7/13)**:
+- Database migrations (image_annotation_status table, annotation_state column)
+- Backend annotation confirmation APIs (confirm/unconfirm/bulk-confirm)
+- Backend image status management APIs (status list, confirm/unconfirm image)
+- Frontend API client integration
+- Image status display with real data (ImageList icons)
+- Annotation history panel with real API data
+- Data structure updates (Zustand store, TypeScript interfaces)
+
+⏸️ **Remaining Tasks (6/13)** - ~11 hours:
+- Backend: Auto-update image status on annotation changes
+- Frontend: Individual annotation confirm toggle in RightPanel
+- Frontend: Bulk confirm all annotations button
+- Frontend: Confirm Image button with keyboard shortcut (Ctrl+Enter)
+- Frontend: Image status badges
+- Testing: End-to-end confirmation workflow
+
+**Git Commits (Phase 2.7)**:
+- `799e60c` - feat: Phase 2.7 Backend - Annotation & Image Confirmation API
+- `7d0cf5d` - feat: Phase 2.7 Frontend - API Integration & Real Data Display
 
 **Phase 2 Priority**: Annotation Confirmation (2.7) and Version Management (2.8) - 42h total
 **Storage Strategy**: S3 direct access (Phase 2) → Platform API migration (Phase 4)
