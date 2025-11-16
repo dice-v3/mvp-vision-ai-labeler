@@ -240,6 +240,96 @@ class StorageClient:
         except ClientError:
             return False
 
+    def upload_export(
+        self,
+        project_id: str,
+        version_number: str,
+        export_data: bytes,
+        export_format: str,
+        filename: str
+    ) -> tuple[str, str, datetime]:
+        """
+        Upload export file to S3.
+
+        Args:
+            project_id: Project ID
+            version_number: Version number (e.g., "v1.0")
+            export_data: Export file data as bytes
+            export_format: Export format (coco, yolo, etc.)
+            filename: Export filename
+
+        Returns:
+            Tuple of (s3_key, presigned_url, expires_at)
+        """
+        try:
+            # S3 key: exports/{project_id}/{version_number}/{filename}
+            key = f"exports/{project_id}/{version_number}/{filename}"
+
+            # Determine content type
+            content_type = 'application/json' if export_format == 'coco' else 'application/zip'
+
+            # Upload to S3
+            self.s3_client.put_object(
+                Bucket=self.annotations_bucket,
+                Key=key,
+                Body=export_data,
+                ContentType=content_type,
+                Metadata={
+                    'project_id': project_id,
+                    'version': version_number,
+                    'format': export_format,
+                    'uploaded_at': datetime.utcnow().isoformat()
+                }
+            )
+
+            # Generate presigned URL (valid for 7 days)
+            expiration_seconds = 7 * 24 * 3600  # 7 days
+            presigned_url = self.generate_presigned_url(
+                bucket=self.annotations_bucket,
+                key=key,
+                expiration=expiration_seconds
+            )
+
+            expires_at = datetime.utcnow() + timedelta(seconds=expiration_seconds)
+
+            logger.info(f"Uploaded export: {key} ({len(export_data)} bytes)")
+            return key, presigned_url, expires_at
+
+        except ClientError as e:
+            logger.error(f"Failed to upload export for {project_id}: {e}")
+            raise Exception(f"Failed to upload export: {str(e)}")
+
+    def regenerate_presigned_url(
+        self,
+        s3_key: str,
+        expiration: int = 7 * 24 * 3600
+    ) -> tuple[str, datetime]:
+        """
+        Regenerate presigned URL for an existing export file.
+
+        Args:
+            s3_key: S3 object key
+            expiration: URL expiration time in seconds (default: 7 days)
+
+        Returns:
+            Tuple of (presigned_url, expires_at)
+        """
+        try:
+            presigned_url = self.generate_presigned_url(
+                bucket=self.annotations_bucket,
+                key=s3_key,
+                expiration=expiration
+            )
+
+            expires_at = datetime.utcnow() + timedelta(seconds=expiration)
+
+            logger.info(f"Regenerated presigned URL for: {s3_key}")
+            return presigned_url, expires_at
+
+        except ClientError as e:
+            logger.error(f"Failed to regenerate presigned URL for {s3_key}: {e}")
+            raise Exception(f"Failed to regenerate presigned URL: {str(e)}")
+
 
 # Global storage client instance
 storage_client = StorageClient()

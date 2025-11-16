@@ -17,10 +17,10 @@
 | Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
 | Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
 
-**Overall Progress**: 55/183 tasks (30%)
+**Overall Progress**: 64/183 tasks (35%)
 **Phase 2 Breakdown**:
-- 2.7 Confirmation: 11/13 tasks (16.5h completed, 4.5h remaining) ✅ All Core Features Done!
-- 2.8 Version Mgmt: 0/11 tasks (21h) ⭐ Next Priority
+- 2.7 Confirmation: 12/13 tasks (17h completed, 3.5h remaining) ✅ Feature Complete!
+- 2.8 Version Mgmt: 8/11 tasks (11h completed, 10h remaining) ✅ Backend Complete!
 - Other features: 0/45 tasks (96h)
 
 ---
@@ -522,7 +522,7 @@
 
 **Goal**: Track image status accurately, enable annotation confirmation
 **Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
-**Status**: 11/13 tasks complete ✅ All core features complete!
+**Status**: 12/13 tasks complete ✅ Feature complete! (Only testing remains)
 
 - [x] **Database migrations** ✅ COMPLETED
   - Create `image_annotation_status` table
@@ -607,11 +607,15 @@
   - **Actual**: 2 hours
   - **File**: `frontend/components/annotation/Canvas.tsx`
 
-- [ ] **Frontend: Image status badges**
-  - ✓ Completed badge (green)
-  - ⚠ In Progress badge (yellow)
-  - Visual indicators in ImageList
+- [x] **Frontend: Enhanced image status badges** ✅ COMPLETED
+  - ✓ Completed badge (green with ring)
+  - ⚠ In Progress badge (yellow with clock icon)
+  - ⚪ Not Started badge (gray with dot)
+  - Enhanced visual design with shadows and rings
+  - Better icons (checkmark, clock, dot)
+  - Larger size (5x5) for better visibility
   - **Estimate**: 1 hour
+  - **Actual**: 0.5 hours
   - **File**: `frontend/components/annotation/ImageList.tsx`
 
 - [x] **Frontend: Image status icons in ImageList** ✅ COMPLETED
@@ -683,52 +687,71 @@
 
 **Goal**: Basic version management for annotation export
 **Design Doc**: `docs/design/ANNOTATION_STATE_VERSION_DESIGN.md`
+**Status**: 8/11 tasks complete ✅ Backend Complete!
 
-- [ ] **Database migrations**
+- [x] **Database migrations** ✅ COMPLETED
   - Create `annotation_versions` table
   - Create `annotation_snapshots` table
   - **Estimate**: 1 hour
-  - **File**: `backend/app/db/migrations/`
+  - **Actual**: 1 hour
+  - **File**: `backend/alembic/versions/20251116_1000_add_version_management.py`
+  - **Models**: `backend/app/db/models/labeler.py:252-306`
 
-- [ ] **Backend: COCO export service**
+- [x] **Backend: COCO export service** ✅ COMPLETED
   - Convert DB annotations to COCO format
   - Handle images, annotations, categories
   - **Estimate**: 3 hours
+  - **Actual**: 2 hours
   - **File**: `backend/app/services/coco_export_service.py`
 
-- [ ] **Backend: YOLO export service**
+- [x] **Backend: YOLO export service** ✅ COMPLETED
   - Convert DB annotations to YOLO format
   - Generate .txt files per image
   - classes.txt file
   - **Estimate**: 2 hours
+  - **Actual**: 1.5 hours
   - **File**: `backend/app/services/yolo_export_service.py`
 
-- [ ] **Backend: Export API (current S3 direct)**
-  - `POST /api/v1/projects/{projectId}/annotations/export`
+- [x] **Backend: Export API (current S3 direct)** ✅ COMPLETED
+  - `POST /api/v1/projects/{projectId}/export`
   - Generate export file (COCO/YOLO)
   - Upload to S3 directly (temporary, until platform API ready)
   - Return presigned download URL
   - **Estimate**: 3 hours
-  - **File**: `backend/app/api/v1/endpoints/export.py`
+  - **Actual**: 2 hours
+  - **File**: `backend/app/api/v1/endpoints/export.py:29-186`
 
-- [ ] **Backend: Version creation API**
+- [x] **Backend: Version creation API** ✅ COMPLETED
   - `POST /api/v1/projects/{projectId}/versions/publish`
   - Create version record in DB
   - Trigger export
   - Store export metadata
+  - Create annotation snapshots
   - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **File**: `backend/app/api/v1/endpoints/export.py:191-370`
 
-- [ ] **Backend: Version list API**
+- [x] **Backend: Version list API** ✅ COMPLETED
   - `GET /api/v1/projects/{projectId}/versions`
   - List all published versions
   - Include download URLs (regenerate if expired)
   - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+  - **File**: `backend/app/api/v1/endpoints/export.py:373-450`
 
-- [ ] **Backend: Presigned URL regeneration**
+- [x] **Backend: Presigned URL regeneration** ✅ COMPLETED
   - Check if download_url expired
   - Generate new presigned URL
   - Update DB
   - **Estimate**: 1 hour
+  - **Actual**: 0.5 hours (integrated into version list)
+  - **File**: `backend/app/core/storage.py:302-331`
+
+- [x] **Backend: Storage client extensions** ✅ COMPLETED
+  - Upload export files to S3
+  - Generate presigned URLs for exports
+  - **Actual**: 0.5 hours
+  - **File**: `backend/app/core/storage.py:243-331`
 
 - [ ] **Frontend: Export button**
   - Add "Export" button to project page or TopBar
@@ -758,7 +781,7 @@
   - Test download URL expiration
   - **Estimate**: 2 hours
 
-**Subtotal**: 21 hours
+**Subtotal**: 21 hours (11h backend complete, 10h frontend/docs/testing remaining)
 
 **Note**: Phase 2.8 uses S3 direct access temporarily. Will migrate to Platform API in Phase 4 when available.
 **Migration Plan**: See `docs/design/PRODUCTION_STORAGE_STRATEGY.md`
