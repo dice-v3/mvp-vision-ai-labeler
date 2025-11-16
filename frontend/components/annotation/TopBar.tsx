@@ -10,11 +10,16 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { importAnnotationsFromJson } from '@/lib/api/annotations';
+import ExportModal from './ExportModal';
+import VersionHistoryModal from './VersionHistoryModal';
 
 export default function TopBar() {
   const router = useRouter();
   const { project, images, currentIndex, saveStatus, lastSaved, preferences, setPreference } = useAnnotationStore();
   const [isReimporting, setIsReimporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<'export' | 'publish'>('export');
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
 
   const formatSaveStatus = () => {
     if (saveStatus === 'saved' && lastSaved) {
@@ -65,9 +70,9 @@ export default function TopBar() {
           <span className="text-sm font-medium text-gray-900 dark:text-white">
             {project?.name || 'Loading...'}
           </span>
-          {project && project.task_types && project.task_types.length > 0 && (
+          {project && project.taskTypes && project.taskTypes.length > 0 && (
             <span className="text-xs px-2 py-0.5 rounded bg-violet-500/20 text-violet-600 dark:text-violet-400">
-              {project.task_types.join(', ')}
+              {project.taskTypes.join(', ')}
             </span>
           )}
         </div>
@@ -109,6 +114,34 @@ export default function TopBar() {
         >
           {isReimporting ? 'Importing...' : 'Re-import'}
         </button>
+        <span className="text-gray-400 dark:text-gray-600">|</span>
+        <button
+          onClick={() => {
+            setExportMode('export');
+            setIsExportModalOpen(true);
+          }}
+          className="px-3 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded transition-colors"
+          title="Export annotations in various formats"
+        >
+          Export
+        </button>
+        <button
+          onClick={() => {
+            setExportMode('publish');
+            setIsExportModalOpen(true);
+          }}
+          className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+          title="Publish new version"
+        >
+          Publish Version
+        </button>
+        <button
+          onClick={() => setIsVersionHistoryOpen(true)}
+          className="px-3 py-1.5 text-xs bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white rounded transition-colors"
+          title="View version history"
+        >
+          Versions
+        </button>
         <span className={`text-xs ${saveStatus === 'error' ? 'text-red-400' : 'text-green-400'}`}>
           {formatSaveStatus()}
         </span>
@@ -121,6 +154,25 @@ export default function TopBar() {
           </svg>
         </button>
       </div>
+
+      {/* Export Modal */}
+      {project && (
+        <ExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          projectId={project.id}
+          mode={exportMode}
+        />
+      )}
+
+      {/* Version History Modal */}
+      {project && (
+        <VersionHistoryModal
+          isOpen={isVersionHistoryOpen}
+          onClose={() => setIsVersionHistoryOpen(false)}
+          projectId={project.id}
+        />
+      )}
     </div>
   );
 }

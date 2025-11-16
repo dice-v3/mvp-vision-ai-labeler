@@ -11,15 +11,31 @@ import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import type { Annotation as StoreAnnotation } from '@/lib/stores/annotationStore';
 import { getProjectById, getProjectImageStatuses } from '@/lib/api/projects';
 import { getDatasetImages } from '@/lib/api/datasets';
-import { getProjectAnnotations, importAnnotationsFromJson } from '@/lib/api/annotations';
+import { getProjectAnnotations, importAnnotationsFromJson, type Annotation as APIAnnotation } from '@/lib/api/annotations';
 import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
 import TopBar from '@/components/annotation/TopBar';
 import LeftPanel from '@/components/annotation/LeftPanel';
 import Canvas from '@/components/annotation/Canvas';
 import RightPanel from '@/components/annotation/RightPanel';
 import BottomBar from '@/components/annotation/BottomBar';
+
+// Helper function to convert API annotation to store annotation
+function convertAPIAnnotationToStore(apiAnn: APIAnnotation): StoreAnnotation {
+  return {
+    id: apiAnn.id,
+    projectId: apiAnn.project_id,
+    imageId: apiAnn.image_id,
+    annotationType: apiAnn.annotation_type as any,
+    geometry: apiAnn.geometry,
+    classId: apiAnn.class_id,
+    className: apiAnn.class_name,
+    attributes: apiAnn.attributes,
+    confidence: apiAnn.confidence,
+  };
+}
 
 export default function AnnotationPage() {
   const router = useRouter();
@@ -33,6 +49,7 @@ export default function AnnotationPage() {
     setLoading,
     setError,
     setProject,
+    images,
     setImages,
     setAnnotations,
     loadPreferences,
@@ -76,7 +93,15 @@ export default function AnnotationPage() {
 
       // Load project
       const projectData = await getProjectById(projectId);
-      setProject(projectData);
+      // Convert API response (snake_case) to store format (camelCase)
+      setProject({
+        id: projectData.id,
+        name: projectData.name,
+        datasetId: projectData.dataset_id,
+        taskTypes: projectData.task_types,
+        classes: projectData.classes,
+        taskConfig: projectData.task_config,
+      });
 
       // Load images using dataset_id from project
       if (projectData.dataset_id) {
@@ -118,9 +143,9 @@ export default function AnnotationPage() {
         // Load annotations for first image if available
         if (convertedImages && convertedImages.length > 0) {
           const firstImageId = convertedImages[0].id;
-          const firstImageAnnotations = allAnnotations.filter(
-            (ann: any) => (ann.image_id || ann.imageId) === firstImageId
-          );
+          const firstImageAnnotations = allAnnotations
+            .filter((ann: any) => (ann.image_id || ann.imageId) === firstImageId)
+            .map(convertAPIAnnotationToStore);
           setAnnotations(firstImageAnnotations || []);
         }
       }
@@ -140,7 +165,8 @@ export default function AnnotationPage() {
     const loadAnnotations = async () => {
       try {
         const annotationsData = await getProjectAnnotations(projectId, currentImage.id);
-        setAnnotations(annotationsData || []);
+        const convertedAnnotations = (annotationsData || []).map(convertAPIAnnotationToStore);
+        setAnnotations(convertedAnnotations);
 
         // Update annotation count for current image
         const updatedImages = images.map(img =>

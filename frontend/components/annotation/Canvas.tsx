@@ -127,20 +127,6 @@ export default function Canvas() {
     }
   }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project]);
 
-  // Phase 2.7: Keyboard shortcut for Confirm Image (Ctrl+Enter)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Enter: Confirm Image
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleConfirmImage();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage]);
-
   // Draw grid
   const drawGrid = (
     ctx: CanvasRenderingContext2D,
@@ -408,6 +394,7 @@ export default function Canvas() {
         id: savedAnnotation.id.toString(),
         projectId: project.id,
         imageId: currentImage.id,
+        annotationType: 'bbox',
         classId: classId,
         className: className,
         geometry: {
@@ -415,10 +402,9 @@ export default function Canvas() {
           bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
         },
         confidence: savedAnnotation.confidence,
-        isVerified: savedAnnotation.is_verified,
         attributes: savedAnnotation.attributes,
-        createdAt: savedAnnotation.created_at,
-        updatedAt: savedAnnotation.updated_at,
+        createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+        updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
       });
 
       setPendingBbox(null);
@@ -491,6 +477,20 @@ export default function Canvas() {
       setConfirmingImage(false);
     }
   }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage]);
+
+  // Phase 2.7: Keyboard shortcut for Confirm Image (Ctrl+Enter)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Enter: Confirm Image
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirmImage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleConfirmImage]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {

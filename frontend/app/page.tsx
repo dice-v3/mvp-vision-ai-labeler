@@ -299,7 +299,7 @@ export default function DashboardPage() {
                                 }`} />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-gray-900">
-                                    <span className="font-medium">{item.user_name || 'Unknown'}</span>
+                                    <span className="font-medium">{item.changed_by_name || 'Unknown'}</span>
                                     {' '}
                                     <span className="text-gray-600">
                                       {item.action === 'create' && '생성'}
