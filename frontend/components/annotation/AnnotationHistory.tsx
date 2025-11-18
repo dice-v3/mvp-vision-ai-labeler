@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { listVersions, type Version } from '@/lib/api/export';
 import VersionHistoryModal from './VersionHistoryModal';
@@ -19,28 +19,39 @@ export default function AnnotationHistory() {
   const { project, images } = useAnnotationStore();
 
   // Load published versions
-  useEffect(() => {
+  const loadVersions = useCallback(async () => {
     if (!project?.id) return;
 
-    const loadVersions = async () => {
-      try {
-        setLoading(true);
-        const result = await listVersions(project.id);
-        const publishedVersions = result.versions
-          .filter((v) => v.version_type === 'published')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 3); // Show only latest 3
+    try {
+      setLoading(true);
+      const result = await listVersions(project.id);
+      const publishedVersions = result.versions
+        .filter((v) => v.version_type === 'published')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 3); // Show only latest 3
 
-        setVersions(publishedVersions);
-      } catch (error) {
-        console.error('Failed to load versions:', error);
-      } finally {
-        setLoading(false);
-      }
+      setVersions(publishedVersions);
+    } catch (error) {
+      console.error('Failed to load versions:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [project?.id]);
+
+  // Initial load
+  useEffect(() => {
+    loadVersions();
+  }, [loadVersions]);
+
+  // Listen for version published event
+  useEffect(() => {
+    const handleVersionPublished = () => {
+      loadVersions();
     };
 
-    loadVersions();
-  }, [project?.id]);
+    window.addEventListener('versionPublished', handleVersionPublished);
+    return () => window.removeEventListener('versionPublished', handleVersionPublished);
+  }, [loadVersions]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

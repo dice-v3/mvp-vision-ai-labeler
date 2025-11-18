@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { listVersions } from '@/lib/api/export';
@@ -21,29 +21,29 @@ export default function TopBar() {
   const [versionDate, setVersionDate] = useState<string>('');
 
   // Fetch latest version info
-  useEffect(() => {
+  const fetchLatestVersion = useCallback(async () => {
     if (!project?.id) return;
 
-    const fetchLatestVersion = async () => {
-      try {
-        const result = await listVersions(project.id);
-        const publishedVersions = result.versions
-          .filter((v) => v.version_type === 'published')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    try {
+      const result = await listVersions(project.id);
+      const publishedVersions = result.versions
+        .filter((v) => v.version_type === 'published')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-        if (publishedVersions.length > 0) {
-          const latest = publishedVersions[0];
-          setLatestVersion(latest.version_number);
-          const date = new Date(latest.created_at);
-          setVersionDate(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-        }
-      } catch (error) {
-        console.error('Failed to fetch version:', error);
+      if (publishedVersions.length > 0) {
+        const latest = publishedVersions[0];
+        setLatestVersion(latest.version_number);
+        const date = new Date(latest.created_at);
+        setVersionDate(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
       }
-    };
-
-    fetchLatestVersion();
+    } catch (error) {
+      console.error('Failed to fetch version:', error);
+    }
   }, [project?.id]);
+
+  useEffect(() => {
+    fetchLatestVersion();
+  }, [fetchLatestVersion]);
 
   return (
     <div className="h-[60px] bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 flex items-center px-6">
@@ -167,6 +167,7 @@ export default function TopBar() {
           onClose={() => setIsExportModalOpen(false)}
           projectId={project.id}
           mode="publish"
+          onPublishSuccess={fetchLatestVersion}
         />
       )}
     </div>
