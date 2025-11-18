@@ -11,7 +11,6 @@ import {
   deleteAnnotation as deleteAnnotationAPI,
   confirmAnnotation,
   unconfirmAnnotation,
-  bulkConfirmAnnotations,
 } from '@/lib/api/annotations';
 import { useState } from 'react';
 import AddClassModal from './AddClassModal';
@@ -33,7 +32,6 @@ export default function RightPanel() {
   } = useAnnotationStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [bulkConfirming, setBulkConfirming] = useState(false);
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
 
   // Refresh project data after adding a class
@@ -54,46 +52,6 @@ export default function RightPanel() {
       });
     } catch (error) {
       console.error('Failed to refresh project:', error);
-    }
-  };
-
-  // Phase 2.7: Get draft annotation count
-  const draftAnnotations = annotations.filter(ann => {
-    const state = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
-    return state === 'draft';
-  });
-  const draftCount = draftAnnotations.length;
-
-  const handleBulkConfirm = async () => {
-    if (draftCount === 0) return;
-
-    if (!confirm(`Confirm all ${draftCount} draft annotations?`)) return;
-
-    setBulkConfirming(true);
-    try {
-      const draftIds = draftAnnotations.map(ann => parseInt(ann.id));
-      await bulkConfirmAnnotations(draftIds);
-
-      // Update local state - mark all draft as confirmed
-      const updatedAnnotations = annotations.map(ann => {
-        const state = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
-        if (state === 'draft') {
-          return {
-            ...ann,
-            annotation_state: 'confirmed',
-            confirmed_at: new Date().toISOString(),
-          };
-        }
-        return ann;
-      });
-
-      useAnnotationStore.setState({ annotations: updatedAnnotations });
-
-    } catch (err) {
-      console.error('Failed to bulk confirm annotations:', err);
-      // TODO: Show error toast
-    } finally {
-      setBulkConfirming(false);
     }
   };
 
@@ -203,34 +161,6 @@ export default function RightPanel() {
 
       {/* Annotations List */}
       <div className="overflow-y-auto p-4 border-b border-gray-300 dark:border-gray-700">
-        {/* Phase 2.7: Bulk Actions */}
-        {annotations.length > 0 && draftCount > 0 && (
-          <div className="mb-3 pb-3 border-b border-gray-300 dark:border-gray-600">
-            <button
-              onClick={handleBulkConfirm}
-              disabled={bulkConfirming}
-              className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 text-white text-xs font-medium rounded transition-colors disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {bulkConfirming ? (
-                <>
-                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Confirming...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                  </svg>
-                  <span>Confirm All ({draftCount} draft)</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
         {annotations.length === 0 && (
           <div className="text-center py-8 text-gray-500 dark:text-gray-500">
             <p className="text-sm">No annotations yet</p>
@@ -418,28 +348,31 @@ export default function RightPanel() {
           return null;
         })()}
 
-        {project && Object.entries(project.classes).map(([classId, classInfo], index) => (
-          <div
-            key={classId}
-            className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer mb-0.5"
-          >
+        {project && Object.entries(project.classes).map(([classId, classInfo], index) => {
+          // Calculate bbox count from current annotations
+          const bboxCount = annotations.filter(ann => {
+            const annClassId = (ann as any).classId || (ann as any).class_id;
+            return annClassId === classId;
+          }).length;
+
+          return (
             <div
-              className="w-3 h-3 rounded flex-shrink-0"
-              style={{ backgroundColor: classInfo.color }}
-            ></div>
-            <span className="text-[11px] text-gray-900 dark:text-gray-300 flex-1 truncate" title={classInfo.name}>
-              {classInfo.name}
-            </span>
-            <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-500">
-              {classInfo.bbox_count !== undefined && (
-                <span title="Bounding boxes">{classInfo.bbox_count}</span>
-              )}
-              {classInfo.image_count !== undefined && (
-                <span title="Images" className="opacity-60">({classInfo.image_count})</span>
-              )}
+              key={classId}
+              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer mb-0.5"
+            >
+              <div
+                className="w-3 h-3 rounded flex-shrink-0"
+                style={{ backgroundColor: classInfo.color }}
+              ></div>
+              <span className="text-[11px] text-gray-900 dark:text-gray-300 flex-1 truncate" title={classInfo.name}>
+                {classInfo.name}
+              </span>
+              <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-500">
+                <span title="Bounding boxes in current image">{bboxCount}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {(!project || Object.keys(project.classes).length === 0) && (
           <div className="text-[10px] text-gray-600 dark:text-gray-500">No classes defined</div>
         )}

@@ -9,9 +9,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ClassSelectorModal from './ClassSelectorModal';
-import { createAnnotation } from '@/lib/api/annotations';
-import type { AnnotationCreateRequest } from '@/lib/api/annotations';
-import { confirmImage } from '@/lib/api/projects';
+import { createAnnotation, updateAnnotation } from '@/lib/api/annotations';
+import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
+import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,6 +21,7 @@ export default function Canvas() {
     currentImage,
     annotations,
     selectedAnnotationId,
+    selectAnnotation,
     canvas: canvasState,
     tool,
     isDrawing,
@@ -39,6 +40,7 @@ export default function Canvas() {
     images,
     goToNextImage,
     goToPrevImage,
+    setCurrentIndex,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -49,6 +51,9 @@ export default function Canvas() {
   const [pendingBbox, setPendingBbox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmingImage, setConfirmingImage] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; bbox: number[] } | null>(null);
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -57,6 +62,66 @@ export default function Canvas() {
   });
   const draftCount = draftAnnotations.length;
   const isImageConfirmed = currentImage ? (currentImage as any).is_confirmed : false;
+
+  // Helper function to check if mouse is over a handle
+  const getHandleAtPosition = (
+    x: number,
+    y: number,
+    bboxX: number,
+    bboxY: number,
+    bboxW: number,
+    bboxH: number,
+    handleSize: number = 8
+  ): string | null => {
+    const threshold = handleSize / 2 + 2;
+
+    // Corner handles
+    if (Math.abs(x - bboxX) < threshold && Math.abs(y - bboxY) < threshold) return 'nw';
+    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - bboxY) < threshold) return 'ne';
+    if (Math.abs(x - bboxX) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 'sw';
+    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 'se';
+
+    // Edge handles
+    if (Math.abs(x - (bboxX + bboxW / 2)) < threshold && Math.abs(y - bboxY) < threshold) return 'n';
+    if (Math.abs(x - (bboxX + bboxW / 2)) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 's';
+    if (Math.abs(x - bboxX) < threshold && Math.abs(y - (bboxY + bboxH / 2)) < threshold) return 'w';
+    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - (bboxY + bboxH / 2)) < threshold) return 'e';
+
+    return null;
+  };
+
+  // Helper function to check if point is inside bbox
+  const isPointInBbox = (
+    x: number,
+    y: number,
+    bboxX: number,
+    bboxY: number,
+    bboxW: number,
+    bboxH: number
+  ): boolean => {
+    return x >= bboxX && x <= bboxX + bboxW && y >= bboxY && y <= bboxY + bboxH;
+  };
+
+  // Get cursor style based on handle position
+  const getCursorForHandle = (handle: string | null): string => {
+    if (!handle) return 'default';
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      case 'n':
+      case 's':
+        return 'ns-resize';
+      case 'w':
+      case 'e':
+        return 'ew-resize';
+      default:
+        return 'default';
+    }
+  };
 
   // Load image when currentImage changes
   useEffect(() => {
@@ -182,6 +247,16 @@ export default function Canvas() {
         const classInfo = classId ? project.classes[classId] : null;
         const color = classInfo?.color || '#9333ea';
 
+        // Fill selected bbox with semi-transparent color
+        if (isSelected) {
+          // Parse hex color and add alpha
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+          ctx.fillRect(scaledX, scaledY, scaledW, scaledH);
+        }
+
         // Draw bbox
         ctx.strokeStyle = color;
         ctx.lineWidth = isSelected ? 3 : 2;
@@ -266,10 +341,67 @@ export default function Canvas() {
   // Mouse down handler
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || !image) return;
 
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    const { zoom, pan } = canvasState;
+    const scaledWidth = image.width * zoom;
+    const scaledHeight = image.height * zoom;
+    const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+    const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+    // Check if clicking on a handle of the selected annotation
+    if (selectedAnnotationId) {
+      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
+        const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
+
+        const scaledX = bboxX * zoom + imgX;
+        const scaledY = bboxY * zoom + imgY;
+        const scaledW = bboxW * zoom;
+        const scaledH = bboxH * zoom;
+
+        const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
+        if (handle) {
+          // Start resizing
+          setIsResizing(true);
+          setResizeHandle(handle);
+          setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
+          return;
+        }
+      }
+    }
+
+    // Check if clicking on any bbox to select it
+    let clickedAnnotation: typeof annotations[0] | null = null;
+    for (const ann of annotations) {
+      if (!isAnnotationVisible(ann.id)) continue;
+      if (ann.geometry.type === 'bbox') {
+        const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
+        const scaledX = bboxX * zoom + imgX;
+        const scaledY = bboxY * zoom + imgY;
+        const scaledW = bboxW * zoom;
+        const scaledH = bboxH * zoom;
+
+        if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+          clickedAnnotation = ann;
+          break; // Take the first one (topmost)
+        }
+      }
+    }
+
+    if (clickedAnnotation) {
+      // Select the clicked annotation
+      selectAnnotation(clickedAnnotation.id);
+      return;
+    }
+
+    // If nothing clicked, deselect
+    if (selectedAnnotationId && tool === 'select') {
+      selectAnnotation(null);
+    }
 
     // If select tool is active, start panning
     if (tool === 'select') {
@@ -294,12 +426,141 @@ export default function Canvas() {
   // Mouse move handler
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || !image) return;
 
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     setCursor({ x, y });
+
+    // Update cursor style based on position
+    if (!isResizing && !isDrawing && !isPanning) {
+      const { zoom, pan } = canvasState;
+      const scaledWidth = image.width * zoom;
+      const scaledHeight = image.height * zoom;
+      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+      let newCursor = tool === 'bbox' ? 'crosshair' : 'default';
+
+      // Check if hovering over selected annotation's handle
+      if (selectedAnnotationId) {
+        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+        if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
+          const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
+          const scaledX = bboxX * zoom + imgX;
+          const scaledY = bboxY * zoom + imgY;
+          const scaledW = bboxW * zoom;
+          const scaledH = bboxH * zoom;
+
+          const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
+          if (handle) {
+            newCursor = getCursorForHandle(handle);
+          } else if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+            newCursor = 'move';
+          }
+        }
+      }
+
+      // Check if hovering over any bbox (for click to select)
+      if (newCursor === 'default' || (tool === 'select' && newCursor === 'default')) {
+        for (const ann of annotations) {
+          if (!isAnnotationVisible(ann.id)) continue;
+          if (ann.geometry.type === 'bbox') {
+            const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
+            const scaledX = bboxX * zoom + imgX;
+            const scaledY = bboxY * zoom + imgY;
+            const scaledW = bboxW * zoom;
+            const scaledH = bboxH * zoom;
+
+            if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+              newCursor = 'pointer';
+              break;
+            }
+          }
+        }
+      }
+
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = newCursor;
+      }
+    }
+
+    // Handle resizing
+    if (isResizing && resizeStart && resizeHandle && selectedAnnotationId) {
+      const { zoom, pan } = canvasState;
+      const scaledWidth = image.width * zoom;
+      const scaledHeight = image.height * zoom;
+      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+      // Calculate delta in image coordinates
+      const deltaX = (x - resizeStart.x) / zoom;
+      const deltaY = (y - resizeStart.y) / zoom;
+
+      let [newX, newY, newW, newH] = resizeStart.bbox;
+
+      // Apply delta based on handle type
+      switch (resizeHandle) {
+        case 'nw':
+          newX += deltaX;
+          newY += deltaY;
+          newW -= deltaX;
+          newH -= deltaY;
+          break;
+        case 'ne':
+          newY += deltaY;
+          newW += deltaX;
+          newH -= deltaY;
+          break;
+        case 'sw':
+          newX += deltaX;
+          newW -= deltaX;
+          newH += deltaY;
+          break;
+        case 'se':
+          newW += deltaX;
+          newH += deltaY;
+          break;
+        case 'n':
+          newY += deltaY;
+          newH -= deltaY;
+          break;
+        case 's':
+          newH += deltaY;
+          break;
+        case 'w':
+          newX += deltaX;
+          newW -= deltaX;
+          break;
+        case 'e':
+          newW += deltaX;
+          break;
+      }
+
+      // Ensure minimum size
+      if (newW < 10) newW = 10;
+      if (newH < 10) newH = 10;
+
+      // Update annotation geometry
+      const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnnotation) {
+        useAnnotationStore.setState({
+          annotations: annotations.map(ann =>
+            ann.id === selectedAnnotationId
+              ? {
+                  ...ann,
+                  geometry: {
+                    ...ann.geometry,
+                    bbox: [newX, newY, newW, newH],
+                  },
+                }
+              : ann
+          ),
+        });
+      }
+      return;
+    }
 
     // Handle panning
     if (isPanning && panStart) {
@@ -320,7 +581,29 @@ export default function Canvas() {
   };
 
   // Mouse up handler
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Stop resizing and save to backend
+    if (isResizing && selectedAnnotationId) {
+      setIsResizing(false);
+      setResizeHandle(null);
+      setResizeStart(null);
+
+      // Save updated bbox to backend
+      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnn && updatedAnn.geometry.type === 'bbox') {
+        try {
+          const updateData: AnnotationUpdateRequest = {
+            geometry: updatedAnn.geometry,
+          };
+          await updateAnnotation(selectedAnnotationId, updateData);
+        } catch (err) {
+          console.error('Failed to update annotation:', err);
+          // TODO: Show error toast
+        }
+      }
+      return;
+    }
+
     // Stop panning
     if (isPanning) {
       setIsPanning(false);
@@ -407,6 +690,26 @@ export default function Canvas() {
         updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
       });
 
+      // Update image status and annotation count
+      const imageStatusesResponse = await getProjectImageStatuses(project.id);
+      const imageStatusMap = new Map(
+        imageStatusesResponse.statuses.map(s => [s.image_id, s])
+      );
+
+      // Update images with latest status and annotation count
+      useAnnotationStore.setState((state) => ({
+        images: state.images.map(img => {
+          const status = imageStatusMap.get(img.id);
+          return status ? {
+            ...img,
+            annotation_count: status.total_annotations,
+            is_confirmed: status.is_image_confirmed,
+            status: status.status,
+            confirmed_at: status.confirmed_at,
+          } : img;
+        })
+      }));
+
       setPendingBbox(null);
     } catch (err) {
       console.error('Failed to save annotation:', err);
@@ -455,18 +758,18 @@ export default function Canvas() {
 
       useAnnotationStore.setState({ images: updatedImages });
 
-      // Auto-navigate to next not-started image
-      const nextNotStartedIndex = images.findIndex((img, idx) => {
+      // Auto-navigate to next incomplete image (in-progress or not-started)
+      const nextIncompleteIndex = updatedImages.findIndex((img, idx) => {
         if (idx <= currentIndex) return false;
         const status = (img as any).status || 'not-started';
-        return status === 'not-started';
+        return status === 'in-progress' || status === 'not-started';
       });
 
-      if (nextNotStartedIndex !== -1) {
-        // Navigate to next not-started image
-        useAnnotationStore.setState({ currentIndex: nextNotStartedIndex });
+      if (nextIncompleteIndex !== -1) {
+        // Navigate to next incomplete image
+        setCurrentIndex(nextIncompleteIndex);
       } else {
-        // No more not-started images, just go to next image
+        // No more incomplete images, just go to next image
         goToNextImage();
       }
 
@@ -476,13 +779,21 @@ export default function Canvas() {
     } finally {
       setConfirmingImage(false);
     }
-  }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage]);
+  }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage, setCurrentIndex]);
 
-  // Phase 2.7: Keyboard shortcut for Confirm Image (Ctrl+Enter)
+  // Phase 2.7: Keyboard shortcut for Confirm Image (Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Enter: Confirm Image
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      // Don't handle shortcuts when typing in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      // Space: Confirm Image
+      if (e.key === ' ' && !isImageConfirmed && annotations.length > 0) {
         e.preventDefault();
         handleConfirmImage();
       }
@@ -490,7 +801,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage]);
+  }, [handleConfirmImage, isImageConfirmed, annotations]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -511,13 +822,8 @@ export default function Canvas() {
     <div ref={containerRef} className="flex-1 bg-white dark:bg-gray-900 relative overflow-hidden">
       <canvas
         ref={canvasRef}
-        className={`w-full h-full ${
-          tool === 'select'
-            ? isPanning
-              ? 'cursor-grabbing'
-              : 'cursor-grab'
-            : 'cursor-crosshair'
-        }`}
+        className="w-full h-full"
+        style={{ cursor: isPanning ? 'grabbing' : 'default' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -592,20 +898,20 @@ export default function Canvas() {
 
       {/* Phase 2.7: Confirm Image button */}
       {annotations.length > 0 && !isImageConfirmed && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 ml-20">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
           <button
             onClick={handleConfirmImage}
             disabled={confirmingImage}
-            className={`px-6 py-3 rounded-lg shadow-lg font-medium text-sm transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-lg shadow-lg font-medium text-xs transition-all flex items-center gap-2 whitespace-nowrap ${
               draftCount > 0
                 ? 'bg-green-500 hover:bg-green-600 disabled:bg-green-400 text-white'
                 : 'bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white'
             } disabled:cursor-not-allowed`}
-            title="Confirm Image (Ctrl+Enter)"
+            title="Confirm Image (Space)"
           >
             {confirmingImage ? (
               <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -613,7 +919,7 @@ export default function Canvas() {
               </>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                 </svg>
                 <span>
@@ -621,8 +927,8 @@ export default function Canvas() {
                     ? `Confirm & Next (${draftCount} draft)`
                     : 'Mark Complete & Next'}
                 </span>
-                <kbd className="ml-1 px-1.5 py-0.5 text-xs bg-white bg-opacity-20 rounded">
-                  Ctrl+Enter
+                <kbd className="ml-1 px-1 py-0.5 text-[10px] bg-white bg-opacity-20 rounded">
+                  Space
                 </kbd>
               </>
             )}
@@ -632,9 +938,9 @@ export default function Canvas() {
 
       {/* Image already confirmed */}
       {isImageConfirmed && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 ml-20">
-          <div className="px-6 py-3 rounded-lg shadow-lg bg-gray-500 text-white font-medium text-sm flex items-center gap-2">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
+          <div className="px-4 py-2 rounded-lg shadow-lg bg-gray-500 text-white font-medium text-xs flex items-center gap-2 whitespace-nowrap">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
             </svg>
             <span>Image Confirmed</span>
