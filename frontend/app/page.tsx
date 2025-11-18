@@ -360,7 +360,6 @@ export default function DashboardPage() {
                   <div className="bg-white rounded-lg border border-gray-200">
                     <div className="px-4 py-3 border-b border-gray-200">
                       <h3 className="text-sm font-semibold text-gray-900">이미지 미리보기</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">데이터셋의 샘플 이미지 (Loading: {imagesLoading ? 'true' : 'false'}, Count: {images.length})</p>
                     </div>
                     <div className="p-4">
                       {imagesLoading ? (

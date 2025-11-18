@@ -14,7 +14,7 @@ from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.models.platform import Dataset, User
-from app.db.models.labeler import AnnotationProject
+from app.db.models.labeler import AnnotationProject, Annotation
 from app.schemas.dataset import DatasetResponse
 from app.schemas.project import ProjectResponse
 
@@ -89,6 +89,35 @@ def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
     except Exception as e:
         print(f"Error loading annotations from S3: {e}")
         return None
+
+
+def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str, Dict]:
+    """Calculate bbox count and image count for each class from Labeler DB."""
+    from collections import defaultdict
+
+    # Query all annotations for this project
+    annotations = labeler_db.query(Annotation).filter(
+        Annotation.project_id == project_id
+    ).all()
+
+    # Calculate statistics per class
+    class_stats = defaultdict(lambda: {'image_ids': set(), 'bbox_count': 0})
+
+    for ann in annotations:
+        class_id = ann.class_id
+        if class_id:
+            class_stats[class_id]['image_ids'].add(ann.image_id)
+            class_stats[class_id]['bbox_count'] += 1
+
+    # Convert to final format
+    result = {}
+    for class_id, stats in class_stats.items():
+        result[class_id] = {
+            'image_count': len(stats['image_ids']),
+            'bbox_count': stats['bbox_count'],
+        }
+
+    return result
 
 
 @router.get("", response_model=List[DatasetResponse], tags=["Datasets"])
@@ -298,6 +327,16 @@ async def get_or_create_project_for_dataset(
         labeler_db.commit()
         labeler_db.refresh(project)
 
+    # Calculate real-time class statistics from Labeler DB
+    live_class_stats = calculate_class_statistics(project.id, labeler_db)
+
+    # Update project.classes with live statistics
+    updated_classes = dict(project.classes) if project.classes else {}
+    for class_id, class_info in updated_classes.items():
+        stats = live_class_stats.get(class_id, {'image_count': 0, 'bbox_count': 0})
+        class_info['image_count'] = stats['image_count']
+        class_info['bbox_count'] = stats['bbox_count']
+
     # Get dataset name from Platform DB
     dataset_name = dataset.name
 
@@ -319,7 +358,7 @@ async def get_or_create_project_for_dataset(
         owner_id=project.owner_id,
         task_types=project.task_types,
         task_config=project.task_config,
-        classes=project.classes,
+        classes=updated_classes,
         settings=project.settings,
         total_images=project.total_images,
         annotated_images=project.annotated_images,
