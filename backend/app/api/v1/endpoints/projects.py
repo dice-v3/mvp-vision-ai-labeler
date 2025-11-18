@@ -23,8 +23,12 @@ from app.schemas.image import (
 )
 from app.schemas.class_schema import ClassCreateRequest, ClassUpdateRequest, ClassResponse
 from app.services.image_status_service import confirm_image_status, unconfirm_image_status
+from app.api.v1.endpoints import projects_classes
 
 router = APIRouter()
+
+# Include class management endpoints
+router.include_router(projects_classes.router, prefix="", tags=["Classes"])
 
 
 @router.post("", response_model=ProjectResponse, tags=["Projects"], status_code=status.HTTP_201_CREATED)

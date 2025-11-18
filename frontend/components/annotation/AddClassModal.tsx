@@ -115,12 +115,12 @@ export default function AddClassModal({ isOpen, onClose, projectId, onClassAdded
               id="classId"
               value={classId}
               onChange={(e) => setClassId(e.target.value)}
-              placeholder="e.g., 1, person, defect_001"
+              placeholder="e.g., 0, 1, 2, 3..."
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
               required
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Unique identifier for this class
+              Numeric ID recommended for DICE format compatibility (0, 1, 2, ...)
             </p>
           </div>
 
@@ -146,23 +146,34 @@ export default function AddClassModal({ isOpen, onClose, projectId, onClassAdded
             <label htmlFor="color" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Color <span className="text-red-500">*</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex gap-2 items-center">
+              <div className="relative">
                 <input
                   type="color"
                   id="color"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  className="w-full h-10 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer"
+                  className="w-16 h-10 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer"
                   required
                 />
               </div>
+              <input
+                type="text"
+                value={color.toUpperCase()}
+                onChange={(e) => setColor(e.target.value)}
+                placeholder="#000000"
+                pattern="^#[0-9A-Fa-f]{6}$"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              />
               <button
                 type="button"
                 onClick={handleRandomColor}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm"
+                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Generate random color"
               >
-                Random
+                <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
