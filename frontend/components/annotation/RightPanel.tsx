@@ -14,6 +14,8 @@ import {
   bulkConfirmAnnotations,
 } from '@/lib/api/annotations';
 import { useState } from 'react';
+import AddClassModal from './AddClassModal';
+import { getProjectById } from '@/lib/api/projects';
 
 export default function RightPanel() {
   const {
@@ -32,6 +34,28 @@ export default function RightPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
+
+  // Refresh project data after adding a class
+  const handleClassAdded = async () => {
+    if (!project) return;
+    try {
+      const updatedProject = await getProjectById(project.id);
+      // Update project in store with converted format
+      useAnnotationStore.setState({
+        project: {
+          id: updatedProject.id,
+          name: updatedProject.name,
+          datasetId: updatedProject.dataset_id,
+          taskTypes: updatedProject.task_types,
+          classes: updatedProject.classes,
+          taskConfig: updatedProject.task_config,
+        }
+      });
+    } catch (error) {
+      console.error('Failed to refresh project:', error);
+    }
+  };
 
   // Phase 2.7: Get draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -339,7 +363,18 @@ export default function RightPanel() {
 
       {/* Class List Section */}
       <div className="flex-1 overflow-y-auto p-3">
-        <h4 className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Classes</h4>
+        <div className="flex items-center justify-between mb-1.5">
+          <h4 className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Classes</h4>
+          <button
+            onClick={() => setIsAddClassModalOpen(true)}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+            title="Add new class"
+          >
+            <svg className="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
 
         {project && annotations.length > 0 && (() => {
           // Get unique class IDs in current image
@@ -409,6 +444,16 @@ export default function RightPanel() {
           <div className="text-[10px] text-gray-600 dark:text-gray-500">No classes defined</div>
         )}
       </div>
+
+      {/* Add Class Modal */}
+      {project && (
+        <AddClassModal
+          isOpen={isAddClassModalOpen}
+          onClose={() => setIsAddClassModalOpen(false)}
+          projectId={project.id}
+          onClassAdded={handleClassAdded}
+        />
+      )}
     </div>
   );
 }

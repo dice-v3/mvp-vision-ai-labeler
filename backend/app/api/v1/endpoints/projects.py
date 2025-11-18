@@ -21,6 +21,7 @@ from app.schemas.image import (
     ImageConfirmRequest,
     ImageConfirmResponse,
 )
+from app.schemas.class_schema import ClassCreateRequest, ClassUpdateRequest, ClassResponse
 from app.services.image_status_service import confirm_image_status, unconfirm_image_status
 
 router = APIRouter()

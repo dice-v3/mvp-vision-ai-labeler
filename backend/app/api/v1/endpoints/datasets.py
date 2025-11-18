@@ -356,21 +356,66 @@ async def list_dataset_images(
             detail=f"Dataset {dataset_id} not found",
         )
 
-    # Load annotations.json to get image list
-    if not dataset.annotation_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset {dataset_id} has no annotations",
-        )
+    images = []
 
-    annotations_data = load_annotations_from_s3(dataset.annotation_path)
-    if not annotations_data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to load annotations",
-        )
+    # Try to load annotations.json if available
+    if dataset.annotation_path:
+        annotations_data = load_annotations_from_s3(dataset.annotation_path)
+        if annotations_data:
+            images = annotations_data.get('images', [])
 
-    images = annotations_data.get('images', [])
+    # If no annotations.json or empty, list images directly from S3
+    if not images:
+        try:
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=settings.S3_ENDPOINT,
+                aws_access_key_id=settings.S3_ACCESS_KEY,
+                aws_secret_access_key=settings.S3_SECRET_KEY,
+                region_name=settings.S3_REGION,
+                config=Config(signature_version='s3v4')
+            )
+
+            # List objects in the images/ directory
+            images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
+            response = s3_client.list_objects_v2(
+                Bucket=settings.S3_BUCKET_DATASETS,
+                Prefix=images_prefix,
+                MaxKeys=limit
+            )
+
+            # Convert S3 objects to image format
+            if 'Contents' in response:
+                for idx, obj in enumerate(response['Contents']):
+                    # Get the full key
+                    full_key = obj['Key']
+                    # Skip if it's a directory marker
+                    if full_key.endswith('/'):
+                        continue
+
+                    # Extract relative path from images/ directory
+                    # e.g., "datasets/{id}/images/bottle/broken_large/000.png" -> "bottle/broken_large/000.png"
+                    if '/images/' in full_key:
+                        relative_path = full_key.split('/images/', 1)[1]
+                    else:
+                        relative_path = full_key.split('/')[-1]
+
+                    if not relative_path:
+                        continue
+
+                    images.append({
+                        'id': idx + 1,
+                        'file_name': relative_path,  # Store relative path from images/
+                        'width': None,
+                        'height': None,
+                    })
+        except Exception as e:
+            print(f"Error listing images from S3: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to list images: {str(e)}",
+            )
+
     if not images:
         return []
 
