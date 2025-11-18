@@ -7,7 +7,7 @@
 'use client';
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type FilterType = 'all' | 'not-started' | 'in-progress' | 'completed';
 
@@ -22,6 +22,9 @@ export default function ImageList() {
   } = useAnnotationStore();
 
   const [filter, setFilter] = useState<FilterType>('all');
+  const [searchText, setSearchText] = useState('');
+  const currentImageRef = useRef<HTMLDivElement | HTMLTableRowElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Phase 2.7: Get image status from real data
   const getImageStatus = (img: any): 'not-started' | 'in-progress' | 'completed' => {
@@ -66,14 +69,36 @@ export default function ImageList() {
   };
 
   const filteredImages = images.filter((img, idx) => {
-    if (filter === 'all') return true;
-    const status = getImageStatus(img);
-    return status === filter;
+    // Filter by status
+    if (filter !== 'all') {
+      const status = getImageStatus(img);
+      if (status !== filter) return false;
+    }
+
+    // Filter by search text
+    if (searchText.trim()) {
+      const searchLower = searchText.toLowerCase();
+      const fileName = img.file_name || '';
+      const folder = img.folder_path || '';
+      return fileName.toLowerCase().includes(searchLower) || folder.toLowerCase().includes(searchLower);
+    }
+
+    return true;
   });
 
   const handleImageClick = (index: number) => {
     setCurrentIndex(index);
   };
+
+  // Auto-scroll to current image
+  useEffect(() => {
+    if (currentImageRef.current && containerRef.current) {
+      currentImageRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentIndex]);
 
   return (
     <div className="flex flex-col h-full">
@@ -103,6 +128,25 @@ export default function ImageList() {
           </div>
         </div>
 
+        {/* Search input */}
+        <div className="mb-2 relative">
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search images..."
+            className="w-full px-2 py-1 pl-7 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-300 placeholder-gray-500 dark:placeholder-gray-500 focus:outline-none focus:border-violet-500"
+          />
+          <svg
+            className="w-3.5 h-3.5 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as FilterType)}
@@ -116,7 +160,7 @@ export default function ImageList() {
       </div>
 
       {/* Image grid/list */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-2">
         {filteredImages.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-xs">
             No images match filter
@@ -129,16 +173,19 @@ export default function ImageList() {
               const status = getImageStatus(img);
 
               return (
-                <button
+                <div
                   key={img.id}
-                  onClick={() => handleImageClick(actualIndex)}
-                  className={`relative aspect-[3/2] rounded overflow-hidden transition-all ${
-                    isCurrent
-                      ? 'ring-2 ring-violet-500 scale-[1.02]'
-                      : 'ring-1 ring-gray-600 hover:ring-gray-500'
-                  }`}
-                  title={img.file_name}
+                  ref={isCurrent ? currentImageRef as any : null}
                 >
+                  <button
+                    onClick={() => handleImageClick(actualIndex)}
+                    className={`relative aspect-[3/2] rounded overflow-hidden transition-all w-full ${
+                      isCurrent
+                        ? 'ring-2 ring-violet-500 scale-[1.02]'
+                        : 'ring-1 ring-gray-600 hover:ring-gray-500'
+                    }`}
+                    title={img.file_name}
+                  >
                   {/* Thumbnail image */}
                   <img
                     src={img.url}
@@ -161,7 +208,8 @@ export default function ImageList() {
                   {isCurrent && (
                     <div className="absolute inset-0 bg-violet-500/10 pointer-events-none" />
                   )}
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -186,6 +234,7 @@ export default function ImageList() {
                   return (
                     <tr
                       key={img.id}
+                      ref={isCurrent ? currentImageRef as any : null}
                       onClick={() => handleImageClick(actualIndex)}
                       className={`cursor-pointer transition-all border-b border-gray-300 dark:border-gray-700/50 ${
                         isCurrent

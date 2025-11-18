@@ -12,11 +12,11 @@ import { listVersions, type Version } from '@/lib/api/export';
 import VersionHistoryModal from './VersionHistoryModal';
 
 export default function AnnotationHistory() {
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false); // Default: expanded
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { project } = useAnnotationStore();
+  const { project, images } = useAnnotationStore();
 
   // Load published versions
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function AnnotationHistory() {
         const publishedVersions = result.versions
           .filter((v) => v.version_type === 'published')
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5); // Show only latest 5
+          .slice(0, 3); // Show only latest 3
 
         setVersions(publishedVersions);
       } catch (error) {
@@ -120,7 +120,7 @@ export default function AnnotationHistory() {
                   onClick={() => setIsModalOpen(true)}
                   title="Click to view detailed version history"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
                         {version.version_number}
@@ -129,9 +129,16 @@ export default function AnnotationHistory() {
                         {formatDate(version.created_at)}
                       </span>
                     </div>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-600">
-                      {version.total_images} images
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-gray-600 dark:text-gray-500">
+                      {version.image_count || 0} / {images.length} images
                     </span>
+                    {version.created_by_name && (
+                      <span className="text-[10px] text-gray-500 dark:text-gray-600">
+                        by {version.created_by_name}
+                      </span>
+                    )}
                   </div>
                   {version.description && (
                     <p className="text-[10px] text-gray-600 dark:text-gray-500 mt-1 truncate">

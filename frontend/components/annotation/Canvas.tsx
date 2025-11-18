@@ -441,7 +441,14 @@ export default function Canvas() {
       const imgX = (rect.width - scaledWidth) / 2 + pan.x;
       const imgY = (rect.height - scaledHeight) / 2 + pan.y;
 
-      let newCursor = tool === 'bbox' ? 'crosshair' : 'default';
+      // Check if mouse is within image bounds
+      const isInImage = x >= imgX && x <= imgX + scaledWidth && y >= imgY && y <= imgY + scaledHeight;
+
+      // Default cursor based on tool and image position
+      let newCursor = 'default';
+      if (isInImage) {
+        newCursor = tool === 'bbox' ? 'crosshair' : 'default';
+      }
 
       // Check if hovering over selected annotation's handle
       if (selectedAnnotationId) {
@@ -463,7 +470,7 @@ export default function Canvas() {
       }
 
       // Check if hovering over any bbox (for click to select)
-      if (newCursor === 'default' || (tool === 'select' && newCursor === 'default')) {
+      if (isInImage && (newCursor === 'default' || newCursor === 'crosshair' || (tool === 'select' && newCursor === 'default'))) {
         for (const ann of annotations) {
           if (!isAnnotationVisible(ann.id)) continue;
           if (ann.geometry.type === 'bbox') {

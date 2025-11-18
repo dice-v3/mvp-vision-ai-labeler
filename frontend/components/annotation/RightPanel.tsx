@@ -11,8 +11,9 @@ import {
   deleteAnnotation as deleteAnnotationAPI,
   confirmAnnotation,
   unconfirmAnnotation,
+  getProjectAnnotations,
 } from '@/lib/api/annotations';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AddClassModal from './AddClassModal';
 import { getProjectById } from '@/lib/api/projects';
 
@@ -29,10 +30,56 @@ export default function RightPanel() {
     toggleAllAnnotationsVisibility,
     isAnnotationVisible,
     showAllAnnotations,
+    images,
   } = useAnnotationStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
+  const [classStats, setClassStats] = useState<Record<string, { bboxCount: number; imageCount: number }>>({});
+
+  // Load class statistics from all annotations
+  useEffect(() => {
+    if (!project?.id) return;
+
+    const loadClassStats = async () => {
+      try {
+        const allAnnotations = await getProjectAnnotations(project.id);
+
+        // Calculate bbox count and unique image count per class
+        const stats: Record<string, { bboxCount: number; imageIds: Set<string> }> = {};
+
+        allAnnotations.forEach((ann: any) => {
+          const classId = ann.class_id || ann.classId;
+          if (!classId) return;
+
+          if (!stats[classId]) {
+            stats[classId] = { bboxCount: 0, imageIds: new Set() };
+          }
+
+          stats[classId].bboxCount++;
+          const imageId = ann.image_id || ann.imageId;
+          if (imageId) {
+            stats[classId].imageIds.add(imageId);
+          }
+        });
+
+        // Convert to final format
+        const finalStats: Record<string, { bboxCount: number; imageCount: number }> = {};
+        Object.entries(stats).forEach(([classId, data]) => {
+          finalStats[classId] = {
+            bboxCount: data.bboxCount,
+            imageCount: data.imageIds.size,
+          };
+        });
+
+        setClassStats(finalStats);
+      } catch (error) {
+        console.error('Failed to load class statistics:', error);
+      }
+    };
+
+    loadClassStats();
+  }, [project?.id, annotations]); // Reload when annotations change
 
   // Refresh project data after adding a class
   const handleClassAdded = async () => {
@@ -349,11 +396,8 @@ export default function RightPanel() {
         })()}
 
         {project && Object.entries(project.classes).map(([classId, classInfo], index) => {
-          // Calculate bbox count from current annotations
-          const bboxCount = annotations.filter(ann => {
-            const annClassId = (ann as any).classId || (ann as any).class_id;
-            return annClassId === classId;
-          }).length;
+          // Get stats from loaded class statistics
+          const stats = classStats[classId] || { bboxCount: 0, imageCount: 0 };
 
           return (
             <div
@@ -368,7 +412,9 @@ export default function RightPanel() {
                 {classInfo.name}
               </span>
               <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-500">
-                <span title="Bounding boxes in current image">{bboxCount}</span>
+                <span title={`${stats.bboxCount} bounding boxes across ${stats.imageCount} images`}>
+                  {stats.bboxCount} ({stats.imageCount})
+                </span>
               </div>
             </div>
           );
