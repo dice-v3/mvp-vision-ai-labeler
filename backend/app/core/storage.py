@@ -261,6 +261,7 @@ class StorageClient:
     def upload_export(
         self,
         project_id: str,
+        task_type: str,
         version_number: str,
         export_data: bytes,
         export_format: str,
@@ -271,17 +272,19 @@ class StorageClient:
 
         Args:
             project_id: Project ID
+            task_type: Task type (classification, detection, segmentation)
             version_number: Version number (e.g., "v1.0")
             export_data: Export file data as bytes
-            export_format: Export format (coco, yolo, etc.)
+            export_format: Export format (coco, yolo, dice, etc.)
             filename: Export filename
 
         Returns:
             Tuple of (s3_key, presigned_url, expires_at)
         """
         try:
-            # S3 key: exports/{project_id}/{version_number}/{filename}
-            key = f"exports/{project_id}/{version_number}/{filename}"
+            # Phase 2.9: S3 key includes task_type
+            # exports/{project_id}/{task_type}/{version_number}/{filename}
+            key = f"exports/{project_id}/{task_type}/{version_number}/{filename}"
 
             # Determine content type
             content_type = 'application/json' if export_format == 'coco' else 'application/zip'
@@ -351,16 +354,19 @@ class StorageClient:
     def update_platform_annotations(
         self,
         dataset_id: str,
+        task_type: str,
         dice_data: bytes,
         version_number: str
     ) -> str:
         """
-        Update official annotations.json in Platform S3.
+        Update official task-specific annotations file in Platform S3.
 
+        Phase 2.9: Each task has its own annotation file.
         This is the authoritative DICE format file that Platform uses.
 
         Args:
             dataset_id: Dataset ID
+            task_type: Task type (classification, detection, segmentation)
             dice_data: DICE format data as bytes
             version_number: Version number for metadata
 
@@ -368,8 +374,9 @@ class StorageClient:
             S3 key
         """
         try:
-            # S3 key: datasets/{dataset_id}/annotations.json
-            key = f"datasets/{dataset_id}/annotations.json"
+            # Phase 2.9: Task-specific annotation files
+            # S3 key: datasets/{dataset_id}/annotations_{task_type}.json
+            key = f"datasets/{dataset_id}/annotations_{task_type}.json"
 
             # Upload to Platform datasets bucket
             self.s3_client.put_object(
@@ -379,6 +386,7 @@ class StorageClient:
                 ContentType='application/json',
                 Metadata={
                     'dataset_id': dataset_id,
+                    'task_type': task_type,
                     'version': version_number,
                     'format': 'dice',
                     'updated_at': datetime.utcnow().isoformat(),
@@ -386,11 +394,11 @@ class StorageClient:
                 }
             )
 
-            logger.info(f"Updated Platform S3 annotations: {key} (version: {version_number})")
+            logger.info(f"Updated Platform S3 annotations: {key} (task: {task_type}, version: {version_number})")
             return key
 
         except ClientError as e:
-            logger.error(f"Failed to update Platform annotations for {dataset_id}: {e}")
+            logger.error(f"Failed to update Platform annotations for {dataset_id} (task: {task_type}): {e}")
             raise Exception(f"Failed to update Platform annotations: {str(e)}")
 
 

@@ -22,6 +22,19 @@ import Canvas from '@/components/annotation/Canvas';
 import RightPanel from '@/components/annotation/RightPanel';
 import BottomBar from '@/components/annotation/BottomBar';
 
+// Phase 2.9: Map annotation_type to task type
+function getTaskTypeForAnnotation(annotationType: string): string {
+  const mapping: Record<string, string> = {
+    'bbox': 'detection',
+    'rotated_bbox': 'detection',
+    'polygon': 'segmentation',
+    'classification': 'classification',
+    'keypoint': 'keypoint',
+    'line': 'line',
+  };
+  return mapping[annotationType] || annotationType;
+}
+
 // Helper function to convert API annotation to store annotation
 function convertAPIAnnotationToStore(apiAnn: APIAnnotation): StoreAnnotation {
   return {
@@ -54,6 +67,7 @@ export default function AnnotationPage() {
     setAnnotations,
     loadPreferences,
     currentImage,
+    currentTask,
     preferences,
   } = useAnnotationStore();
 
@@ -93,6 +107,38 @@ export default function AnnotationPage() {
 
       // Load project
       const projectData = await getProjectById(projectId);
+
+      // Phase 2.9: Determine best initial task based on progress
+      let initialTask = projectData.task_types?.[0] || null;
+
+      if (projectData.task_types && projectData.task_types.length > 1) {
+        // Load image statuses for all tasks to determine progress
+        const taskProgress: Record<string, number> = {};
+
+        for (const taskType of projectData.task_types) {
+          try {
+            const statusResponse = await getProjectImageStatuses(projectId, taskType);
+            const completedCount = statusResponse.statuses.filter(
+              s => s.status === 'completed' || s.is_image_confirmed
+            ).length;
+            taskProgress[taskType] = completedCount;
+          } catch {
+            taskProgress[taskType] = 0;
+          }
+        }
+
+        // Find task with most progress
+        let maxProgress = -1;
+        for (const [taskType, progress] of Object.entries(taskProgress)) {
+          if (progress > maxProgress) {
+            maxProgress = progress;
+            initialTask = taskType;
+          }
+        }
+
+        console.log('[initializeAnnotation] Task progress:', taskProgress, '-> Initial task:', initialTask);
+      }
+
       // Convert API response (snake_case) to store format (camelCase)
       setProject({
         id: projectData.id,
@@ -100,8 +146,14 @@ export default function AnnotationPage() {
         datasetId: projectData.dataset_id,
         taskTypes: projectData.task_types,
         classes: projectData.classes,
+        taskClasses: projectData.task_classes || {},  // Phase 2.9: Task-based classes
         taskConfig: projectData.task_config,
       });
+
+      // Phase 2.9: Set the best initial task
+      if (initialTask && initialTask !== projectData.task_types?.[0]) {
+        useAnnotationStore.setState({ currentTask: initialTask });
+      }
 
       // Load images using dataset_id from project
       if (projectData.dataset_id) {
@@ -117,8 +169,8 @@ export default function AnnotationPage() {
           annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
         });
 
-        // Phase 2.7: Load image statuses
-        const imageStatusesResponse = await getProjectImageStatuses(projectId);
+        // Phase 2.7/2.9: Load image statuses (filtered by initial task)
+        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined);
         const imageStatusMap = new Map(
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );
@@ -145,6 +197,11 @@ export default function AnnotationPage() {
           const firstImageId = convertedImages[0].id;
           const firstImageAnnotations = allAnnotations
             .filter((ann: any) => (ann.image_id || ann.imageId) === firstImageId)
+            // Phase 2.9: Filter by initial task type
+            .filter((ann: any) => {
+              const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
+              return !initialTask || annTaskType === initialTask;
+            })
             .map(convertAPIAnnotationToStore);
           setAnnotations(firstImageAnnotations || []);
         }
@@ -165,7 +222,14 @@ export default function AnnotationPage() {
     const loadAnnotations = async () => {
       try {
         const annotationsData = await getProjectAnnotations(projectId, currentImage.id);
-        const convertedAnnotations = (annotationsData || []).map(convertAPIAnnotationToStore);
+
+        // Phase 2.9: Filter annotations by current task type
+        const filteredAnnotations = annotationsData.filter((ann: APIAnnotation) => {
+          const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
+          return !currentTask || annTaskType === currentTask;
+        });
+
+        const convertedAnnotations = (filteredAnnotations || []).map(convertAPIAnnotationToStore);
         setAnnotations(convertedAnnotations);
 
         // Update annotation count for current image in the images array
@@ -183,7 +247,47 @@ export default function AnnotationPage() {
     };
 
     loadAnnotations();
-  }, [currentImage?.id, projectId, setAnnotations]);
+  }, [currentImage?.id, projectId, currentTask, setAnnotations]); // Phase 2.9: Reload on task change
+
+  // Phase 2.9: Reload image statuses when current task changes
+  useEffect(() => {
+    if (!projectId) return;
+
+    const reloadImageStatuses = async () => {
+      try {
+        const imageStatusesResponse = await getProjectImageStatuses(projectId, currentTask || undefined);
+        const imageStatusMap = new Map(
+          imageStatusesResponse.statuses.map(s => [s.image_id, s])
+        );
+
+        // Update image statuses in the store
+        useAnnotationStore.setState((state) => ({
+          images: state.images.map(img => {
+            const status = imageStatusMap.get(img.id);
+            if (status) {
+              return {
+                ...img,
+                is_confirmed: status.is_image_confirmed,
+                status: status.status,
+                confirmed_at: status.confirmed_at,
+              };
+            }
+            // If no status for this task, set default
+            return {
+              ...img,
+              is_confirmed: false,
+              status: 'not-started',
+              confirmed_at: undefined,
+            };
+          })
+        }));
+      } catch (err) {
+        console.error('Failed to reload image statuses:', err);
+      }
+    };
+
+    reloadImageStatuses();
+  }, [projectId, currentTask]); // Reload when task changes
 
   if (authLoading || loading) {
     return (

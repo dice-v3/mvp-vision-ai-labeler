@@ -8,6 +8,7 @@
 
 import { useState } from 'react';
 import { exportAnnotations, publishVersion, downloadExport, type ExportResponse, type Version } from '@/lib/api/export';
+import { useAnnotationStore } from '@/lib/stores/annotationStore'; // Phase 2.9
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface ExportModalProps {
 }
 
 export default function ExportModal({ isOpen, onClose, projectId, mode, onPublishSuccess }: ExportModalProps) {
+  const { currentTask } = useAnnotationStore(); // Phase 2.9: Get current task
   const [format, setFormat] = useState<'dice' | 'coco' | 'yolo'>('dice');
   const [includeDraft, setIncludeDraft] = useState(false);
   const [description, setDescription] = useState('');
@@ -42,7 +44,14 @@ export default function ExportModal({ isOpen, onClose, projectId, mode, onPublis
         setExportResult(result);
       } else {
         // Publish version
+        // Phase 2.9: Include task_type in publish request
+        if (!currentTask) {
+          setError('No task selected. Please select a task before publishing.');
+          return;
+        }
+
         const result = await publishVersion(projectId, {
+          task_type: currentTask, // Phase 2.9: Task-specific versioning
           export_format: format,
           include_draft: includeDraft,
           description: description || undefined,

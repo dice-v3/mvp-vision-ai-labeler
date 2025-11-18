@@ -7,9 +7,10 @@ from pydantic import BaseModel
 
 class VersionPublishRequest(BaseModel):
     """Publish new version request."""
+    task_type: str  # Phase 2.9: Task type (classification, detection, segmentation)
     version_number: Optional[str] = None  # Auto-generated if not provided (e.g., "v1.0")
     description: Optional[str] = None
-    export_format: str  # 'coco' | 'yolo' | 'voc'
+    export_format: str  # 'coco' | 'yolo' | 'dice'
     include_draft: bool = False  # Whether to include draft annotations in export
 
 
@@ -17,6 +18,7 @@ class VersionResponse(BaseModel):
     """Version response."""
     id: int
     project_id: str
+    task_type: Optional[str] = None  # Phase 2.9: Task type (optional for backward compatibility)
     version_number: str
     version_type: str  # 'working' | 'published'
     created_at: datetime

@@ -19,6 +19,7 @@ export default function ImageList() {
     annotations,
     preferences,
     setPreference,
+    currentTask, // Phase 2.9: Task context
   } = useAnnotationStore();
 
   const [filter, setFilter] = useState<FilterType>('all');
@@ -27,6 +28,9 @@ export default function ImageList() {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Phase 2.7: Get image status from real data
+  // Phase 2.9: TODO - Filter status by currentTask
+  // Currently shows aggregate status across all tasks
+  // Future: Backend should return task-specific status in image_annotation_status
   const getImageStatus = (img: any): 'not-started' | 'in-progress' | 'completed' => {
     // Use status from image_annotation_status table
     if (img.status) {

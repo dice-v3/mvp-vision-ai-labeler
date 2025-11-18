@@ -16,7 +16,7 @@ export default function AnnotationHistory() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { project, images } = useAnnotationStore();
+  const { project, images, currentTask } = useAnnotationStore(); // Phase 2.9
 
   // Load published versions
   const loadVersions = useCallback(async () => {
@@ -25,18 +25,31 @@ export default function AnnotationHistory() {
     try {
       setLoading(true);
       const result = await listVersions(project.id);
+
+      console.log('[AnnotationHistory] All versions:', result.versions);
+      console.log('[AnnotationHistory] Current task:', currentTask);
+
+      // Phase 2.9: Filter versions by current task type
       const publishedVersions = result.versions
         .filter((v) => v.version_type === 'published')
+        .filter((v) => {
+          // Show version if: no task selected OR task matches
+          // Note: versions without task_type are legacy and should only show when no task is selected
+          const shouldShow = !currentTask || v.task_type === currentTask;
+          console.log(`[AnnotationHistory] Version ${v.version_number}: task_type=${v.task_type}, currentTask=${currentTask}, shouldShow=${shouldShow}`);
+          return shouldShow;
+        })
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 3); // Show only latest 3
 
+      console.log('[AnnotationHistory] Filtered published versions:', publishedVersions);
       setVersions(publishedVersions);
     } catch (error) {
       console.error('Failed to load versions:', error);
     } finally {
       setLoading(false);
     }
-  }, [project?.id]);
+  }, [project?.id, currentTask]); // Phase 2.9: Re-load when task changes
 
   // Initial load
   useEffect(() => {
@@ -74,6 +87,12 @@ export default function AnnotationHistory() {
           <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-400">
             Annotation Versions
           </h4>
+          {/* Phase 2.9: Show current task badge */}
+          {currentTask && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-600 dark:text-violet-400 capitalize">
+              {currentTask}
+            </span>
+          )}
           <span className="text-[10px] text-gray-500 dark:text-gray-600">
             ({versions.length})
           </span>
@@ -120,7 +139,8 @@ export default function AnnotationHistory() {
             </div>
           ) : versions.length === 0 ? (
             <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
-              No versions published yet
+              {/* Phase 2.9: Task-specific empty message */}
+              {currentTask ? `No ${currentTask} versions published yet` : 'No versions published yet'}
             </div>
           ) : (
             <div className="divide-y divide-gray-300 dark:divide-gray-700/50">

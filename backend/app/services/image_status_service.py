@@ -2,6 +2,8 @@
 Image Annotation Status Service
 
 Automatically updates image_annotation_status table based on annotation changes.
+
+Phase 2.9: Added task_type support for task-specific status tracking.
 """
 
 from datetime import datetime
@@ -11,11 +13,22 @@ from sqlalchemy import func
 
 from app.db.models.labeler import Annotation, ImageAnnotationStatus
 
+# Phase 2.9: Mapping from annotation_type to task_type
+ANNOTATION_TYPE_TO_TASK = {
+    'bbox': 'detection',
+    'rotated_bbox': 'detection',
+    'polygon': 'segmentation',
+    'classification': 'classification',
+    'keypoint': 'keypoint',
+    'line': 'line',
+}
+
 
 async def update_image_status(
     db: Session,
     project_id: str,
     image_id: str,
+    task_type: Optional[str] = None,  # Phase 2.9: Task type for filtering
 ) -> Optional[ImageAnnotationStatus]:
     """
     Update or create image_annotation_status record for a given image.
@@ -25,25 +38,45 @@ async def update_image_status(
     - After updating an annotation (especially state changes)
     - After deleting an annotation
 
+    Phase 2.9: Supports task_type to track status per task.
+
     Args:
         db: Database session
         project_id: Project ID
         image_id: Image ID
+        task_type: Optional task type to filter annotations (Phase 2.9)
 
     Returns:
         Updated or created ImageAnnotationStatus record, or None if no annotations exist
     """
     # Query all annotations for this image
-    annotations = db.query(Annotation).filter(
+    # Phase 2.9: Filter by task_type if provided
+    query = db.query(Annotation).filter(
         Annotation.project_id == project_id,
         Annotation.image_id == image_id
-    ).all()
+    )
+
+    if task_type:
+        # Filter annotations by annotation_type that matches the task_type
+        annotation_types = [ann_type for ann_type, task in ANNOTATION_TYPE_TO_TASK.items() if task == task_type]
+        if annotation_types:
+            query = query.filter(Annotation.annotation_type.in_(annotation_types))
+
+    annotations = query.all()
 
     # Get or create status record
-    status_record = db.query(ImageAnnotationStatus).filter(
+    # Phase 2.9: Include task_type in query
+    status_query = db.query(ImageAnnotationStatus).filter(
         ImageAnnotationStatus.project_id == project_id,
         ImageAnnotationStatus.image_id == image_id
-    ).first()
+    )
+
+    if task_type:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type == task_type)
+    else:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type.is_(None))
+
+    status_record = status_query.first()
 
     # If no annotations exist
     if not annotations:
@@ -81,6 +114,7 @@ async def update_image_status(
         status_record = ImageAnnotationStatus(
             project_id=project_id,
             image_id=image_id,
+            task_type=task_type,  # Phase 2.9: Set task_type
             status=new_status,
             first_modified_at=first_modified,
             last_modified_at=last_modified,
@@ -110,6 +144,7 @@ async def confirm_image_status(
     db: Session,
     project_id: str,
     image_id: str,
+    task_type: Optional[str] = None,  # Phase 2.9: Task type for filtering
 ) -> ImageAnnotationStatus:
     """
     Mark an image as confirmed (completed).
@@ -117,28 +152,40 @@ async def confirm_image_status(
     This sets is_image_confirmed = True and status = 'completed'.
     Should be called when user clicks "Confirm Image" button.
 
+    Phase 2.9: Supports task_type for task-specific confirmation.
+
     Args:
         db: Database session
         project_id: Project ID
         image_id: Image ID
+        task_type: Optional task type (Phase 2.9)
 
     Returns:
         Updated ImageAnnotationStatus record
     """
     # First ensure the status record is up to date
-    await update_image_status(db, project_id, image_id)
+    await update_image_status(db, project_id, image_id, task_type)
 
     # Get the status record (should exist after update_image_status)
-    status_record = db.query(ImageAnnotationStatus).filter(
+    # Phase 2.9: Include task_type in query
+    status_query = db.query(ImageAnnotationStatus).filter(
         ImageAnnotationStatus.project_id == project_id,
         ImageAnnotationStatus.image_id == image_id
-    ).first()
+    )
+
+    if task_type:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type == task_type)
+    else:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type.is_(None))
+
+    status_record = status_query.first()
 
     if not status_record:
         # Create a new one if it doesn't exist (edge case)
         status_record = ImageAnnotationStatus(
             project_id=project_id,
             image_id=image_id,
+            task_type=task_type,  # Phase 2.9: Set task_type
             status="completed",
             first_modified_at=datetime.utcnow(),
             last_modified_at=datetime.utcnow(),
@@ -163,25 +210,37 @@ async def unconfirm_image_status(
     db: Session,
     project_id: str,
     image_id: str,
+    task_type: Optional[str] = None,  # Phase 2.9: Task type for filtering
 ) -> ImageAnnotationStatus:
     """
     Unmark an image as confirmed.
 
     This sets is_image_confirmed = False and recalculates status.
 
+    Phase 2.9: Supports task_type for task-specific unconfirmation.
+
     Args:
         db: Database session
         project_id: Project ID
         image_id: Image ID
+        task_type: Optional task type (Phase 2.9)
 
     Returns:
         Updated ImageAnnotationStatus record
     """
     # Get the status record
-    status_record = db.query(ImageAnnotationStatus).filter(
+    # Phase 2.9: Include task_type in query
+    status_query = db.query(ImageAnnotationStatus).filter(
         ImageAnnotationStatus.project_id == project_id,
         ImageAnnotationStatus.image_id == image_id
-    ).first()
+    )
+
+    if task_type:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type == task_type)
+    else:
+        status_query = status_query.filter(ImageAnnotationStatus.task_type.is_(None))
+
+    status_record = status_query.first()
 
     if status_record:
         # Unconfirm the image
@@ -197,6 +256,7 @@ async def unconfirm_image_status(
         db.flush()
 
     # Update counts and status
-    await update_image_status(db, project_id, image_id)
+    # Phase 2.9: Pass task_type to update_image_status
+    await update_image_status(db, project_id, image_id, task_type)
 
     return status_record
