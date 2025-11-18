@@ -64,7 +64,7 @@ class StorageClient:
         """
         try:
             # Storage structure: datasets/{dataset_id}/images/xxx.jpg
-            s3_prefix = f"{dataset_id}/{prefix}"
+            s3_prefix = f"datasets/{dataset_id}/{prefix}"
 
             logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}")
 
@@ -155,7 +155,7 @@ class StorageClient:
         Returns:
             Presigned URL string
         """
-        key = f"{dataset_id}/images/{filename}"
+        key = f"datasets/{dataset_id}/images/{filename}"
         return self.generate_presigned_url(
             bucket=self.datasets_bucket,
             key=key,
@@ -369,7 +369,7 @@ class StorageClient:
         """
         try:
             # S3 key: datasets/{dataset_id}/annotations.json
-            key = f"{dataset_id}/annotations.json"
+            key = f"datasets/{dataset_id}/annotations.json"
 
             # Upload to Platform datasets bucket
             self.s3_client.put_object(
