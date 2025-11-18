@@ -24,6 +24,7 @@ export default function Canvas() {
     selectAnnotation,
     canvas: canvasState,
     tool,
+    setTool,
     isDrawing,
     drawingStart,
     preferences,
@@ -827,6 +828,36 @@ export default function Canvas() {
 
   return (
     <div ref={containerRef} className="flex-1 bg-white dark:bg-gray-900 relative overflow-hidden">
+      {/* Tool selector - top center */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1.5 flex items-center gap-1.5 shadow-lg z-10">
+        <button
+          onClick={() => setTool('select')}
+          className={`px-3 py-1.5 rounded transition-all text-xs font-medium ${
+            tool === 'select'
+              ? 'bg-violet-500 text-white'
+              : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+          title="Select Tool (V)"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+          </svg>
+        </button>
+        <button
+          onClick={() => setTool('bbox')}
+          className={`px-3 py-1.5 rounded transition-all text-xs font-medium ${
+            tool === 'bbox'
+              ? 'bg-violet-500 text-white'
+              : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+          title="Bounding Box (R)"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5z" />
+          </svg>
+        </button>
+      </div>
+
       <canvas
         ref={canvasRef}
         className="w-full h-full"

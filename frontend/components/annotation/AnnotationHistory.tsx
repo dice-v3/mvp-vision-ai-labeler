@@ -53,7 +53,7 @@ export default function AnnotationHistory() {
   };
 
   return (
-    <div className="border-b border-gray-300 dark:border-gray-700">
+    <div className="border-t border-b border-gray-300 dark:border-gray-700">
       {/* Header */}
       <div
         className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/50 transition-colors"
@@ -128,15 +128,15 @@ export default function AnnotationHistory() {
                       <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
                         {formatDate(version.created_at)}
                       </span>
-                      <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
-                        {version.image_count || 0}/{images.length}
-                      </span>
+                      {version.created_by_name && (
+                        <span className="text-[10px] text-gray-500 dark:text-gray-600 flex-shrink-0 truncate max-w-[80px]" title={version.created_by_name}>
+                          {version.created_by_name}
+                        </span>
+                      )}
                     </div>
-                    {version.created_by_name && (
-                      <span className="text-[10px] text-gray-500 dark:text-gray-600 flex-shrink-0 truncate max-w-[80px]" title={version.created_by_name}>
-                        {version.created_by_name}
-                      </span>
-                    )}
+                    <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
+                      {version.image_count || 0}/{images.length}
+                    </span>
                   </div>
                 </div>
               ))}
