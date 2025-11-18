@@ -37,6 +37,9 @@ class StorageClient:
         self.annotations_bucket = settings.S3_BUCKET_ANNOTATIONS
         logger.info(f"Storage client initialized: endpoint={settings.S3_ENDPOINT}")
 
+        # Ensure required buckets exist
+        self._ensure_buckets_exist()
+
     def list_dataset_images(
         self,
         dataset_id: str,
@@ -239,6 +242,21 @@ class StorageClient:
             return True
         except ClientError:
             return False
+
+    def _ensure_buckets_exist(self):
+        """Ensure all required buckets exist, create if missing."""
+        required_buckets = [self.datasets_bucket, self.annotations_bucket]
+
+        for bucket in required_buckets:
+            if not self.check_bucket_exists(bucket):
+                try:
+                    self.s3_client.create_bucket(Bucket=bucket)
+                    logger.info(f"Created bucket: {bucket}")
+                except ClientError as e:
+                    logger.error(f"Failed to create bucket {bucket}: {e}")
+                    # Don't raise, let the error occur when trying to use it
+            else:
+                logger.info(f"Bucket exists: {bucket}")
 
     def upload_export(
         self,
