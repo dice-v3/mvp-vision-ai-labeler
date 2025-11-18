@@ -266,11 +266,15 @@ async def publish_version(
         )
 
     try:
+        # Phase 2.9: Get task_type from request
+        task_type = publish_request.task_type
+
         # Auto-generate version number if not provided
         if not publish_request.version_number:
-            # Get latest version number
+            # Get latest version number for this task type
             latest_version = labeler_db.query(AnnotationVersion).filter(
                 AnnotationVersion.project_id == project_id,
+                AnnotationVersion.task_type == task_type,
                 AnnotationVersion.version_type == "published"
             ).order_by(AnnotationVersion.created_at.desc()).first()
 
@@ -286,21 +290,37 @@ async def publish_version(
         else:
             new_version_number = publish_request.version_number
 
-        # Check if version already exists
+        # Check if version already exists for this task type
         existing = labeler_db.query(AnnotationVersion).filter(
             AnnotationVersion.project_id == project_id,
+            AnnotationVersion.task_type == task_type,
             AnnotationVersion.version_number == new_version_number
         ).first()
 
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Version {new_version_number} already exists",
+                detail=f"Version {new_version_number} for task {task_type} already exists",
             )
 
-        # Get all annotations to snapshot
+        # Phase 2.9: Map task_type to annotation_type
+        # classification -> classification
+        # detection -> bbox
+        # segmentation -> polygon
+        task_to_annotation_type_map = {
+            'classification': 'classification',
+            'detection': 'bbox',
+            'segmentation': 'polygon',
+            'keypoints': 'keypoints',
+            'line': 'line',
+        }
+
+        annotation_type = task_to_annotation_type_map.get(task_type, task_type)
+
+        # Get all annotations for this task type
         query = labeler_db.query(Annotation).filter(
-            Annotation.project_id == project_id
+            Annotation.project_id == project_id,
+            Annotation.annotation_type == annotation_type
         )
 
         if not publish_request.include_draft:
@@ -320,9 +340,10 @@ async def publish_version(
             image_ids=None,
         )
 
-        # Upload DICE to S3
+        # Upload DICE to S3 (Phase 2.9: include task_type in path)
         dice_s3_key, dice_download_url, dice_expires_at = storage_client.upload_export(
             project_id=project_id,
+            task_type=task_type,
             version_number=new_version_number,
             export_data=dice_data,
             export_format='dice',
@@ -343,6 +364,7 @@ async def publish_version(
             )
             additional_s3_key, _, _ = storage_client.upload_export(
                 project_id=project_id,
+                task_type=task_type,
                 version_number=new_version_number,
                 export_data=export_data,
                 export_format=export_format,
@@ -357,6 +379,7 @@ async def publish_version(
             )
             additional_s3_key, _, _ = storage_client.upload_export(
                 project_id=project_id,
+                task_type=task_type,
                 version_number=new_version_number,
                 export_data=export_data,
                 export_format=export_format,
@@ -371,6 +394,7 @@ async def publish_version(
         # Create version record (use DICE as primary export)
         version = AnnotationVersion(
             project_id=project_id,
+            task_type=task_type,  # Phase 2.9: Task-specific versioning
             version_number=new_version_number,
             version_type="published",
             created_by=current_user.id,
@@ -405,17 +429,30 @@ async def publish_version(
             )
             labeler_db.add(snapshot)
 
-        # Update Platform S3 with official DICE annotations.json
+        # Update Platform S3 with official task-specific DICE annotations
         try:
-            storage_client.update_platform_annotations(
+            annotation_path = storage_client.update_platform_annotations(
                 dataset_id=project.dataset_id,
+                task_type=task_type,
                 dice_data=dice_data,
                 version_number=new_version_number
             )
+
+            # Update Platform DB with new annotation_path and labeled status
+            from app.db.models.platform import Dataset
+            dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+            if dataset:
+                dataset.annotation_path = annotation_path
+                dataset.labeled = True
+                platform_db.commit()
+                logger.info(f"Updated Platform DB: annotation_path={annotation_path}, labeled=True")
+            else:
+                logger.warning(f"Dataset {project.dataset_id} not found in Platform DB")
+
         except Exception as e:
             # Log error but don't fail the publish
             # Version is still created in Labeler, just Platform sync failed
-            logger.error(f"Failed to update Platform S3: {e}")
+            logger.error(f"Failed to update Platform S3/DB: {e}")
 
         labeler_db.commit()
         labeler_db.refresh(version)
@@ -424,6 +461,7 @@ async def publish_version(
         return VersionResponse(
             id=version.id,
             project_id=version.project_id,
+            task_type=version.task_type,  # Phase 2.9
             version_number=version.version_number,
             version_type=version.version_type,
             created_at=version.created_at,
@@ -504,9 +542,13 @@ async def list_versions(
         # Get user info from platform DB
         user = platform_db.query(User).filter(User.id == version.created_by).first() if version.created_by else None
 
+        # Debug: Print task_type value
+        print(f"[list_versions] Version {version.version_number}: task_type={version.task_type}")
+
         version_responses.append(VersionResponse(
             id=version.id,
             project_id=version.project_id,
+            task_type=version.task_type,  # Phase 2.9: Include task_type
             version_number=version.version_number,
             version_type=version.version_type,
             created_at=version.created_at,

@@ -32,8 +32,13 @@ class AnnotationProject(LabelerBase):
     task_types = Column(ARRAY(String(50)), nullable=False)
     task_config = Column(JSONB, nullable=False)
 
-    # Classes definition
-    classes = Column(JSONB, nullable=False)
+    # Classes definition (Phase 2.9: task-based structure)
+    # Structure: {task_type: {class_id: {name, color, image_count, bbox_count}}}
+    # Example: {"classification": {"1": {"name": "cat", "color": "#ff0000"}}, "detection": {"1": {...}}}
+    task_classes = Column(JSONB, nullable=False, default={})
+
+    # Legacy field for backward compatibility (deprecated in Phase 2.9)
+    classes = Column(JSONB, nullable=False, default={})
 
     # Project settings
     settings = Column(JSONB, default={})
@@ -184,13 +189,18 @@ class AnnotationTask(LabelerBase):
 
 
 class ImageAnnotationStatus(LabelerBase):
-    """Phase 2.7: Image annotation status tracking."""
+    """Phase 2.7: Image annotation status tracking.
+    Phase 2.9: Added task_type for task-specific status tracking.
+    """
 
     __tablename__ = "image_annotation_status"
 
     id = Column(Integer, primary_key=True)
     project_id = Column(String(50), nullable=False, index=True)
     image_id = Column(String(255), nullable=False, index=True)
+
+    # Phase 2.9: Task type for task-specific status
+    task_type = Column(String(50), nullable=True, index=True)  # Nullable for backward compatibility
 
     # Status: not-started, in-progress, completed
     status = Column(String(20), nullable=False, default="not-started", index=True)
@@ -210,6 +220,8 @@ class ImageAnnotationStatus(LabelerBase):
 
     __table_args__ = (
         Index("ix_image_annotation_status_project_status", "project_id", "status"),
+        # Phase 2.9: Unique constraint for (project, image, task_type)
+        Index("ix_image_annotation_status_project_image_task", "project_id", "image_id", "task_type", unique=True),
     )
 
     def __repr__(self):
@@ -257,6 +269,9 @@ class AnnotationVersion(LabelerBase):
     id = Column(Integer, primary_key=True)
     project_id = Column(String(50), nullable=False, index=True)
 
+    # Phase 2.9: Task-specific versioning
+    task_type = Column(String(20), nullable=False, index=True)  # 'classification', 'detection', 'segmentation'
+
     # Version info
     version_number = Column(String(20), nullable=False)  # "v1.0", "v1.1", etc.
     version_type = Column(String(20), nullable=False)     # 'working' | 'published'
@@ -277,8 +292,9 @@ class AnnotationVersion(LabelerBase):
     download_url_expires_at = Column(DateTime)  # When the presigned URL expires
 
     __table_args__ = (
-        Index("ix_annotation_versions_project_version", "project_id", "version_number", unique=True),
+        Index("ix_annotation_versions_project_task_version", "project_id", "task_type", "version_number", unique=True),
         Index("ix_annotation_versions_project_type", "project_id", "version_type"),
+        Index("ix_annotation_versions_task_type", "task_type"),
     )
 
     def __repr__(self):

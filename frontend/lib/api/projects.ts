@@ -90,6 +90,7 @@ export interface ImageStatus {
   id: number;
   project_id: string;
   image_id: string;
+  task_type?: string;  // Phase 2.9: Task type for task-specific status
   status: string;  // not-started, in-progress, completed
   first_modified_at?: string;
   last_modified_at?: string;
@@ -117,21 +118,54 @@ export interface ImageConfirmResponse {
 
 /**
  * Get image annotation statuses for a project
+ *
+ * Phase 2.9: Supports task_type parameter for filtering
  */
-export async function getProjectImageStatuses(projectId: string): Promise<ImageStatusListResponse> {
-  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status`);
+export async function getProjectImageStatuses(
+  projectId: string,
+  taskType?: string
+): Promise<ImageStatusListResponse> {
+  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : '';
+  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status${params}`);
 }
 
 /**
  * Confirm an image (marks all annotations as confirmed)
+ *
+ * Phase 2.9: Supports task_type parameter for task-specific confirmation
  */
-export async function confirmImage(projectId: string, imageId: string): Promise<ImageConfirmResponse> {
-  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/confirm`, {});
+export async function confirmImage(
+  projectId: string,
+  imageId: string,
+  taskType?: string
+): Promise<ImageConfirmResponse> {
+  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : '';
+  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/confirm${params}`, {});
 }
 
 /**
  * Unconfirm an image (reverts annotations to draft)
+ *
+ * Phase 2.9: Supports task_type parameter for task-specific unconfirmation
  */
-export async function unconfirmImage(projectId: string, imageId: string): Promise<ImageConfirmResponse> {
-  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/unconfirm`, {});
+export async function unconfirmImage(
+  projectId: string,
+  imageId: string,
+  taskType?: string
+): Promise<ImageConfirmResponse> {
+  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : '';
+  return apiClient.post<ImageConfirmResponse>(`/api/v1/projects/${projectId}/images/${imageId}/unconfirm${params}`, {});
+}
+
+// ============================================================================
+// Task Type Management API
+// ============================================================================
+
+/**
+ * Add a new task type to a project
+ */
+export async function addTaskType(projectId: string, taskType: string): Promise<Project> {
+  return apiClient.post<Project>(`/api/v1/projects/${projectId}/task-types`, {
+    task_type: taskType
+  });
 }

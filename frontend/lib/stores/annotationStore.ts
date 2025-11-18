@@ -24,6 +24,7 @@ export interface Point {
 export interface ImageData {
   id: string;
   file_name: string;
+  folder_path?: string;  // Folder path for folder-structured datasets
   url: string;
   width?: number;
   height?: number;
@@ -78,6 +79,9 @@ export interface Project {
   name: string;
   datasetId: string;
   taskTypes: string[];
+  // Phase 2.9: Task-based classes structure
+  taskClasses: Record<string, Record<string, ClassInfo>>;  // {task_type: {class_id: ClassInfo}}
+  // Legacy field for backward compatibility
   classes: Record<string, ClassInfo>;
   taskConfig: Record<string, any>;
 }
@@ -132,6 +136,9 @@ interface AnnotationState {
   currentIndex: number;
   currentImage: ImageData | null;
 
+  // Phase 2.9: Current task context
+  currentTask: string | null;  // 'classification', 'detection', 'segmentation', etc.
+
   // Annotations
   annotations: Annotation[];
   selectedAnnotationId: string | null;
@@ -181,6 +188,11 @@ interface AnnotationState {
   goToNextImage: () => void;
   goToPrevImage: () => void;
   goToImage: (index: number) => void;
+
+  // Phase 2.9: Task switching
+  setCurrentTask: (taskType: string) => void;
+  switchTask: (taskType: string) => void;
+  getCurrentClasses: () => Record<string, ClassInfo>;
 
   // Annotations
   setAnnotations: (annotations: Annotation[]) => void;
@@ -265,6 +277,7 @@ const initialState = {
   images: [],
   currentIndex: 0,
   currentImage: null,
+  currentTask: null,  // Phase 2.9: Current task context
   annotations: [],
   selectedAnnotationId: null,
   clipboard: null,
@@ -309,7 +322,11 @@ export const useAnnotationStore = create<AnnotationState>()(
       // Project & Images
       // ======================================================================
 
-      setProject: (project) => set({ project }),
+      setProject: (project) => {
+        // Phase 2.9: Set initial task to first task type
+        const initialTask = project?.taskTypes?.[0] || null;
+        set({ project, currentTask: initialTask });
+      },
 
       setImages: (images) => {
         const currentImage = images.length > 0 ? images[0] : null;
@@ -344,6 +361,75 @@ export const useAnnotationStore = create<AnnotationState>()(
 
       goToImage: (index) => {
         get().setCurrentIndex(index);
+      },
+
+      // ======================================================================
+      // Phase 2.9: Task Switching
+      // ======================================================================
+
+      setCurrentTask: (taskType) => {
+        set({ currentTask: taskType });
+      },
+
+      /**
+       * Switch to a different task type.
+       * This resets the entire annotation context:
+       * - Clears current annotations
+       * - Resets tool to select
+       * - Clears selection
+       * - Resets canvas zoom/pan
+       * - Clears undo/redo history
+       */
+      switchTask: (taskType) => {
+        const { project } = get();
+
+        // Validate task exists in project
+        if (!project?.taskTypes?.includes(taskType)) {
+          console.error(`Task type "${taskType}" not found in project`);
+          return;
+        }
+
+        // Reset annotation context for new task
+        set({
+          currentTask: taskType,
+          annotations: [],
+          selectedAnnotationId: null,
+          tool: 'select',
+          canvas: {
+            zoom: 1.0,
+            pan: { x: 0, y: 0 },
+            cursor: { x: 0, y: 0 },
+          },
+          history: {
+            past: [],
+            future: [],
+          },
+          lastSelectedClassId: null,
+          hiddenAnnotationIds: new Set(),
+          showAllAnnotations: true,
+        });
+
+        console.log(`Switched to task: ${taskType}`);
+      },
+
+      /**
+       * Get classes for the current task.
+       * Returns empty object if no task is selected or project has no task_classes.
+       */
+      getCurrentClasses: () => {
+        const { project, currentTask } = get();
+
+        if (!project || !currentTask) {
+          return {};
+        }
+
+        // Phase 2.9: Use task_classes structure
+        if (project.taskClasses && project.taskClasses[currentTask]) {
+          return project.taskClasses[currentTask];
+        }
+
+        // Fallback to legacy classes field
+        return project.classes || {};
       },
 
       // ======================================================================

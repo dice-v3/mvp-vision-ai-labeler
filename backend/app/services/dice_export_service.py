@@ -26,9 +26,11 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+import json
 
 from app.db.models.labeler import Annotation, AnnotationProject, ImageAnnotationStatus
 from app.db.models.platform import Dataset, User
+from app.core.storage import storage_client
 
 
 def export_to_dice(
@@ -87,6 +89,9 @@ def export_to_dice(
             images_dict[ann.image_id] = []
         images_dict[ann.image_id].append(ann)
 
+    # Load image_id → file_name mapping from Platform annotations file
+    image_filename_map = _load_image_filename_mapping(dataset, project.task_types[0] if project.task_types else 'detection')
+
     # Build DICE images array
     dice_images = []
     image_id_mapping = {}  # Map image_id to DICE numeric ID
@@ -124,11 +129,19 @@ def export_to_dice(
                     User.id == confirmed_by_id
                 ).first()
 
+        # Get actual file_name from mapping (fallback to image_id if not found)
+        file_name = image_filename_map.get(image_id, image_id)
+
+        # Get image dimensions from mapping if available
+        image_info = image_filename_map.get(f"{image_id}_info", {})
+        width = image_info.get('width', 0)
+        height = image_info.get('height', 0)
+
         dice_image = {
             "id": idx,
-            "file_name": image_id,
-            "width": 0,  # TODO: Get from S3 metadata or store in DB
-            "height": 0,
+            "file_name": file_name,
+            "width": width,
+            "height": height,
             "depth": 3,  # Assume RGB images
             "split": "train",  # TODO: Implement train/val/test split logic
             "annotations": [
@@ -328,3 +341,56 @@ def get_export_stats(dice_data: Dict[str, Any]) -> Dict[str, int]:
         "annotation_count": dice_data.get("statistics", {}).get("total_annotations", 0),
         "class_count": len(dice_data.get("classes", [])),
     }
+
+
+def _load_image_filename_mapping(dataset: Dataset, task_type: str) -> Dict[str, Any]:
+    """
+    Load image_id → file_name mapping from Platform annotations file.
+
+    Args:
+        dataset: Platform Dataset object
+        task_type: Task type (detection, classification, segmentation)
+
+    Returns:
+        Dictionary mapping image_id to file_name
+        Also includes {image_id}_info → {width, height} for dimensions
+    """
+    mapping = {}
+
+    # If dataset has no annotation_path, return empty mapping
+    if not dataset or not dataset.annotation_path:
+        return mapping
+
+    try:
+        # Download annotations file from S3
+        annotation_data = storage_client.s3_client.get_object(
+            Bucket=storage_client.datasets_bucket,
+            Key=dataset.annotation_path
+        )
+
+        # Parse JSON
+        content = annotation_data['Body'].read().decode('utf-8')
+        annotations_json = json.loads(content)
+
+        # Build mapping from images array
+        images = annotations_json.get('images', [])
+        for img in images:
+            image_id = str(img.get('id'))  # Convert to string to match DB
+            file_name = img.get('file_name')
+
+            if image_id and file_name:
+                mapping[image_id] = file_name
+
+                # Also store dimensions if available
+                mapping[f"{image_id}_info"] = {
+                    'width': img.get('width', 0),
+                    'height': img.get('height', 0)
+                }
+
+        return mapping
+
+    except Exception as e:
+        # If loading fails, log error and return empty mapping
+        # This allows export to continue with fallback (image_id as file_name)
+        print(f"Warning: Failed to load image filename mapping: {e}")
+        return mapping

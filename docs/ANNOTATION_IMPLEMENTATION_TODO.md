@@ -1473,3 +1473,275 @@ POST /api/v1/storage/upload
 
 **Phase 2 Priority**: Annotation Confirmation (2.7) and Version Management (2.8) - 42h total
 **Storage Strategy**: S3 direct access (Phase 2) → Platform API migration (Phase 4)
+
+---
+
+## Phase 2.9: Task-Based Architecture (Week 6) ⭐ NEW
+
+**Goal**: Task-separated annotations with complete context isolation
+**Status**: ✅ **COMPLETE** (2025-11-19)
+**Documentation**: `docs/phase-2.9-implementation-summary.md`, `docs/task-context-architecture.md`
+
+### Summary
+
+Complete implementation of task-based annotation architecture enabling independent workflows for classification, detection, and segmentation tasks.
+
+**Key Features**:
+- Task-separated annotation files (`annotations_classification.json`, `annotations_detection.json`, etc.)
+- Independent versioning per task (classification v2.0, detection v1.0)
+- Complete UI context isolation (switching tasks resets all state)
+- Task-based S3 storage paths (`exports/{project_id}/{task_type}/{version}/`)
+- JSONB task_classes structure for flexible class management
+- Auto-select primary task based on progress
+- Dashboard task tabs with task-specific statistics
+
+**Database Changes**:
+- [x] Added `task_type` column to `annotation_versions` table ✅
+- [x] Added `task_classes` JSONB column to `annotation_projects` table ✅
+- [x] Created unique index on (project_id, task_type, version_number) ✅
+- [x] Migrated existing data (all projects → detection) ✅
+
+**Backend Implementation**:
+- [x] Updated `AnnotationProject` and `AnnotationVersion` models ✅
+- [x] Modified publish_version to include task_type ✅
+- [x] Updated storage paths to include task_type ✅
+- [x] Added task-to-annotation-type mapping (detection→bbox) ✅
+- [x] Updated Platform DB annotation_path on publish ✅
+- [x] Added task_type to VersionResponse in list_versions API ✅
+
+**Frontend Implementation**:
+- [x] Task switcher dropdown in TopBar ✅
+- [x] `switchTask()` function with complete state reset ✅
+- [x] Task-specific class display (getCurrentClasses) ✅
+- [x] Task-filtered version list in TopBar ✅
+- [x] Task-filtered version list in AnnotationHistory ✅
+- [x] Tool visibility based on task (hide BBox for classification) ✅
+- [x] RightPanel class stats filtered by current task ✅
+- [x] Auto-select primary task based on progress on project load ✅
+- [x] Reload image statuses when task changes ✅
+- [x] Dashboard task tabs with progress percentages ✅
+- [x] Dashboard statistics cards show task-specific data ✅
+- [x] Dashboard classes table filtered by selected task ✅
+- [x] Primary task star indicator on task tabs ✅
+
+**Migration**:
+- [x] Database schema migration (alembic upgrade head) ✅
+- [x] Data migration (fix_detection_migration.py) ✅
+- [x] Platform annotations migration (migrate_storage_annotations_complete.py) ✅
+- [x] Export files migration (migrate_export_files.py) ✅
+
+**Files Changed**: 25+ files (9 backend, 11 frontend, 2 migrations, 3 docs)
+**Estimate**: 40 hours
+**Actual**: ~25 hours
+**Completion Date**: 2025-11-19
+
+**Git Commits**:
+- `dfa14eb` - docs: Add annotation file management strategy analysis
+- (pending) - feat: Phase 2.9 complete - Task-based architecture with dashboard integration
+
+---
+
+## Phase 2.10: Dataset Management (Weeks 7-11) ⭐ NEW
+
+**Goal**: Enable dataset upload/delete in Labeler, preparing for Platform migration
+**Status**: 📋 Planning Complete (2025-11-18)
+**Priority**: High (Critical bug fix + Infrastructure improvement)
+**Documentation**: `docs/phase-2.10-dataset-management.md`
+
+### Current Issue
+
+**Problem**: det-mvtec dataset has corrupted annotations
+- Image paths stored as '1', '2', '3' instead of 'bottle/broken_large/000.png'
+- Root cause: DICE export uses `image_id` as `file_name`
+- Image preview broken for datasets with folder structure
+
+**Immediate Fix**: DICE export service bug (Priority P0)
+
+### Phases
+
+#### Phase 2.10.1: Dataset Deletion (Week 7) - P0 Critical
+
+**Goal**: Fix broken datasets + Proper cleanup mechanism
+**Estimate**: 15 hours
+
+- [ ] **Fix: DICE export service** ⚡ IMMEDIATE
+  - Fix `dice_export_service.py:129` to use actual file_path
+  - Load file_name from Platform DB or S3 metadata
+  - Test with folder-structured datasets
+  - **Estimate**: 2 hours
+  - **Priority**: P0 - Blocking
+  - **Status**: Not started
+
+- [ ] **Backend: DELETE /api/v1/datasets/{id}**
+  - Cascade delete Labeler DB data
+  - Delete S3 files (images + annotations + exports)
+  - Delete Platform DB record
+  - Return deletion summary
+  - **Estimate**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/datasets.py`
+
+- [ ] **Backend: Dataset deletion service**
+  - `calculate_deletion_impact()` - Preview what will be deleted
+  - `delete_labeler_data()` - Remove projects, annotations, versions
+  - `delete_s3_data()` - Clean up S3 buckets
+  - `create_final_backup()` - Optional export before deletion
+  - **Estimate**: 4 hours
+  - **File**: `backend/app/services/dataset_delete_service.py`
+
+- [ ] **Frontend: Delete confirmation modal**
+  - Dataset name verification input
+  - Deletion impact display (images, annotations, versions, storage)
+  - Optional backup checkbox
+  - Loading states
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/datasets/DeleteDatasetModal.tsx`
+
+- [ ] **Frontend: Delete button integration**
+  - Add delete button to dataset cards
+  - Keyboard shortcut support
+  - Success/error toast notifications
+  - **Estimate**: 1 hour
+  - **File**: `frontend/app/datasets/page.tsx`
+
+- [ ] **Test: Delete det-mvtec dataset**
+  - Verify all data cleaned up
+  - Check orphaned data
+  - Re-upload clean dataset
+  - **Estimate**: 2 hours
+
+**Subtotal**: 15 hours
+
+**Dependency**: Requires Platform deletion impact analysis
+**Blocker**: DICE export bug must be fixed first
+
+#### Phase 2.10.2: Dataset Upload (Weeks 8-9) - P1 High
+
+**Goal**: Enable dataset upload from Labeler
+**Status**: ⏸️ Deferred (pending deletion implementation)
+**Estimate**: 25 hours
+
+- [ ] **Backend: POST /api/v1/datasets/upload**
+  - Multi-file upload support
+  - ZIP extraction with folder structure preservation
+  - Annotation import (COCO/DICE format)
+  - Auto-create project
+  - **Estimate**: 8 hours
+
+- [ ] **Backend: Upload services**
+  - `upload_files_to_s3()` - Handle images + ZIP
+  - `parse_annotation_file()` - Support COCO/DICE
+  - `import_annotations_to_db()` - Bulk insert
+  - **Estimate**: 6 hours
+
+- [ ] **Frontend: Upload wizard**
+  - 4-step wizard (Info → Files → Annotations → Review)
+  - Drag & drop file upload
+  - Progress tracking
+  - Folder structure preview
+  - **Estimate**: 8 hours
+
+- [ ] **Frontend: Upload progress**
+  - Real-time upload progress (bytes/total)
+  - File validation
+  - Error handling
+  - **Estimate**: 3 hours
+
+**Subtotal**: 25 hours
+
+**Requirements**:
+- ZIP support (preserve folder structure)
+- Annotation format detection (COCO/DICE/YOLO)
+- Image dimension extraction (PIL)
+- Duplicate name validation
+
+#### Phase 2.10.3: UI Enhancements (Week 10) - P2 Medium
+
+**Goal**: Improved dataset management UX
+**Status**: ⏸️ Planning
+**Estimate**: 12 hours
+
+- [ ] **Bulk operations**
+  - Multi-select datasets
+  - Bulk delete with confirmation
+  - Bulk export
+  - **Estimate**: 4 hours
+
+- [ ] **Dataset detail page**
+  - Storage usage breakdown
+  - Version history timeline
+  - Download options
+  - Share/export
+  - **Estimate**: 5 hours
+
+- [ ] **Filter & search**
+  - Filter by labeled/unlabeled
+  - Search by name
+  - Sort by size/date/name
+  - **Estimate**: 3 hours
+
+**Subtotal**: 12 hours
+
+#### Phase 2.10.4: Safety Features (Week 11) - P2 Medium
+
+**Goal**: Audit log and recovery mechanisms
+**Status**: ⏸️ Planning
+**Estimate**: 10 hours
+
+- [ ] **Soft delete**
+  - Add deleted_at, deleted_by columns
+  - Restore endpoint
+  - Automatic cleanup after 30 days
+  - **Estimate**: 3 hours
+
+- [ ] **Audit log**
+  - DatasetAuditLog table
+  - Track all dataset actions
+  - User attribution
+  - **Estimate**: 4 hours
+
+- [ ] **Testing**
+  - E2E deletion flow
+  - Upload + delete + restore
+  - Orphaned data detection
+  - **Estimate**: 3 hours
+
+**Subtotal**: 10 hours
+
+### Total Phase 2.10 Estimate
+
+| Phase | Hours | Priority | Status |
+|-------|-------|----------|--------|
+| 2.10.1: Deletion | 15h | P0 Critical | ⏸️ Ready to start |
+| 2.10.2: Upload | 25h | P1 High | ⏸️ Deferred |
+| 2.10.3: UI | 12h | P2 Medium | ⏸️ Planning |
+| 2.10.4: Safety | 10h | P2 Medium | ⏸️ Planning |
+| **Total** | **62h** | | |
+
+### Migration Strategy
+
+**Month 1-2**: Parallel operation
+- Platform: Keep existing features
+- Labeler: Add upload/delete
+- Users choose which to use
+
+**Month 3-4**: Feature parity
+- Labeler: Match Platform features
+- Platform: Deprecation notice
+
+**Month 5-6**: Full migration
+- Platform: Read-only mode
+- Platform: Sunset
+
+### Critical Findings
+
+**Platform-Labeler Separation**:
+- ❌ No FK constraints between databases
+- ❌ Platform deletion leaves orphaned Labeler data
+- ✅ Labeler deletion MUST cascade to both DBs
+
+**Root Cause Analysis**:
+- DICE export uses `image_id` (DB string) as `file_name`
+- Should use actual file path from S3 or Platform DB
+- Affects all datasets with folder structure
+
+---

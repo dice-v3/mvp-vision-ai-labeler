@@ -32,11 +32,15 @@ class ImageListResponse(BaseModel):
 
 # Phase 2.7: Image Status Schemas
 class ImageStatusResponse(BaseModel):
-    """Image annotation status response."""
+    """Image annotation status response.
+
+    Phase 2.9: Added task_type for task-specific status.
+    """
 
     id: int
     project_id: str
     image_id: str
+    task_type: Optional[str] = None  # Phase 2.9: Task type (nullable for backward compatibility)
     status: str  # not-started, in-progress, completed
     first_modified_at: Optional[datetime] = None
     last_modified_at: Optional[datetime] = None

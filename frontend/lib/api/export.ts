@@ -26,6 +26,7 @@ export interface ExportResponse {
 }
 
 export interface VersionPublishRequest {
+  task_type: string; // Phase 2.9: Task-specific versioning
   version_number?: string;
   description?: string;
   export_format: 'dice' | 'coco' | 'yolo';
@@ -35,6 +36,7 @@ export interface VersionPublishRequest {
 export interface Version {
   id: number;
   project_id: string;
+  task_type: string; // Phase 2.9: Task-specific versioning
   version_number: string;
   version_type: 'working' | 'published';
   created_at: string;

@@ -15,8 +15,17 @@ from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.models.platform import Dataset, User
 from app.db.models.labeler import AnnotationProject, Annotation
-from app.schemas.dataset import DatasetResponse
+from app.schemas.dataset import (
+    DatasetResponse,
+    DeleteDatasetRequest,
+    DeleteDatasetResponse,
+    DeletionImpactResponse,
+)
 from app.schemas.project import ProjectResponse
+from app.services.dataset_delete_service import (
+    calculate_deletion_impact,
+    delete_dataset_complete,
+)
 
 router = APIRouter()
 
@@ -240,19 +249,16 @@ async def get_or_create_project_for_dataset(
 
     # If not, create one with sensible defaults
     if not project:
-        # Initialize default values
-        task_types = ["classification"]
-        task_config = {
-            "classification": {
-                "multi_label": False,
-                "show_confidence": False,
-            }
-        }
+        # Initialize with EMPTY task types - users will add them manually
+        task_types = []
+        task_config = {}
+        task_classes = {}
         classes = {}
         annotated_images = 0
         total_annotations = 0
 
-        # If dataset is labeled, load existing annotations
+        # If dataset is labeled, load existing annotations for statistics and classes
+        # but DON'T auto-assign task types
         if dataset.labeled and dataset.annotation_path:
             annotations_data = load_annotations_from_s3(dataset.annotation_path)
             if annotations_data:
@@ -277,6 +283,7 @@ async def get_or_create_project_for_dataset(
                     class_stats[cat_id]['bbox_count'] += 1
 
                 # Extract classes from categories with generated colors and statistics
+                # Store in legacy 'classes' field for now
                 categories = annotations_data.get('categories', [])
                 if categories:
                     total_categories = len(categories)
@@ -296,17 +303,6 @@ async def get_or_create_project_for_dataset(
                             'bbox_count': stats['bbox_count'],
                         }
 
-                # Determine task types based on annotation structure
-                # If annotations have 'bbox', it's detection
-                if annotations_list and 'bbox' in annotations_list[0]:
-                    task_types = ["detection"]
-                    task_config = {
-                        "detection": {
-                            "show_labels": True,
-                            "show_confidence": False,
-                        }
-                    }
-
         project = AnnotationProject(
             id=f"proj_{uuid.uuid4().hex[:12]}",
             name=dataset.name,
@@ -315,7 +311,8 @@ async def get_or_create_project_for_dataset(
             owner_id=current_user.id,
             task_types=task_types,
             task_config=task_config,
-            classes=classes,
+            task_classes=task_classes,  # Phase 2.9: Task-based classes
+            classes=classes,  # Legacy field
             settings={},
             total_images=dataset.num_images or 0,
             annotated_images=annotated_images,
@@ -358,7 +355,8 @@ async def get_or_create_project_for_dataset(
         owner_id=project.owner_id,
         task_types=project.task_types,
         task_config=project.task_config,
-        classes=updated_classes,
+        task_classes=project.task_classes or {},  # Phase 2.9: Task-based classes
+        classes=updated_classes,  # Legacy field for backward compatibility
         settings=project.settings,
         total_images=project.total_images,
         annotated_images=project.annotated_images,
@@ -501,3 +499,102 @@ async def list_dataset_images(
             continue
 
     return result
+
+
+@router.get("/{dataset_id}/deletion-impact", response_model=DeletionImpactResponse, tags=["Datasets"])
+async def get_deletion_impact(
+    dataset_id: str,
+    platform_db: Session = Depends(get_platform_db),
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Preview the impact of deleting a dataset.
+
+    Returns information about:
+    - Number of projects that will be deleted
+    - Number of images affected
+    - Number of annotations that will be deleted
+    - Number of export versions that will be deleted
+    - Storage size that will be freed
+
+    - **dataset_id**: Dataset ID
+    """
+    try:
+        impact = calculate_deletion_impact(labeler_db, platform_db, dataset_id)
+        return DeletionImpactResponse(**impact.to_dict())
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate deletion impact: {str(e)}"
+        )
+
+
+@router.delete("/{dataset_id}", response_model=DeleteDatasetResponse, tags=["Datasets"])
+async def delete_dataset(
+    dataset_id: str,
+    request: DeleteDatasetRequest,
+    platform_db: Session = Depends(get_platform_db),
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a dataset completely.
+
+    This will:
+    1. Delete all annotation projects for the dataset
+    2. Delete all annotations in Labeler DB
+    3. Delete all image annotation statuses
+    4. Delete all export versions
+    5. Delete all S3 files (images, annotations, exports)
+    6. Delete the dataset record from Platform DB
+
+    **IMPORTANT**: This is a destructive operation and cannot be undone.
+    You must confirm by providing the exact dataset name.
+
+    - **dataset_id**: Dataset ID
+    - **request**: Deletion request with confirmation
+    """
+    # Verify dataset exists
+    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Verify dataset name confirmation
+    if request.dataset_name_confirmation != dataset.name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dataset name confirmation does not match. Expected: '{dataset.name}'"
+        )
+
+    # Check permissions - only owner can delete
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the dataset owner can delete the dataset"
+        )
+
+    try:
+        # Perform complete deletion
+        result = delete_dataset_complete(
+            labeler_db=labeler_db,
+            platform_db=platform_db,
+            dataset_id=dataset_id,
+            create_backup=request.create_backup
+        )
+
+        return DeleteDatasetResponse(**result)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete dataset: {str(e)}"
+        )

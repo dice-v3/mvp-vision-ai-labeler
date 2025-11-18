@@ -77,7 +77,9 @@ export interface Project {
   owner_id: number;
   task_types: string[];
   task_config: Record<string, any>;
-  classes: Record<string, ClassInfo>;
+  // Phase 2.9: Task-based classes
+  task_classes?: Record<string, Record<string, ClassInfo>>;  // {task_type: {class_id: ClassInfo}}
+  classes: Record<string, ClassInfo>;  // Legacy field for backward compatibility
   settings: Record<string, any>;
   total_images: number;
   annotated_images: number;

@@ -42,6 +42,7 @@ export default function Canvas() {
     goToNextImage,
     goToPrevImage,
     setCurrentIndex,
+    currentTask, // Phase 2.9
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -741,7 +742,8 @@ export default function Canvas() {
     setConfirmingImage(true);
     try {
       // Call API to confirm image (will also confirm all draft annotations)
-      await confirmImage(project.id, currentImage.id);
+      // Phase 2.9: Pass currentTask for task-specific confirmation
+      await confirmImage(project.id, currentImage.id, currentTask || undefined);
 
       // Update local state - mark all annotations as confirmed
       const updatedAnnotations = annotations.map(ann => ({
@@ -844,20 +846,24 @@ export default function Canvas() {
           </svg>
           <span>Select</span>
         </button>
-        <button
-          onClick={() => setTool('bbox')}
-          className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
-            tool === 'bbox'
-              ? 'bg-violet-500 text-white'
-              : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-          }`}
-          title="Bounding Box (R)"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <rect x="4" y="4" width="16" height="16" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />
-          </svg>
-          <span>BBox</span>
-        </button>
+
+        {/* Phase 2.9: Show BBox tool only for detection and segmentation tasks */}
+        {currentTask !== 'classification' && (
+          <button
+            onClick={() => setTool('bbox')}
+            className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
+              tool === 'bbox'
+                ? 'bg-violet-500 text-white'
+                : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+            title="Bounding Box (R)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="4" y="4" width="16" height="16" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />
+            </svg>
+            <span>BBox</span>
+          </button>
+        )}
       </div>
 
       <canvas

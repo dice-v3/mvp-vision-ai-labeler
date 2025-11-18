@@ -32,13 +32,28 @@ export default function RightPanel() {
     isAnnotationVisible,
     showAllAnnotations,
     images,
+    getCurrentClasses, // Phase 2.9: Get task-specific classes
+    currentTask,
   } = useAnnotationStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
   const [classStats, setClassStats] = useState<Record<string, { bboxCount: number; imageCount: number }>>({});
 
-  // Load class statistics from all annotations
+  // Phase 2.9: Map annotation_type to task type for filtering
+  const getTaskTypeForAnnotation = (annotationType: string): string => {
+    const mapping: Record<string, string> = {
+      'bbox': 'detection',
+      'rotated_bbox': 'detection',
+      'polygon': 'segmentation',
+      'classification': 'classification',
+      'keypoint': 'keypoint',
+      'line': 'line',
+    };
+    return mapping[annotationType] || annotationType;
+  };
+
+  // Load class statistics from annotations (filtered by current task)
   useEffect(() => {
     if (!project?.id) return;
 
@@ -46,10 +61,16 @@ export default function RightPanel() {
       try {
         const allAnnotations = await getProjectAnnotations(project.id);
 
+        // Phase 2.9: Filter annotations by current task
+        const filteredAnnotations = allAnnotations.filter((ann: any) => {
+          const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
+          return !currentTask || annTaskType === currentTask;
+        });
+
         // Calculate bbox count and unique image count per class
         const stats: Record<string, { bboxCount: number; imageIds: Set<string> }> = {};
 
-        allAnnotations.forEach((ann: any) => {
+        filteredAnnotations.forEach((ann: any) => {
           const classId = ann.class_id || ann.classId;
           if (!classId) return;
 
@@ -80,7 +101,7 @@ export default function RightPanel() {
     };
 
     loadClassStats();
-  }, [project?.id, annotations]); // Reload when annotations change
+  }, [project?.id, annotations, currentTask]); // Phase 2.9: Reload when task changes
 
   // Refresh project data after adding a class
   const handleClassAdded = async () => {
@@ -94,7 +115,8 @@ export default function RightPanel() {
           name: updatedProject.name,
           datasetId: updatedProject.dataset_id,
           taskTypes: updatedProject.task_types,
-          classes: updatedProject.classes,
+          taskClasses: updatedProject.task_classes || {}, // Phase 2.9
+          classes: updatedProject.classes, // Legacy
           taskConfig: updatedProject.task_config,
         }
       });
@@ -220,7 +242,9 @@ export default function RightPanel() {
           // Support both camelCase and snake_case
           const classId = (ann as any).classId || (ann as any).class_id;
           const className = (ann as any).className || (ann as any).class_name;
-          const classInfo = classId && project ? project.classes[classId] : null;
+          // Phase 2.9: Use getCurrentClasses() for task-specific classes
+          const currentClasses = getCurrentClasses();
+          const classInfo = classId ? currentClasses[classId] : null;
           const color = classInfo?.color || '#6b7280';
           const isVisible = isAnnotationVisible(ann.id);
 
@@ -370,7 +394,9 @@ export default function RightPanel() {
                 <div className="mb-2">
                   <div className="text-[9px] text-gray-600 dark:text-gray-500 mb-1 uppercase tracking-wider">Current Image</div>
                   {Array.from(currentImageClasses.entries()).map(([classId, count]) => {
-                    const classInfo = project.classes[classId];
+                    // Phase 2.9: Use getCurrentClasses() for task-specific classes
+                    const currentClasses = getCurrentClasses();
+                    const classInfo = currentClasses[classId];
                     if (!classInfo) return null;
                     return (
                       <div
@@ -396,7 +422,8 @@ export default function RightPanel() {
           return null;
         })()}
 
-        {project && Object.entries(project.classes).map(([classId, classInfo], index) => {
+        {/* Phase 2.9: Display only classes for current task */}
+        {project && Object.entries(getCurrentClasses()).map(([classId, classInfo], index) => {
           // Get stats from loaded class statistics
           const stats = classStats[classId] || { bboxCount: 0, imageCount: 0 };
 
@@ -420,8 +447,11 @@ export default function RightPanel() {
             </div>
           );
         })}
-        {(!project || Object.keys(project.classes).length === 0) && (
-          <div className="text-[10px] text-gray-600 dark:text-gray-500">No classes defined</div>
+        {/* Phase 2.9: Check current task classes */}
+        {(!project || Object.keys(getCurrentClasses()).length === 0) && (
+          <div className="text-[10px] text-gray-600 dark:text-gray-500">
+            No classes defined for {currentTask || 'current task'}
+          </div>
         )}
       </div>
 

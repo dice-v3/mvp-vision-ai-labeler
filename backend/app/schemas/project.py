@@ -26,6 +26,18 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class AddTaskTypeRequest(BaseModel):
+    """Add a new task type to project."""
+    task_type: str  # 'classification', 'detection', 'segmentation', etc.
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_type": "detection"
+            }
+        }
+
+
 class ProjectResponse(BaseModel):
     """Annotation project response."""
     id: str
@@ -35,7 +47,8 @@ class ProjectResponse(BaseModel):
     owner_id: int
     task_types: List[str]
     task_config: Dict[str, Any]
-    classes: Dict[str, Any]
+    task_classes: Dict[str, Dict[str, Any]] = {}  # Phase 2.9: Task-based classes
+    classes: Dict[str, Any]  # Legacy field
     settings: Dict[str, Any]
     total_images: int
     annotated_images: int
