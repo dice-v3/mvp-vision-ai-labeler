@@ -14,9 +14,10 @@ interface ExportModalProps {
   onClose: () => void;
   projectId: string;
   mode: 'export' | 'publish';  // Quick export or publish version
+  onPublishSuccess?: () => void;  // Callback after successful publish
 }
 
-export default function ExportModal({ isOpen, onClose, projectId, mode }: ExportModalProps) {
+export default function ExportModal({ isOpen, onClose, projectId, mode, onPublishSuccess }: ExportModalProps) {
   const [format, setFormat] = useState<'dice' | 'coco' | 'yolo'>('dice');
   const [includeDraft, setIncludeDraft] = useState(false);
   const [description, setDescription] = useState('');
@@ -47,6 +48,14 @@ export default function ExportModal({ isOpen, onClose, projectId, mode }: Export
           description: description || undefined,
         });
         setExportResult(result);
+
+        // Call success callback to refresh version lists
+        if (onPublishSuccess) {
+          onPublishSuccess();
+        }
+
+        // Dispatch custom event for other components to listen
+        window.dispatchEvent(new CustomEvent('versionPublished', { detail: result }));
       }
     } catch (err: any) {
       setError(err.message || 'Export failed');

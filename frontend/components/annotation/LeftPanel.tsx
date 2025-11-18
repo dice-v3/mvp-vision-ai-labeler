@@ -8,10 +8,9 @@
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ImageList from './ImageList';
-import AnnotationHistory from './AnnotationHistory';
 
 export default function LeftPanel() {
-  const { panels, tool, setTool, project, toggleLeftPanel } = useAnnotationStore();
+  const { panels, toggleLeftPanel } = useAnnotationStore();
 
   if (!panels.left) {
     return (
@@ -31,7 +30,7 @@ export default function LeftPanel() {
     <div className="w-[280px] bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
       {/* Header */}
       <div className="p-4 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tools</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Images</h3>
         <button
           onClick={toggleLeftPanel}
           className="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
@@ -42,39 +41,6 @@ export default function LeftPanel() {
           </svg>
         </button>
       </div>
-
-      {/* Tools Section */}
-      <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setTool('select')}
-            className={`p-3 rounded-lg border-2 transition-all ${
-              tool === 'select'
-                ? 'border-violet-500 bg-violet-500/20 text-violet-600 dark:text-violet-400'
-                : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400'
-            }`}
-            title="Select Tool (V)"
-          >
-            <div className="text-lg">↖</div>
-            <div className="text-xs mt-1">Select</div>
-          </button>
-          <button
-            onClick={() => setTool('bbox')}
-            className={`p-3 rounded-lg border-2 transition-all ${
-              tool === 'bbox'
-                ? 'border-violet-500 bg-violet-500/20 text-violet-600 dark:text-violet-400'
-                : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400'
-            }`}
-            title="Bounding Box (R)"
-          >
-            <div className="text-lg">▭</div>
-            <div className="text-xs mt-1">BBox</div>
-          </button>
-        </div>
-      </div>
-
-      {/* Annotation History Section */}
-      <AnnotationHistory />
 
       {/* Image List Section */}
       <div className="flex-1 overflow-y-auto">

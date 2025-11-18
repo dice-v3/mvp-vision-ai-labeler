@@ -37,6 +37,9 @@ class StorageClient:
         self.annotations_bucket = settings.S3_BUCKET_ANNOTATIONS
         logger.info(f"Storage client initialized: endpoint={settings.S3_ENDPOINT}")
 
+        # Ensure required buckets exist
+        self._ensure_buckets_exist()
+
     def list_dataset_images(
         self,
         dataset_id: str,
@@ -61,7 +64,7 @@ class StorageClient:
         """
         try:
             # Storage structure: datasets/{dataset_id}/images/xxx.jpg
-            s3_prefix = f"{dataset_id}/{prefix}"
+            s3_prefix = f"datasets/{dataset_id}/{prefix}"
 
             logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}")
 
@@ -152,7 +155,7 @@ class StorageClient:
         Returns:
             Presigned URL string
         """
-        key = f"{dataset_id}/images/{filename}"
+        key = f"datasets/{dataset_id}/images/{filename}"
         return self.generate_presigned_url(
             bucket=self.datasets_bucket,
             key=key,
@@ -239,6 +242,21 @@ class StorageClient:
             return True
         except ClientError:
             return False
+
+    def _ensure_buckets_exist(self):
+        """Ensure all required buckets exist, create if missing."""
+        required_buckets = [self.datasets_bucket, self.annotations_bucket]
+
+        for bucket in required_buckets:
+            if not self.check_bucket_exists(bucket):
+                try:
+                    self.s3_client.create_bucket(Bucket=bucket)
+                    logger.info(f"Created bucket: {bucket}")
+                except ClientError as e:
+                    logger.error(f"Failed to create bucket {bucket}: {e}")
+                    # Don't raise, let the error occur when trying to use it
+            else:
+                logger.info(f"Bucket exists: {bucket}")
 
     def upload_export(
         self,
@@ -351,7 +369,7 @@ class StorageClient:
         """
         try:
             # S3 key: datasets/{dataset_id}/annotations.json
-            key = f"{dataset_id}/annotations.json"
+            key = f"datasets/{dataset_id}/annotations.json"
 
             # Upload to Platform datasets bucket
             self.s3_client.put_object(

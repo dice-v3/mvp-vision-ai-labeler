@@ -168,20 +168,22 @@ export default function AnnotationPage() {
         const convertedAnnotations = (annotationsData || []).map(convertAPIAnnotationToStore);
         setAnnotations(convertedAnnotations);
 
-        // Update annotation count for current image
-        const updatedImages = images.map(img =>
-          img.id === currentImage.id
-            ? { ...img, annotation_count: annotationsData.length }
-            : img
-        );
-        setImages(updatedImages);
+        // Update annotation count for current image in the images array
+        // Use setState directly to avoid resetting currentImage
+        useAnnotationStore.setState((state) => ({
+          images: state.images.map(img =>
+            img.id === currentImage.id
+              ? { ...img, annotation_count: annotationsData.length }
+              : img
+          )
+        }));
       } catch (err) {
         console.error('Failed to load annotations:', err);
       }
     };
 
     loadAnnotations();
-  }, [currentImage?.id, projectId]);
+  }, [currentImage?.id, projectId, setAnnotations]);
 
   if (authLoading || loading) {
     return (

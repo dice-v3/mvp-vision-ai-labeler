@@ -1,78 +1,70 @@
 /**
- * Annotation History Component
+ * Annotation Versions Component
  *
- * Displays annotation change history and version information
+ * Displays published versions with detail modal
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
-import { getProjectHistory, type AnnotationHistory as APIHistoryEntry } from '@/lib/api/annotations';
-
-interface HistoryEntry {
-  id: string;
-  timestamp: string;
-  action: string;
-  user: string;
-  annotationCount: number;
-  version?: string;
-}
+import { listVersions, type Version } from '@/lib/api/export';
+import VersionHistoryModal from './VersionHistoryModal';
 
 export default function AnnotationHistory() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false); // Default: expanded
+  const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
-  const { project, currentImage } = useAnnotationStore();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { project, images } = useAnnotationStore();
 
-  // Phase 2.7: Load history from API
-  useEffect(() => {
+  // Load published versions
+  const loadVersions = useCallback(async () => {
     if (!project?.id) return;
 
-    const loadHistory = async () => {
-      try {
-        setLoading(true);
-        const history = await getProjectHistory(project.id, 0, 20);
+    try {
+      setLoading(true);
+      const result = await listVersions(project.id);
+      const publishedVersions = result.versions
+        .filter((v) => v.version_type === 'published')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 3); // Show only latest 3
 
-        // Convert API history to UI format
-        const converted: HistoryEntry[] = history.map((entry: APIHistoryEntry) => ({
-          id: String(entry.id),
-          timestamp: new Date(entry.timestamp).toLocaleString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          action: formatAction(entry.action),
-          user: entry.changed_by_name || 'Unknown',
-          annotationCount: 0, // Could calculate from state if needed
-        }));
-
-        setHistoryEntries(converted);
-      } catch (error) {
-        console.error('Failed to load history:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadHistory();
+      setVersions(publishedVersions);
+    } catch (error) {
+      console.error('Failed to load versions:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [project?.id]);
 
-  const formatAction = (action: string): string => {
-    const actions: Record<string, string> = {
-      create: 'Created annotation',
-      update: 'Updated annotation',
-      delete: 'Deleted annotation',
-      confirm: 'Confirmed annotation',
-      unconfirm: 'Unconfirmed annotation',
+  // Initial load
+  useEffect(() => {
+    loadVersions();
+  }, [loadVersions]);
+
+  // Listen for version published event
+  useEffect(() => {
+    const handleVersionPublished = () => {
+      loadVersions();
     };
-    return actions[action] || action;
+
+    window.addEventListener('versionPublished', handleVersionPublished);
+    return () => window.removeEventListener('versionPublished', handleVersionPublished);
+  }, [loadVersions]);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   return (
-    <div className="border-b border-gray-300 dark:border-gray-700">
+    <div className="border-t border-b border-gray-300 dark:border-gray-700">
       {/* Header */}
       <div
         className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/50 transition-colors"
@@ -80,73 +72,97 @@ export default function AnnotationHistory() {
       >
         <div className="flex items-center gap-2">
           <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-400">
-            Annotation History
+            Annotation Versions
           </h4>
           <span className="text-[10px] text-gray-500 dark:text-gray-600">
-            ({historyEntries.length})
+            ({versions.length})
           </span>
         </div>
-        <svg
-          className={`w-3.5 h-3.5 text-gray-600 dark:text-gray-400 transition-transform ${
-            isCollapsed ? '' : 'rotate-180'
-          }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <div className="flex items-center gap-2">
+          {/* Expand icon for detailed modal */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsModalOpen(true);
+            }}
+            className="p-1 hover:bg-gray-300 dark:hover:bg-gray-600 rounded transition-colors"
+            title="View detailed version history"
+          >
+            <svg
+              className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+          {/* Collapse icon */}
+          <svg
+            className={`w-3.5 h-3.5 text-gray-600 dark:text-gray-400 transition-transform ${
+              isCollapsed ? '' : 'rotate-180'
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
       </div>
 
-      {/* History Table */}
+      {/* Version List */}
       {!isCollapsed && (
         <div className="max-h-48 overflow-y-auto">
           {loading ? (
             <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
-              Loading history...
+              Loading versions...
             </div>
-          ) : historyEntries.length === 0 ? (
+          ) : versions.length === 0 ? (
             <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
-              No history available
+              No versions published yet
             </div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="text-[10px] text-gray-600 dark:text-gray-500 border-b border-gray-300 dark:border-gray-700 sticky top-0 bg-gray-100 dark:bg-gray-800">
-                <tr>
-                  <th className="text-left py-1.5 px-2 font-medium">Time</th>
-                  <th className="text-left py-1.5 px-2 font-medium">Action</th>
-                  <th className="text-center py-1.5 px-2 font-medium w-12">Ann</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyEntries.map((entry) => (
-                  <tr
-                    key={entry.id}
-                    className="border-b border-gray-300 dark:border-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
-                    title={`${entry.action} by ${entry.user}`}
-                  >
-                    <td className="py-1.5 px-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                      {entry.timestamp.split(' ')[1]}
-                    </td>
-                    <td className="py-1.5 px-2 text-gray-900 dark:text-gray-300 truncate">
-                      <div className="flex items-center gap-1">
-                        <span className="truncate">{entry.action}</span>
-                        {entry.version && (
-                          <span className="text-[9px] bg-violet-500/20 text-violet-600 dark:text-violet-400 px-1 py-0.5 rounded flex-shrink-0">
-                            {entry.version}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-1.5 px-2 text-center text-gray-600 dark:text-gray-500">
-                      {entry.annotationCount}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="divide-y divide-gray-300 dark:divide-gray-700/50">
+              {versions.map((version) => (
+                <div
+                  key={version.id}
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                  onClick={() => setIsModalOpen(true)}
+                  title={`${version.version_number} - ${version.image_count || 0}/${images.length} images${version.created_by_name ? ` by ${version.created_by_name}` : ''}${version.description ? ` - ${version.description}` : ''}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-medium text-violet-600 dark:text-violet-400 flex-shrink-0">
+                        {version.version_number}
+                      </span>
+                      <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
+                        {formatDate(version.created_at)}
+                      </span>
+                      {version.created_by_name && (
+                        <span className="text-[10px] text-gray-500 dark:text-gray-600 flex-shrink-0 truncate max-w-[80px]" title={version.created_by_name}>
+                          {version.created_by_name}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
+                      {version.image_count || 0}/{images.length}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
+      )}
+
+      {/* Version History Modal */}
+      {project && (
+        <VersionHistoryModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          projectId={project.id}
+        />
       )}
     </div>
   );

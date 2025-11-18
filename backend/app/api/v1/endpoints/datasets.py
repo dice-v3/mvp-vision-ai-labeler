@@ -14,7 +14,7 @@ from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.models.platform import Dataset, User
-from app.db.models.labeler import AnnotationProject
+from app.db.models.labeler import AnnotationProject, Annotation
 from app.schemas.dataset import DatasetResponse
 from app.schemas.project import ProjectResponse
 
@@ -89,6 +89,35 @@ def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
     except Exception as e:
         print(f"Error loading annotations from S3: {e}")
         return None
+
+
+def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str, Dict]:
+    """Calculate bbox count and image count for each class from Labeler DB."""
+    from collections import defaultdict
+
+    # Query all annotations for this project
+    annotations = labeler_db.query(Annotation).filter(
+        Annotation.project_id == project_id
+    ).all()
+
+    # Calculate statistics per class
+    class_stats = defaultdict(lambda: {'image_ids': set(), 'bbox_count': 0})
+
+    for ann in annotations:
+        class_id = ann.class_id
+        if class_id:
+            class_stats[class_id]['image_ids'].add(ann.image_id)
+            class_stats[class_id]['bbox_count'] += 1
+
+    # Convert to final format
+    result = {}
+    for class_id, stats in class_stats.items():
+        result[class_id] = {
+            'image_count': len(stats['image_ids']),
+            'bbox_count': stats['bbox_count'],
+        }
+
+    return result
 
 
 @router.get("", response_model=List[DatasetResponse], tags=["Datasets"])
@@ -298,6 +327,16 @@ async def get_or_create_project_for_dataset(
         labeler_db.commit()
         labeler_db.refresh(project)
 
+    # Calculate real-time class statistics from Labeler DB
+    live_class_stats = calculate_class_statistics(project.id, labeler_db)
+
+    # Update project.classes with live statistics
+    updated_classes = dict(project.classes) if project.classes else {}
+    for class_id, class_info in updated_classes.items():
+        stats = live_class_stats.get(class_id, {'image_count': 0, 'bbox_count': 0})
+        class_info['image_count'] = stats['image_count']
+        class_info['bbox_count'] = stats['bbox_count']
+
     # Get dataset name from Platform DB
     dataset_name = dataset.name
 
@@ -319,7 +358,7 @@ async def get_or_create_project_for_dataset(
         owner_id=project.owner_id,
         task_types=project.task_types,
         task_config=project.task_config,
-        classes=project.classes,
+        classes=updated_classes,
         settings=project.settings,
         total_images=project.total_images,
         annotated_images=project.annotated_images,
@@ -356,21 +395,66 @@ async def list_dataset_images(
             detail=f"Dataset {dataset_id} not found",
         )
 
-    # Load annotations.json to get image list
-    if not dataset.annotation_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset {dataset_id} has no annotations",
-        )
+    images = []
 
-    annotations_data = load_annotations_from_s3(dataset.annotation_path)
-    if not annotations_data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to load annotations",
-        )
+    # Try to load annotations.json if available
+    if dataset.annotation_path:
+        annotations_data = load_annotations_from_s3(dataset.annotation_path)
+        if annotations_data:
+            images = annotations_data.get('images', [])
 
-    images = annotations_data.get('images', [])
+    # If no annotations.json or empty, list images directly from S3
+    if not images:
+        try:
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=settings.S3_ENDPOINT,
+                aws_access_key_id=settings.S3_ACCESS_KEY,
+                aws_secret_access_key=settings.S3_SECRET_KEY,
+                region_name=settings.S3_REGION,
+                config=Config(signature_version='s3v4')
+            )
+
+            # List objects in the images/ directory
+            images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
+            response = s3_client.list_objects_v2(
+                Bucket=settings.S3_BUCKET_DATASETS,
+                Prefix=images_prefix,
+                MaxKeys=limit
+            )
+
+            # Convert S3 objects to image format
+            if 'Contents' in response:
+                for idx, obj in enumerate(response['Contents']):
+                    # Get the full key
+                    full_key = obj['Key']
+                    # Skip if it's a directory marker
+                    if full_key.endswith('/'):
+                        continue
+
+                    # Extract relative path from images/ directory
+                    # e.g., "datasets/{id}/images/bottle/broken_large/000.png" -> "bottle/broken_large/000.png"
+                    if '/images/' in full_key:
+                        relative_path = full_key.split('/images/', 1)[1]
+                    else:
+                        relative_path = full_key.split('/')[-1]
+
+                    if not relative_path:
+                        continue
+
+                    images.append({
+                        'id': idx + 1,
+                        'file_name': relative_path,  # Store relative path from images/
+                        'width': None,
+                        'height': None,
+                    })
+        except Exception as e:
+            print(f"Error listing images from S3: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to list images: {str(e)}",
+            )
+
     if not images:
         return []
 

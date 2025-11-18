@@ -435,7 +435,7 @@ async def publish_version(
             export_path=version.export_path,
             download_url=version.download_url,
             download_url_expires_at=version.download_url_expires_at,
-            created_by_name=current_user.name if current_user else None,
+            created_by_name=current_user.full_name if current_user else None,
             created_by_email=current_user.email if current_user else None,
         )
 
@@ -518,7 +518,7 @@ async def list_versions(
             export_path=version.export_path,
             download_url=version.download_url,
             download_url_expires_at=version.download_url_expires_at,
-            created_by_name=user.name if user else None,
+            created_by_name=user.full_name if user else None,
             created_by_email=user.email if user else None,
         ))
 
