@@ -116,35 +116,28 @@ export default function AnnotationHistory() {
               {versions.map((version) => (
                 <div
                   key={version.id}
-                  className="p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                   onClick={() => setIsModalOpen(true)}
-                  title="Click to view detailed version history"
+                  title={`${version.version_number} - ${version.image_count || 0}/${images.length} images${version.created_by_name ? ` by ${version.created_by_name}` : ''}${version.description ? ` - ${version.description}` : ''}`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-medium text-violet-600 dark:text-violet-400 flex-shrink-0">
                         {version.version_number}
                       </span>
-                      <span className="text-[10px] text-gray-600 dark:text-gray-500">
+                      <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
                         {formatDate(version.created_at)}
                       </span>
+                      <span className="text-[10px] text-gray-600 dark:text-gray-500 flex-shrink-0">
+                        {version.image_count || 0}/{images.length}
+                      </span>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-gray-600 dark:text-gray-500">
-                      {version.image_count || 0} / {images.length} images
-                    </span>
                     {version.created_by_name && (
-                      <span className="text-[10px] text-gray-500 dark:text-gray-600">
-                        by {version.created_by_name}
+                      <span className="text-[10px] text-gray-500 dark:text-gray-600 flex-shrink-0 truncate max-w-[80px]" title={version.created_by_name}>
+                        {version.created_by_name}
                       </span>
                     )}
                   </div>
-                  {version.description && (
-                    <p className="text-[10px] text-gray-600 dark:text-gray-500 mt-1 truncate">
-                      {version.description}
-                    </p>
-                  )}
                 </div>
               ))}
             </div>

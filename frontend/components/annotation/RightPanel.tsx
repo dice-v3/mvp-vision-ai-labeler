@@ -15,6 +15,7 @@ import {
 } from '@/lib/api/annotations';
 import { useState, useEffect } from 'react';
 import AddClassModal from './AddClassModal';
+import AnnotationHistory from './AnnotationHistory';
 import { getProjectById } from '@/lib/api/projects';
 
 export default function RightPanel() {
@@ -423,6 +424,9 @@ export default function RightPanel() {
           <div className="text-[10px] text-gray-600 dark:text-gray-500">No classes defined</div>
         )}
       </div>
+
+      {/* Annotation Versions Section */}
+      <AnnotationHistory />
 
       {/* Add Class Modal */}
       {project && (

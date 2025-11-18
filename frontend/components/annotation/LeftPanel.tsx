@@ -8,7 +8,6 @@
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ImageList from './ImageList';
-import AnnotationHistory from './AnnotationHistory';
 
 export default function LeftPanel() {
   const { panels, tool, setTool, project, toggleLeftPanel } = useAnnotationStore();
@@ -72,9 +71,6 @@ export default function LeftPanel() {
           </button>
         </div>
       </div>
-
-      {/* Annotation History Section */}
-      <AnnotationHistory />
 
       {/* Image List Section */}
       <div className="flex-1 overflow-y-auto">
