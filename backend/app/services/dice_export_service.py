@@ -84,16 +84,28 @@ def export_to_dice(
 
     # Filter by task_type (map to annotation_type)
     if task_type:
+        from sqlalchemy import or_, and_
+
         # Map task_type to annotation_types (can be multiple)
         task_to_annotation_types = {
             'classification': ['classification'],
-            'detection': ['bbox', 'no_object'],  # Include no_object for detection
+            'detection': ['bbox'],
             'segmentation': ['polygon'],
             'keypoints': ['keypoints'],
             'line': ['line'],
         }
         annotation_types = task_to_annotation_types.get(task_type, [task_type])
-        query = query.filter(Annotation.annotation_type.in_(annotation_types))
+
+        # Include no_object annotations filtered by attributes.task_type
+        query = query.filter(
+            or_(
+                Annotation.annotation_type.in_(annotation_types),
+                and_(
+                    Annotation.annotation_type == 'no_object',
+                    Annotation.attributes['task_type'].astext == task_type
+                )
+            )
+        )
 
     annotations = query.all()
 
