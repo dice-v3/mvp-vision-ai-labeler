@@ -215,8 +215,10 @@ export default function AnnotationPage() {
             .filter((ann: any) => (ann.image_id || ann.imageId) === firstImageId)
             // Phase 2.9: Filter by initial task type
             .filter((ann: any) => {
-              // no_object is always included regardless of task
-              if (ann.annotation_type === 'no_object') return true;
+              // no_object is filtered by its task_type attribute
+              if (ann.annotation_type === 'no_object') {
+                return ann.attributes?.task_type === initialTask;
+              }
               const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
               return !initialTask || annTaskType === initialTask;
             })
@@ -243,8 +245,10 @@ export default function AnnotationPage() {
 
         // Phase 2.9: Filter annotations by current task type
         const filteredAnnotations = annotationsData.filter((ann: APIAnnotation) => {
-          // no_object is always included regardless of task
-          if (ann.annotation_type === 'no_object') return true;
+          // no_object is filtered by its task_type attribute
+          if (ann.annotation_type === 'no_object') {
+            return ann.attributes?.task_type === currentTask;
+          }
           const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
           return !currentTask || annTaskType === currentTask;
         });

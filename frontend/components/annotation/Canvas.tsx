@@ -999,7 +999,7 @@ export default function Canvas() {
             }
           }
 
-          // Create no_object annotation
+          // Create no_object annotation with task context
           const annotationData: AnnotationCreateRequest = {
             project_id: project.id,
             image_id: imageId,
@@ -1007,6 +1007,7 @@ export default function Canvas() {
             geometry: { type: 'no_object' },
             class_id: null,
             class_name: '__background__',
+            attributes: { task_type: currentTask },
           };
 
           const savedAnnotation = await createAnnotation(annotationData);
