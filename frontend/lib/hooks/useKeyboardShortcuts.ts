@@ -27,6 +27,7 @@ export function useKeyboardShortcuts() {
     setPan,
     toggleLeftPanel,
     toggleRightPanel,
+    currentTask,
   } = useAnnotationStore();
 
   useEffect(() => {
@@ -121,9 +122,13 @@ export function useKeyboardShortcuts() {
           setTool('select');
           break;
         case 'w':
-          // Tool slot 2: Bbox tool
+          // Tool slot 2: Task-specific tool
           e.preventDefault();
-          setTool('bbox');
+          if (currentTask === 'classification') {
+            setTool('classification');
+          } else {
+            setTool('bbox');
+          }
           break;
         case 'delete':
         case 'backspace':
@@ -181,5 +186,6 @@ export function useKeyboardShortcuts() {
     setPan,
     toggleLeftPanel,
     toggleRightPanel,
+    currentTask,
   ]);
 }
