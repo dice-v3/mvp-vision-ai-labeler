@@ -37,6 +37,9 @@ class StorageClient:
         self.annotations_bucket = settings.S3_BUCKET_ANNOTATIONS
         logger.info(f"Storage client initialized: endpoint={settings.S3_ENDPOINT}")
 
+        # Ensure required buckets exist
+        self._ensure_buckets_exist()
+
     def list_dataset_images(
         self,
         dataset_id: str,
@@ -61,7 +64,7 @@ class StorageClient:
         """
         try:
             # Storage structure: datasets/{dataset_id}/images/xxx.jpg
-            s3_prefix = f"{dataset_id}/{prefix}"
+            s3_prefix = f"datasets/{dataset_id}/{prefix}"
 
             logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}")
 
@@ -152,7 +155,7 @@ class StorageClient:
         Returns:
             Presigned URL string
         """
-        key = f"{dataset_id}/images/{filename}"
+        key = f"datasets/{dataset_id}/images/{filename}"
         return self.generate_presigned_url(
             bucket=self.datasets_bucket,
             key=key,
@@ -239,6 +242,164 @@ class StorageClient:
             return True
         except ClientError:
             return False
+
+    def _ensure_buckets_exist(self):
+        """Ensure all required buckets exist, create if missing."""
+        required_buckets = [self.datasets_bucket, self.annotations_bucket]
+
+        for bucket in required_buckets:
+            if not self.check_bucket_exists(bucket):
+                try:
+                    self.s3_client.create_bucket(Bucket=bucket)
+                    logger.info(f"Created bucket: {bucket}")
+                except ClientError as e:
+                    logger.error(f"Failed to create bucket {bucket}: {e}")
+                    # Don't raise, let the error occur when trying to use it
+            else:
+                logger.info(f"Bucket exists: {bucket}")
+
+    def upload_export(
+        self,
+        project_id: str,
+        task_type: str,
+        version_number: str,
+        export_data: bytes,
+        export_format: str,
+        filename: str
+    ) -> tuple[str, str, datetime]:
+        """
+        Upload export file to S3.
+
+        Args:
+            project_id: Project ID
+            task_type: Task type (classification, detection, segmentation)
+            version_number: Version number (e.g., "v1.0")
+            export_data: Export file data as bytes
+            export_format: Export format (coco, yolo, dice, etc.)
+            filename: Export filename
+
+        Returns:
+            Tuple of (s3_key, presigned_url, expires_at)
+        """
+        try:
+            # Phase 2.9: S3 key includes task_type
+            # exports/{project_id}/{task_type}/{version_number}/{filename}
+            key = f"exports/{project_id}/{task_type}/{version_number}/{filename}"
+
+            # Determine content type
+            content_type = 'application/json' if export_format in ['coco', 'dice'] else 'application/zip'
+
+            # Upload to S3
+            self.s3_client.put_object(
+                Bucket=self.annotations_bucket,
+                Key=key,
+                Body=export_data,
+                ContentType=content_type,
+                Metadata={
+                    'project_id': project_id,
+                    'version': version_number,
+                    'format': export_format,
+                    'uploaded_at': datetime.utcnow().isoformat()
+                }
+            )
+
+            # Generate presigned URL (valid for 7 days)
+            expiration_seconds = 7 * 24 * 3600  # 7 days
+            presigned_url = self.generate_presigned_url(
+                bucket=self.annotations_bucket,
+                key=key,
+                expiration=expiration_seconds
+            )
+
+            expires_at = datetime.utcnow() + timedelta(seconds=expiration_seconds)
+
+            logger.info(f"Uploaded export: {key} ({len(export_data)} bytes)")
+            return key, presigned_url, expires_at
+
+        except ClientError as e:
+            logger.error(f"Failed to upload export for {project_id}: {e}")
+            raise Exception(f"Failed to upload export: {str(e)}")
+
+    def regenerate_presigned_url(
+        self,
+        s3_key: str,
+        expiration: int = 7 * 24 * 3600
+    ) -> tuple[str, datetime]:
+        """
+        Regenerate presigned URL for an existing export file.
+
+        Args:
+            s3_key: S3 object key
+            expiration: URL expiration time in seconds (default: 7 days)
+
+        Returns:
+            Tuple of (presigned_url, expires_at)
+        """
+        try:
+            presigned_url = self.generate_presigned_url(
+                bucket=self.annotations_bucket,
+                key=s3_key,
+                expiration=expiration
+            )
+
+            expires_at = datetime.utcnow() + timedelta(seconds=expiration)
+
+            logger.info(f"Regenerated presigned URL for: {s3_key}")
+            return presigned_url, expires_at
+
+        except ClientError as e:
+            logger.error(f"Failed to regenerate presigned URL for {s3_key}: {e}")
+            raise Exception(f"Failed to regenerate presigned URL: {str(e)}")
+
+    def update_platform_annotations(
+        self,
+        dataset_id: str,
+        task_type: str,
+        dice_data: bytes,
+        version_number: str
+    ) -> str:
+        """
+        Update official task-specific annotations file in Platform S3.
+
+        Phase 2.9: Each task has its own annotation file.
+        This is the authoritative DICE format file that Platform uses.
+
+        Args:
+            dataset_id: Dataset ID
+            task_type: Task type (classification, detection, segmentation)
+            dice_data: DICE format data as bytes
+            version_number: Version number for metadata
+
+        Returns:
+            S3 key
+        """
+        try:
+            # Phase 2.9: Task-specific annotation files
+            # S3 key: datasets/{dataset_id}/annotations_{task_type}.json
+            key = f"datasets/{dataset_id}/annotations_{task_type}.json"
+
+            # Upload to Platform datasets bucket
+            self.s3_client.put_object(
+                Bucket=self.datasets_bucket,
+                Key=key,
+                Body=dice_data,
+                ContentType='application/json',
+                Metadata={
+                    'dataset_id': dataset_id,
+                    'task_type': task_type,
+                    'version': version_number,
+                    'format': 'dice',
+                    'updated_at': datetime.utcnow().isoformat(),
+                    'source': 'labeler_publish'
+                }
+            )
+
+            logger.info(f"Updated Platform S3 annotations: {key} (task: {task_type}, version: {version_number})")
+            return key
+
+        except ClientError as e:
+            logger.error(f"Failed to update Platform annotations for {dataset_id} (task: {task_type}): {e}")
+            raise Exception(f"Failed to update Platform annotations: {str(e)}")
 
 
 # Global storage client instance

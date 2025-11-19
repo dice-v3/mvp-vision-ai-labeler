@@ -12,8 +12,18 @@ import { useAuth } from '@/lib/auth/context';
 import { listDatasets } from '@/lib/api/datasets';
 import { getProjectForDataset, getDatasetImages, type DatasetImage } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
+import { getProjectImageStatuses } from '@/lib/api/projects';
 import type { Dataset, Project } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
+import DeleteDatasetModal from '@/components/datasets/DeleteDatasetModal';
+
+// Phase 2.9: Task progress stats
+interface TaskStats {
+  taskType: string;
+  completedImages: number;
+  totalImages: number;
+  progressPercent: number;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -30,6 +40,12 @@ export default function DashboardPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  // Phase 2.9: Task-based stats
+  const [taskStats, setTaskStats] = useState<TaskStats[]>([]);
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [primaryTask, setPrimaryTask] = useState<string | null>(null); // Task with most progress
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -71,6 +87,52 @@ export default function DashboardPage() {
       const projectData = await getProjectForDataset(datasetId);
       setProject(projectData);
 
+      // Phase 2.9: Load task-based statistics
+      if (projectData.task_types && projectData.task_types.length > 0) {
+        const stats: TaskStats[] = [];
+        let maxProgress = -1;
+        let bestTask = projectData.task_types[0];
+
+        for (const taskType of projectData.task_types) {
+          try {
+            const statusResponse = await getProjectImageStatuses(projectData.id, taskType);
+            const completedCount = statusResponse.statuses.filter(
+              s => s.status === 'completed' || s.is_image_confirmed
+            ).length;
+            const total = projectData.total_images;
+            const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+            stats.push({
+              taskType,
+              completedImages: completedCount,
+              totalImages: total,
+              progressPercent: percent,
+            });
+
+            if (completedCount > maxProgress) {
+              maxProgress = completedCount;
+              bestTask = taskType;
+            }
+          } catch (err) {
+            console.error(`Failed to load stats for ${taskType}:`, err);
+            stats.push({
+              taskType,
+              completedImages: 0,
+              totalImages: projectData.total_images,
+              progressPercent: 0,
+            });
+          }
+        }
+
+        setTaskStats(stats);
+        setSelectedTask(bestTask);
+        setPrimaryTask(bestTask);
+      } else {
+        setTaskStats([]);
+        setSelectedTask(null);
+        setPrimaryTask(null);
+      }
+
       // Fetch annotation history
       setHistoryLoading(true);
       try {
@@ -106,9 +168,19 @@ export default function DashboardPage() {
   };
 
   const handleStartLabeling = () => {
-    if (selectedDatasetId) {
-      router.push(`/annotate/${selectedDatasetId}`);
+    if (project) {
+      router.push(`/annotate/${project.id}`);
     }
+  };
+
+  const handleDeleteSuccess = async () => {
+    setSuccessMessage('데이터셋이 성공적으로 삭제되었습니다');
+
+    // Refresh dataset list
+    await fetchDatasets();
+
+    // Clear success message after 3 seconds
+    setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   if (authLoading || loading) {
@@ -145,6 +217,11 @@ export default function DashboardPage() {
           {error && (
             <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
               <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
+          {successMessage && (
+            <div className="mb-6 p-4 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-sm text-green-800">{successMessage}</p>
             </div>
           )}
 
@@ -192,32 +269,29 @@ export default function DashboardPage() {
                         {selectedDataset.visibility}
                       </span>
                     )}
-                    {project && project.task_types.map((type) => (
-                      <span
-                        key={type}
-                        className="px-3 py-1 rounded-lg bg-violet-50 text-violet-700 text-sm font-medium"
-                      >
-                        {type === 'classification' && '분류'}
-                        {type === 'detection' && '객체 탐지'}
-                        {type === 'bbox' && 'BBox'}
-                        {type === 'polygon' && '폴리곤'}
-                        {type === 'keypoint' && '키포인트'}
-                        {type === 'segmentation' && '세그멘테이션'}
-                        {!['classification', 'detection', 'bbox', 'polygon', 'keypoint', 'segmentation'].includes(type) && type}
-                      </span>
-                    ))}
                   </div>
-                  {project && (
+                  <div className="flex items-center space-x-2">
                     <button
-                      onClick={handleStartLabeling}
-                      className="px-6 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all flex items-center space-x-2"
+                      onClick={() => setDeleteModalOpen(true)}
+                      className="px-4 py-2 rounded-lg bg-white border border-red-300 text-red-600 font-medium hover:bg-red-50 transition-colors flex items-center space-x-2"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
-                      <span>레이블링 시작</span>
+                      <span>삭제</span>
                     </button>
-                  )}
+                    {project && (
+                      <button
+                        onClick={handleStartLabeling}
+                        className="px-6 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all flex items-center space-x-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                        </svg>
+                        <span>레이블링 시작</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -231,42 +305,88 @@ export default function DashboardPage() {
                 </div>
               ) : project ? (
                 <div className="space-y-6">
+                  {/* Phase 2.9: Task Tabs */}
+                  {taskStats.length > 1 && (
+                    <div className="flex space-x-2">
+                      {taskStats.map((stat) => (
+                        <button
+                          key={stat.taskType}
+                          onClick={() => setSelectedTask(stat.taskType)}
+                          className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            selectedTask === stat.taskType
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {/* Primary task star indicator */}
+                          {stat.taskType === primaryTask && (
+                            <svg
+                              className={`absolute -top-0.5 -left-0.5 w-5 h-5 ${
+                                selectedTask === stat.taskType ? 'text-yellow-300' : 'text-yellow-500'
+                              }`}
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          )}
+                          {stat.taskType === 'classification' && '분류'}
+                          {stat.taskType === 'detection' && '객체 탐지'}
+                          {stat.taskType === 'segmentation' && '세그멘테이션'}
+                          {!['classification', 'detection', 'segmentation'].includes(stat.taskType) && stat.taskType}
+                          <span className="ml-2 text-xs opacity-75">({stat.progressPercent}%)</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Statistics Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white rounded-xl p-6 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-gray-500">전체 이미지</h3>
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-3xl font-bold text-gray-900">{project.total_images}</p>
-                    </div>
+                  {(() => {
+                    const currentStats = taskStats.find(s => s.taskType === selectedTask) || {
+                      completedImages: project.annotated_images,
+                      totalImages: project.total_images,
+                      progressPercent: project.total_images > 0
+                        ? Math.round((project.annotated_images / project.total_images) * 100)
+                        : 0
+                    };
 
-                    <div className="bg-white rounded-xl p-6 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-gray-500">완료된 이미지</h3>
-                        <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <p className="text-3xl font-bold text-violet-600">{project.annotated_images}</p>
-                    </div>
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white rounded-xl p-6 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-500">전체 이미지</h3>
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <p className="text-3xl font-bold text-gray-900">{currentStats.totalImages}</p>
+                        </div>
 
-                    <div className="bg-white rounded-xl p-6 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-gray-500">진행률</h3>
-                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                        </svg>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-500">
+                              완료된 이미지
+                              {selectedTask && <span className="text-xs ml-1">({selectedTask})</span>}
+                            </h3>
+                            <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-3xl font-bold text-violet-600">{currentStats.completedImages}</p>
+                        </div>
+
+                        <div className="bg-white rounded-xl p-6 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-500">진행률</h3>
+                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                          </div>
+                          <p className="text-3xl font-bold text-green-600">{currentStats.progressPercent}%</p>
+                        </div>
                       </div>
-                      <p className="text-3xl font-bold text-green-600">
-                        {project.total_images > 0
-                          ? Math.round((project.annotated_images / project.total_images) * 100)
-                          : 0}%
-                      </p>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Two Column Layout: Activity History & Dataset Info */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -299,7 +419,7 @@ export default function DashboardPage() {
                                 }`} />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-gray-900">
-                                    <span className="font-medium">{item.user_name || 'Unknown'}</span>
+                                    <span className="font-medium">{item.changed_by_name || 'Unknown'}</span>
                                     {' '}
                                     <span className="text-gray-600">
                                       {item.action === 'create' && '생성'}
@@ -360,7 +480,6 @@ export default function DashboardPage() {
                   <div className="bg-white rounded-lg border border-gray-200">
                     <div className="px-4 py-3 border-b border-gray-200">
                       <h3 className="text-sm font-semibold text-gray-900">이미지 미리보기</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">데이터셋의 샘플 이미지 (Loading: {imagesLoading ? 'true' : 'false'}, Count: {images.length})</p>
                     </div>
                     <div className="p-4">
                       {imagesLoading ? (
@@ -404,45 +523,59 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Classes Table */}
-                  {project.classes && Object.keys(project.classes).length > 0 && (
-                    <div className="bg-white rounded-lg border border-gray-200">
-                      <div className="px-4 py-3 border-b border-gray-200">
-                        <h3 className="text-sm font-semibold text-gray-900">클래스 목록</h3>
-                        <p className="text-xs text-gray-500 mt-0.5">{Object.keys(project.classes).length}개 클래스</p>
-                      </div>
-                      <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">클래스명</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">색상</th>
-                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">이미지</th>
-                              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">BBox</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {Object.entries(project.classes).map(([classId, classInfo]: [string, any]) => (
-                              <tr key={classId} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 text-gray-900">{classInfo.name}</td>
-                                <td className="px-4 py-2">
-                                  <div className="flex items-center space-x-2">
-                                    <div
-                                      className="w-4 h-4 rounded border border-gray-300"
-                                      style={{ backgroundColor: classInfo.color }}
-                                    />
-                                    <span className="text-xs text-gray-500">{classInfo.color}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 text-right text-gray-600">{classInfo.image_count || 0}</td>
-                                <td className="px-4 py-2 text-right text-gray-600">{classInfo.bbox_count || 0}</td>
+                  {/* Classes Table - Phase 2.9: Filter by selected task */}
+                  {(() => {
+                    // Get classes for selected task, or fallback to project.classes
+                    const displayClasses = selectedTask && project.task_classes?.[selectedTask]
+                      ? project.task_classes[selectedTask]
+                      : project.classes;
+
+                    if (!displayClasses || Object.keys(displayClasses).length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div className="bg-white rounded-lg border border-gray-200">
+                        <div className="px-4 py-3 border-b border-gray-200">
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            클래스 목록
+                            {selectedTask && <span className="text-xs font-normal text-gray-500 ml-2">({selectedTask})</span>}
+                          </h3>
+                          <p className="text-xs text-gray-500 mt-0.5">{Object.keys(displayClasses).length}개 클래스</p>
+                        </div>
+                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">클래스명</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">색상</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">이미지</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">BBox</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {Object.entries(displayClasses).map(([classId, classInfo]: [string, any]) => (
+                                <tr key={classId} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 text-gray-900">{classInfo.name}</td>
+                                  <td className="px-4 py-2">
+                                    <div className="flex items-center space-x-2">
+                                      <div
+                                        className="w-4 h-4 rounded border border-gray-300"
+                                        style={{ backgroundColor: classInfo.color }}
+                                      />
+                                      <span className="text-xs text-gray-500">{classInfo.color}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 text-right text-gray-600">{classInfo.image_count || 0}</td>
+                                  <td className="px-4 py-2 text-right text-gray-600">{classInfo.bbox_count || 0}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
@@ -456,6 +589,17 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Dataset Modal */}
+      {selectedDataset && (
+        <DeleteDatasetModal
+          datasetId={selectedDataset.id}
+          datasetName={selectedDataset.name}
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onSuccess={handleDeleteSuccess}
+        />
+      )}
     </div>
   );
 }

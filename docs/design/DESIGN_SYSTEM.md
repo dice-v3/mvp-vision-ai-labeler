@@ -1245,6 +1245,155 @@ When creating new components, ensure:
 
 ---
 
+## 🖼️ Annotation Interface Layout
+
+### Canvas Controls Layout
+
+The annotation canvas uses a fixed overlay control layout with the following structure:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Canvas Area                      │
+│                                                     │
+│                                                     │
+│                                                     │
+│                                                     │
+│  ┌──────────┐          ┌──────┐      ┌──────┐  🔵 │
+│  │ Zoom     │          │ 1/32 │      │W×H px│  AI │
+│  │ - 100% + │          └──────┘      └──────┘     │
+│  │ | Fit    │                                      │
+│  └──────────┘                                      │
+└─────────────────────────────────────────────────────┘
+
+Left Bottom:  Zoom controls (-, %, +, Fit)
+Center Bottom: Navigation (< N/Total >)
+Right Bottom: Image dimensions (W x H px) + AI Assistant (circular button)
+```
+
+### Canvas Control Components
+
+#### Zoom Controls (Bottom Left)
+```tsx
+<div className="absolute bottom-4 left-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 flex items-center gap-2 shadow-lg">
+  <button className="w-8 h-8">−</button>
+  <span className="text-xs w-12 text-center">100%</span>
+  <button className="w-8 h-8">+</button>
+  <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
+  <button className="px-3 h-8 text-xs">Fit</button>
+</div>
+```
+
+#### Navigation Controls (Bottom Center)
+```tsx
+<div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-3 shadow-lg">
+  <button>
+    <svg className="w-4 h-4">← icon</svg>
+  </button>
+  <span className="text-sm font-medium">1 / 32</span>
+  <button>
+    <svg className="w-4 h-4">→ icon</svg>
+  </button>
+</div>
+```
+
+#### Image Info & AI Assistant (Bottom Right)
+```tsx
+{/* Image dimensions */}
+<div className="absolute bottom-4 right-20 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 text-xs shadow-lg">
+  1920 x 1080 px
+</div>
+
+{/* AI Assistant button */}
+<div className="absolute bottom-4 right-4">
+  <button className="w-12 h-12 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105">
+    <svg className="w-6 h-6 text-white">💡 icon</svg>
+  </button>
+</div>
+```
+
+### Layout Notes
+
+- **Bottom Bar Removed**: Navigation has been moved from the BottomBar component to the Canvas overlay for a cleaner, more focused interface
+- **Responsive Controls**: All controls use `absolute` positioning with `shadow-lg` for visual separation from the canvas
+- **Dark Mode Support**: All overlay controls support dark mode with `bg-gray-100 dark:bg-gray-800` pattern
+- **Spacing**: Controls maintain 4px (`bottom-4`) spacing from canvas edges
+- **AI Button**: Circular button (`rounded-full`) with hover scale effect for prominent placement
+
+---
+
+## 🌓 Dark Mode Implementation
+
+### Configuration
+
+Dark mode is implemented using Tailwind's `class` strategy:
+
+```typescript
+// tailwind.config.ts
+const config: Config = {
+  darkMode: 'class',  // Enable class-based dark mode
+  // ...
+}
+```
+
+### Application
+
+Dark mode is controlled by adding/removing the `dark` class on `document.documentElement`:
+
+```typescript
+// In annotation page component
+useEffect(() => {
+  if (preferences.darkMode) {
+    document.documentElement.classList.add('dark');
+    document.documentElement.style.colorScheme = 'dark';
+  } else {
+    document.documentElement.classList.remove('dark');
+    document.documentElement.style.colorScheme = 'light';
+  }
+}, [preferences.darkMode]);
+```
+
+### Color Patterns
+
+All components use the `dark:` prefix for dark mode styles:
+
+```tsx
+{/* Backgrounds */}
+className="bg-white dark:bg-gray-900"
+className="bg-gray-100 dark:bg-gray-800"
+className="bg-gray-200 dark:bg-gray-700"
+
+{/* Text */}
+className="text-gray-900 dark:text-white"
+className="text-gray-600 dark:text-gray-400"
+className="text-gray-500 dark:text-gray-500"
+
+{/* Borders */}
+className="border-gray-300 dark:border-gray-700"
+className="border-gray-400 dark:border-gray-600"
+
+{/* Interactive States */}
+className="hover:bg-gray-200 dark:hover:bg-gray-700"
+className="hover:text-gray-900 dark:hover:text-white"
+```
+
+### Dark Mode Toggle
+
+```tsx
+<button
+  onClick={() => setPreference('darkMode', !preferences.darkMode)}
+  className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
+  title={preferences.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+>
+  {preferences.darkMode ? (
+    <svg className="w-4 h-4">☀ Sun icon</svg>
+  ) : (
+    <svg className="w-4 h-4">🌙 Moon icon</svg>
+  )}
+</button>
+```
+
+---
+
 ## 📞 Questions?
 
 For design system questions or new component requests, refer to the Platform frontend source code at:
@@ -1255,3 +1404,4 @@ C:\Users\flyto\Project\Github\mvp-vision-ai-platform\platform\frontend
 ---
 
 **Status**: Ready for Implementation ✅
+**Last Updated**: 2025-01-14 - Added annotation canvas layout and dark mode documentation
