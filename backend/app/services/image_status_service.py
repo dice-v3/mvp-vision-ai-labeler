@@ -14,6 +14,7 @@ from sqlalchemy import func
 from app.db.models.labeler import Annotation, ImageAnnotationStatus
 
 # Phase 2.9: Mapping from annotation_type to task_type
+# Note: no_object is handled separately using attributes.task_type
 ANNOTATION_TYPE_TO_TASK = {
     'bbox': 'detection',
     'rotated_bbox': 'detection',
@@ -60,7 +61,17 @@ async def update_image_status(
         # Filter annotations by annotation_type that matches the task_type
         annotation_types = [ann_type for ann_type, task in ANNOTATION_TYPE_TO_TASK.items() if task == task_type]
         if annotation_types:
-            query = query.filter(Annotation.annotation_type.in_(annotation_types))
+            from sqlalchemy import or_, and_
+            # Include no_object if its attributes.task_type matches
+            query = query.filter(
+                or_(
+                    Annotation.annotation_type.in_(annotation_types),
+                    and_(
+                        Annotation.annotation_type == 'no_object',
+                        Annotation.attributes['task_type'].astext == task_type
+                    )
+                )
+            )
 
     annotations = query.all()
 
