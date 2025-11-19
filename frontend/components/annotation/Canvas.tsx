@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ClassSelectorModal from './ClassSelectorModal';
-import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
+import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI, getProjectAnnotations } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
@@ -48,6 +48,9 @@ export default function Canvas() {
     setCurrentIndex,
     currentTask, // Phase 2.9
     deleteAnnotation,
+    // Multi-image selection
+    selectedImageIds,
+    clearImageSelection,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -62,6 +65,7 @@ export default function Canvas() {
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number; bbox: number[] } | null>(null);
   const [canvasCursor, setCanvasCursor] = useState('default');
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -750,11 +754,94 @@ export default function Canvas() {
     }
   };
 
-  // Handle class selection
+  // Handle class selection (supports batch operation for classification)
   const handleClassSelect = async (classId: string, className: string) => {
-    if (!currentImage || !project) return;
+    if (!project) return;
 
     setShowClassSelector(false);
+
+    // Check if this is a batch classification operation
+    const isBatchClassification = !pendingBbox && selectedImageIds.length > 0;
+
+    if (isBatchClassification) {
+      // Batch classification for multiple selected images
+      try {
+        setBatchProgress({ current: 0, total: selectedImageIds.length });
+
+        for (let i = 0; i < selectedImageIds.length; i++) {
+          const imageId = selectedImageIds[i];
+          setBatchProgress({ current: i + 1, total: selectedImageIds.length });
+
+          // Delete existing classification annotations for this image
+          const existingAnnotations = await getProjectAnnotations(project.id, imageId);
+          const classificationAnnotations = existingAnnotations.filter(
+            ann => ann.annotation_type === 'classification'
+          );
+          for (const ann of classificationAnnotations) {
+            await deleteAnnotationAPI(ann.id);
+            if (imageId === currentImage?.id) {
+              deleteAnnotation(ann.id);
+            }
+          }
+
+          // Create new classification annotation
+          const annotationData: AnnotationCreateRequest = {
+            project_id: project.id,
+            image_id: imageId,
+            annotation_type: 'classification',
+            geometry: { type: 'classification' },
+            class_id: classId,
+            class_name: className,
+          };
+
+          const savedAnnotation = await createAnnotation(annotationData);
+
+          // If this is the current image, add to store
+          if (imageId === currentImage?.id) {
+            addAnnotation({
+              id: savedAnnotation.id.toString(),
+              projectId: project.id,
+              imageId: imageId,
+              annotationType: 'classification',
+              classId: classId,
+              className: className,
+              geometry: { type: 'classification' },
+              confidence: savedAnnotation.confidence,
+              attributes: savedAnnotation.attributes,
+              createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+              updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+            });
+          }
+
+          // Update image status
+          useAnnotationStore.setState((state) => ({
+            images: state.images.map(img =>
+              img.id === imageId
+                ? {
+                    ...img,
+                    annotation_count: 1,
+                    is_confirmed: false,
+                    status: 'in-progress',
+                  }
+                : img
+            )
+          }));
+        }
+
+        setBatchProgress(null);
+        clearImageSelection();
+        toast.success(`${selectedImageIds.length}개 이미지에 '${className}' 클래스를 할당했습니다.`, 3000);
+      } catch (err) {
+        console.error('Failed to batch assign class:', err);
+        setBatchProgress(null);
+        toast.error('클래스 할당에 실패했습니다.');
+      }
+      return;
+    }
+
+    // Single image operation (existing logic)
+    if (!currentImage) return;
+
     setIsSaving(true);
 
     try {
@@ -869,7 +956,7 @@ export default function Canvas() {
       setPendingBbox(null);
     } catch (err) {
       console.error('Failed to save annotation:', err);
-      // TODO: Show error toast
+      toast.error('어노테이션 저장에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -882,103 +969,147 @@ export default function Canvas() {
   };
 
   // Phase 2.7: Confirm Image handler
-  // Handle No Object annotation
+  // Handle No Object annotation (supports batch operation)
   const handleNoObject = useCallback(async () => {
-    if (!currentImage || !project) return;
+    if (!project) return;
 
-    const createNoObjectAnnotation = async () => {
+    // Determine target images
+    const targetImageIds = selectedImageIds.length > 0 ? selectedImageIds : (currentImage ? [currentImage.id] : []);
+    if (targetImageIds.length === 0) return;
+
+    const isBatch = targetImageIds.length > 1;
+
+    const processNoObject = async () => {
       try {
-        // Delete existing annotations first if any
-        if (annotations.length > 0) {
-          for (const ann of annotations) {
+        setBatchProgress({ current: 0, total: targetImageIds.length });
+
+        for (let i = 0; i < targetImageIds.length; i++) {
+          const imageId = targetImageIds[i];
+          setBatchProgress({ current: i + 1, total: targetImageIds.length });
+
+          // Get existing annotations for this image
+          const existingAnnotations = await getProjectAnnotations(project.id, imageId);
+
+          // Delete existing annotations
+          for (const ann of existingAnnotations) {
             await deleteAnnotationAPI(ann.id);
-            deleteAnnotation(ann.id);
+            // If this is the current image, also remove from store
+            if (imageId === currentImage?.id) {
+              deleteAnnotation(ann.id);
+            }
           }
-        }
 
-        // Create no_object annotation
-        const annotationData: AnnotationCreateRequest = {
-          project_id: project.id,
-          image_id: currentImage.id,
-          annotation_type: 'no_object',
-          geometry: { type: 'no_object' },
-          class_id: null,
-          class_name: '__background__',
-        };
+          // Create no_object annotation
+          const annotationData: AnnotationCreateRequest = {
+            project_id: project.id,
+            image_id: imageId,
+            annotation_type: 'no_object',
+            geometry: { type: 'no_object' },
+            class_id: null,
+            class_name: '__background__',
+          };
 
-        const savedAnnotation = await createAnnotation(annotationData);
+          const savedAnnotation = await createAnnotation(annotationData);
 
-        // Add to store
-        addAnnotation({
-          id: savedAnnotation.id.toString(),
-          projectId: project.id,
-          imageId: currentImage.id,
-          annotationType: 'no_object',
-          classId: null,
-          className: '__background__',
-          geometry: { type: 'no_object' },
-          confidence: savedAnnotation.confidence,
-          attributes: savedAnnotation.attributes,
-          createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
-          updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
-        });
-
-        // Update image status and has_no_object flag
-        useAnnotationStore.setState((state) => ({
-          images: state.images.map(img =>
-            img.id === currentImage.id
-              ? {
-                  ...img,
-                  annotation_count: 1,
-                  status: 'in-progress',
-                  has_no_object: true,
-                }
-              : img
-          )
-        }));
-
-        toast.info('No Object로 표시되었습니다.', 3000);
-      } catch (err) {
-        console.error('Failed to create no_object annotation:', err);
-        toast.error('No Object 저장에 실패했습니다.');
-      }
-    };
-
-    // If there are existing annotations, show confirm dialog
-    if (annotations.length > 0) {
-      confirm({
-        title: 'No Object 설정',
-        message: `기존 ${annotations.length}개의 레이블이 삭제됩니다. 계속하시겠습니까?`,
-        confirmText: '확인',
-        cancelText: '취소',
-        onConfirm: createNoObjectAnnotation,
-      });
-    } else {
-      createNoObjectAnnotation();
-    }
-  }, [currentImage, project, addAnnotation, annotations, deleteAnnotation]);
-
-  // Handle delete all annotations for current image
-  const handleDeleteAllAnnotations = useCallback(async () => {
-    if (!currentImage || annotations.length === 0) return;
-
-    confirm({
-      title: '모든 레이블 삭제',
-      message: `현재 이미지의 ${annotations.length}개 레이블을 모두 삭제하시겠습니까?`,
-      confirmText: '삭제',
-      cancelText: '취소',
-      onConfirm: async () => {
-        try {
-          // Delete all annotations
-          for (const ann of annotations) {
-            await deleteAnnotationAPI(ann.id);
-            deleteAnnotation(ann.id);
+          // If this is the current image, add to store
+          if (imageId === currentImage?.id) {
+            addAnnotation({
+              id: savedAnnotation.id.toString(),
+              projectId: project.id,
+              imageId: imageId,
+              annotationType: 'no_object',
+              classId: null,
+              className: '__background__',
+              geometry: { type: 'no_object' },
+              confidence: savedAnnotation.confidence,
+              attributes: savedAnnotation.attributes,
+              createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+              updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+            });
           }
 
           // Update image status
           useAnnotationStore.setState((state) => ({
             images: state.images.map(img =>
-              img.id === currentImage.id
+              img.id === imageId
+                ? {
+                    ...img,
+                    annotation_count: 1,
+                    status: 'in-progress',
+                    has_no_object: true,
+                  }
+                : img
+            )
+          }));
+        }
+
+        setBatchProgress(null);
+        clearImageSelection();
+        toast.success(`${targetImageIds.length}개 이미지를 No Object로 처리했습니다.`, 3000);
+      } catch (err) {
+        console.error('Failed to create no_object annotation:', err);
+        setBatchProgress(null);
+        toast.error('No Object 처리에 실패했습니다.');
+      }
+    };
+
+    // Show confirm dialog
+    const message = isBatch
+      ? `선택한 ${targetImageIds.length}개 이미지를 No Object로 처리합니다. 기존 레이블은 삭제됩니다.`
+      : annotations.length > 0
+        ? `기존 ${annotations.length}개의 레이블이 삭제됩니다. 계속하시겠습니까?`
+        : '이 이미지를 No Object로 처리하시겠습니까?';
+
+    confirm({
+      title: 'No Object 설정',
+      message,
+      confirmText: '확인',
+      cancelText: '취소',
+      onConfirm: processNoObject,
+    });
+  }, [currentImage, project, addAnnotation, annotations, deleteAnnotation, selectedImageIds, clearImageSelection]);
+
+  // Handle delete all annotations (supports batch operation)
+  const handleDeleteAllAnnotations = useCallback(async () => {
+    if (!project) return;
+
+    // Determine target images
+    const targetImageIds = selectedImageIds.length > 0 ? selectedImageIds : (currentImage ? [currentImage.id] : []);
+    if (targetImageIds.length === 0) return;
+
+    // For single image without selection, check if there are annotations
+    if (targetImageIds.length === 1 && targetImageIds[0] === currentImage?.id && annotations.length === 0) {
+      return;
+    }
+
+    const isBatch = targetImageIds.length > 1;
+
+    const processDelete = async () => {
+      try {
+        setBatchProgress({ current: 0, total: targetImageIds.length });
+        let totalDeleted = 0;
+
+        for (let i = 0; i < targetImageIds.length; i++) {
+          const imageId = targetImageIds[i];
+          setBatchProgress({ current: i + 1, total: targetImageIds.length });
+
+          // Get existing annotations for this image
+          const existingAnnotations = await getProjectAnnotations(project.id, imageId);
+
+          // Delete all annotations
+          for (const ann of existingAnnotations) {
+            await deleteAnnotationAPI(ann.id);
+            // If this is the current image, also remove from store
+            if (imageId === currentImage?.id) {
+              deleteAnnotation(ann.id);
+            }
+            totalDeleted++;
+          }
+
+          // Update image status
+          useAnnotationStore.setState((state) => ({
+            images: state.images.map(img =>
+              img.id === imageId
                 ? {
                     ...img,
                     annotation_count: 0,
@@ -988,15 +1119,31 @@ export default function Canvas() {
                 : img
             )
           }));
-
-          toast.success('모든 레이블이 삭제되었습니다.', 3000);
-        } catch (err) {
-          console.error('Failed to delete annotations:', err);
-          toast.error('삭제에 실패했습니다.');
         }
-      },
+
+        setBatchProgress(null);
+        clearImageSelection();
+        toast.success(`${targetImageIds.length}개 이미지에서 ${totalDeleted}개 레이블을 삭제했습니다.`, 3000);
+      } catch (err) {
+        console.error('Failed to delete annotations:', err);
+        setBatchProgress(null);
+        toast.error('삭제에 실패했습니다.');
+      }
+    };
+
+    // Show confirm dialog
+    const message = isBatch
+      ? `선택한 ${targetImageIds.length}개 이미지의 모든 레이블을 삭제합니다.`
+      : `현재 이미지의 ${annotations.length}개 레이블을 모두 삭제하시겠습니까?`;
+
+    confirm({
+      title: '모든 레이블 삭제',
+      message,
+      confirmText: '삭제',
+      cancelText: '취소',
+      onConfirm: processDelete,
     });
-  }, [currentImage, annotations, deleteAnnotation]);
+  }, [project, currentImage, annotations, deleteAnnotation, selectedImageIds, clearImageSelection]);
 
   const handleConfirmImage = useCallback(async () => {
     if (!currentImage || !project) return;
@@ -1322,6 +1469,29 @@ export default function Canvas() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
           <span className="text-sm text-gray-900 dark:text-gray-300">Saving annotation...</span>
+        </div>
+      )}
+
+      {/* Batch progress indicator */}
+      {batchProgress && (
+        <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 min-w-[300px]">
+            <div className="flex items-center gap-3 mb-4">
+              <svg className="animate-spin h-5 w-5 text-violet-600" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                처리 중... {batchProgress.current} / {batchProgress.total}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-violet-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
         </div>
       )}
 
