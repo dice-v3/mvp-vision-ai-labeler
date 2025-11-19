@@ -1030,8 +1030,8 @@ export default function Canvas() {
           }
 
           // Update image status
-          useAnnotationStore.setState((state) => ({
-            images: state.images.map(img =>
+          useAnnotationStore.setState((state) => {
+            const updatedImages = state.images.map(img =>
               img.id === imageId
                 ? {
                     ...img,
@@ -1041,8 +1041,13 @@ export default function Canvas() {
                     is_confirmed: false,  // Not confirmed yet, just assigned
                   }
                 : img
-            )
-          }));
+            );
+            // Also update currentImage if it's the same image
+            const updatedCurrentImage = state.currentImage?.id === imageId
+              ? updatedImages.find(img => img.id === imageId) || state.currentImage
+              : state.currentImage;
+            return { images: updatedImages, currentImage: updatedCurrentImage };
+          });
         }
 
         setBatchProgress(null);
@@ -1109,8 +1114,8 @@ export default function Canvas() {
           }
 
           // Update image status
-          useAnnotationStore.setState((state) => ({
-            images: state.images.map(img =>
+          useAnnotationStore.setState((state) => {
+            const updatedImages = state.images.map(img =>
               img.id === imageId
                 ? {
                     ...img,
@@ -1120,8 +1125,13 @@ export default function Canvas() {
                     is_confirmed: false,  // Reset confirmation on delete
                   }
                 : img
-            )
-          }));
+            );
+            // Also update currentImage if it's the same image
+            const updatedCurrentImage = state.currentImage?.id === imageId
+              ? updatedImages.find(img => img.id === imageId) || state.currentImage
+              : state.currentImage;
+            return { images: updatedImages, currentImage: updatedCurrentImage };
+          });
         }
 
         setBatchProgress(null);
@@ -1289,7 +1299,8 @@ export default function Canvas() {
       }
 
       // Delete: Delete all annotations (supports batch)
-      if (e.key === 'Delete' && (selectedImageIds.length > 0 || annotations.length > 0)) {
+      // Only if no annotation is selected (individual annotation delete is handled by useKeyboardShortcuts)
+      if (e.key === 'Delete' && !selectedAnnotationId && (selectedImageIds.length > 0 || annotations.length > 0)) {
         e.preventDefault();
         handleDeleteAllAnnotations();
       }
@@ -1297,7 +1308,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
