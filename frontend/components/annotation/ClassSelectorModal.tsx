@@ -152,9 +152,28 @@ export default function ClassSelectorModal({
               setSelectedIndex(0);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                onClose();
+              switch (e.key) {
+                case 'Escape':
+                  e.preventDefault();
+                  onClose();
+                  break;
+                case 'ArrowDown':
+                  e.preventDefault();
+                  setSelectedIndex((prev) =>
+                    prev < filteredClasses.length - 1 ? prev + 1 : prev
+                  );
+                  break;
+                case 'ArrowUp':
+                  e.preventDefault();
+                  setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                  break;
+                case 'Enter':
+                  e.preventDefault();
+                  if (filteredClasses.length > 0) {
+                    const [classId, classInfo] = filteredClasses[selectedIndex];
+                    onSelect(classId, classInfo.name);
+                  }
+                  break;
               }
             }}
             placeholder="Search classes..."
