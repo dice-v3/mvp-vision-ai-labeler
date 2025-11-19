@@ -1426,9 +1426,9 @@ export default function Canvas() {
         {/* Delete all annotations button */}
         <button
           onClick={handleDeleteAllAnnotations}
-          disabled={annotations.length === 0}
+          disabled={annotations.length === 0 && selectedImageIds.length === 0}
           className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105 ${
-            annotations.length > 0
+            annotations.length > 0 || selectedImageIds.length > 0
               ? 'bg-red-400 hover:bg-red-500'
               : 'bg-gray-400 cursor-not-allowed'
           }`}
