@@ -1147,60 +1147,107 @@ export default function Canvas() {
   }, [project, currentImage, annotations, deleteAnnotation, selectedImageIds, clearImageSelection]);
 
   const handleConfirmImage = useCallback(async () => {
-    if (!currentImage || !project) return;
+    if (!project) return;
     if (confirmingImage) return;
+
+    // Determine target images
+    const targetImageIds = selectedImageIds.length > 0 ? selectedImageIds : (currentImage ? [currentImage.id] : []);
+    if (targetImageIds.length === 0) return;
+
+    const isBatch = targetImageIds.length > 1;
 
     setConfirmingImage(true);
     try {
-      // Call API to confirm image (will also confirm all draft annotations)
-      // Phase 2.9: Pass currentTask for task-specific confirmation
-      await confirmImage(project.id, currentImage.id, currentTask || undefined);
+      if (isBatch) {
+        // Batch confirm
+        setBatchProgress({ current: 0, total: targetImageIds.length });
 
-      // Update local state - mark all annotations as confirmed
-      const updatedAnnotations = annotations.map(ann => ({
-        ...ann,
-        annotation_state: 'confirmed',
-        confirmed_at: new Date().toISOString(),
-      }));
+        for (let i = 0; i < targetImageIds.length; i++) {
+          const imageId = targetImageIds[i];
+          setBatchProgress({ current: i + 1, total: targetImageIds.length });
 
-      useAnnotationStore.setState({ annotations: updatedAnnotations });
+          // Call API to confirm image
+          await confirmImage(project.id, imageId, currentTask || undefined);
+        }
 
-      // Update current image status
-      const updatedImages = images.map(img =>
-        img.id === currentImage.id
-          ? {
-              ...img,
-              is_confirmed: true,
-              status: 'completed',
-              confirmed_at: new Date().toISOString(),
-            }
-          : img
-      );
+        // Update all confirmed images status
+        useAnnotationStore.setState((state) => ({
+          images: state.images.map(img =>
+            targetImageIds.includes(img.id)
+              ? {
+                  ...img,
+                  is_confirmed: true,
+                  status: 'completed',
+                  confirmed_at: new Date().toISOString(),
+                }
+              : img
+          )
+        }));
 
-      useAnnotationStore.setState({ images: updatedImages });
+        // If current image was in selection, update its annotations
+        if (currentImage && targetImageIds.includes(currentImage.id)) {
+          const updatedAnnotations = annotations.map(ann => ({
+            ...ann,
+            annotation_state: 'confirmed',
+            confirmed_at: new Date().toISOString(),
+          }));
+          useAnnotationStore.setState({ annotations: updatedAnnotations });
+        }
 
-      // Auto-navigate to next incomplete image (in-progress or not-started)
-      const nextIncompleteIndex = updatedImages.findIndex((img, idx) => {
-        if (idx <= currentIndex) return false;
-        const status = (img as any).status || 'not-started';
-        return status === 'in-progress' || status === 'not-started';
-      });
-
-      if (nextIncompleteIndex !== -1) {
-        // Navigate to next incomplete image
-        setCurrentIndex(nextIncompleteIndex);
+        setBatchProgress(null);
+        clearImageSelection();
+        toast.success(`${targetImageIds.length}개 이미지를 확정했습니다.`, 3000);
       } else {
-        // No more incomplete images, just go to next image
-        goToNextImage();
+        // Single image confirm (existing logic)
+        if (!currentImage) return;
+
+        await confirmImage(project.id, currentImage.id, currentTask || undefined);
+
+        // Update local state - mark all annotations as confirmed
+        const updatedAnnotations = annotations.map(ann => ({
+          ...ann,
+          annotation_state: 'confirmed',
+          confirmed_at: new Date().toISOString(),
+        }));
+
+        useAnnotationStore.setState({ annotations: updatedAnnotations });
+
+        // Update current image status
+        const updatedImages = images.map(img =>
+          img.id === currentImage.id
+            ? {
+                ...img,
+                is_confirmed: true,
+                status: 'completed',
+                confirmed_at: new Date().toISOString(),
+              }
+            : img
+        );
+
+        useAnnotationStore.setState({ images: updatedImages });
+
+        // Auto-navigate to next incomplete image (in-progress or not-started)
+        const nextIncompleteIndex = updatedImages.findIndex((img, idx) => {
+          if (idx <= currentIndex) return false;
+          const status = (img as any).status || 'not-started';
+          return status === 'in-progress' || status === 'not-started';
+        });
+
+        if (nextIncompleteIndex !== -1) {
+          setCurrentIndex(nextIncompleteIndex);
+        } else {
+          goToNextImage();
+        }
       }
 
     } catch (err) {
       console.error('Failed to confirm image:', err);
-      // TODO: Show error toast
+      setBatchProgress(null);
+      toast.error('확정에 실패했습니다.');
     } finally {
       setConfirmingImage(false);
     }
-  }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage, setCurrentIndex]);
+  }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage, setCurrentIndex, selectedImageIds, clearImageSelection, currentTask]);
 
   // Phase 2.7: Keyboard shortcuts for Canvas
   useEffect(() => {
@@ -1213,8 +1260,8 @@ export default function Canvas() {
         return;
       }
 
-      // Space: Confirm Image
-      if (e.key === ' ' && !isImageConfirmed && annotations.length > 0) {
+      // Space: Confirm Image (supports batch)
+      if (e.key === ' ' && (selectedImageIds.length > 0 || (!isImageConfirmed && annotations.length > 0))) {
         e.preventDefault();
         handleConfirmImage();
       }
@@ -1228,7 +1275,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
