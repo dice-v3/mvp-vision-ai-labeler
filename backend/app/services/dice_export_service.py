@@ -90,6 +90,7 @@ def export_to_dice(
         task_to_annotation_types = {
             'classification': ['classification'],
             'detection': ['bbox'],
+            'object_detection': ['bbox'],  # Alternative name
             'segmentation': ['polygon'],
             'keypoints': ['keypoints'],
             'line': ['line'],

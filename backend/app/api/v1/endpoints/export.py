@@ -312,6 +312,7 @@ async def publish_version(
         task_to_annotation_types_map = {
             'classification': ['classification'],
             'detection': ['bbox'],
+            'object_detection': ['bbox'],  # Alternative name
             'segmentation': ['polygon'],
             'keypoints': ['keypoints'],
             'line': ['line'],
