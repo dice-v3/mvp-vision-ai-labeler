@@ -804,8 +804,9 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       selectImageRange: (toIndex) => {
-        const { images, lastClickedImageIndex, selectedImageIds } = get();
-        const fromIndex = lastClickedImageIndex ?? 0;
+        const { images, lastClickedImageIndex, currentIndex } = get();
+        // Use lastClickedImageIndex if set, otherwise use currentIndex
+        const fromIndex = lastClickedImageIndex ?? currentIndex;
 
         const start = Math.min(fromIndex, toIndex);
         const end = Math.max(fromIndex, toIndex);
@@ -814,11 +815,9 @@ export const useAnnotationStore = create<AnnotationState>()(
           .slice(start, end + 1)
           .map(img => img.id);
 
-        // Merge with existing selection (unique values)
-        const newSelection = [...new Set([...selectedImageIds, ...rangeIds])];
-
+        // Replace selection with range (not merge)
         set({
-          selectedImageIds: newSelection,
+          selectedImageIds: rangeIds,
           lastClickedImageIndex: toIndex,
         });
       },

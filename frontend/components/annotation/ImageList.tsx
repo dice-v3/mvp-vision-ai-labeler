@@ -97,16 +97,23 @@ export default function ImageList() {
   });
 
   const handleImageClick = (e: React.MouseEvent, index: number, imageId: string) => {
+    // Prevent text selection on shift+click
+    if (e.shiftKey) {
+      e.preventDefault();
+    }
+
     if (e.ctrlKey || e.metaKey) {
       // Ctrl+Click: Toggle individual selection
       toggleImageSelection(imageId, index);
     } else if (e.shiftKey) {
-      // Shift+Click: Range selection
+      // Shift+Click: Range selection from current image
       selectImageRange(index);
     } else {
-      // Normal click: Navigate and clear selection
+      // Normal click: Navigate and set as selection anchor
       setCurrentIndex(index);
       clearImageSelection();
+      // Set this as the anchor point for future shift+click
+      useAnnotationStore.setState({ lastClickedImageIndex: index });
     }
   };
 
@@ -190,7 +197,7 @@ export default function ImageList() {
       </div>
 
       {/* Image grid/list */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 select-none">
         {filteredImages.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-xs">
             No images match filter
