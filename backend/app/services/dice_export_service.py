@@ -84,15 +84,16 @@ def export_to_dice(
 
     # Filter by task_type (map to annotation_type)
     if task_type:
-        task_to_annotation_type = {
-            'classification': 'classification',
-            'detection': 'bbox',
-            'segmentation': 'polygon',
-            'keypoints': 'keypoints',
-            'line': 'line',
+        # Map task_type to annotation_types (can be multiple)
+        task_to_annotation_types = {
+            'classification': ['classification'],
+            'detection': ['bbox', 'no_object'],  # Include no_object for detection
+            'segmentation': ['polygon'],
+            'keypoints': ['keypoints'],
+            'line': ['line'],
         }
-        annotation_type = task_to_annotation_type.get(task_type, task_type)
-        query = query.filter(Annotation.annotation_type == annotation_type)
+        annotation_types = task_to_annotation_types.get(task_type, [task_type])
+        query = query.filter(Annotation.annotation_type.in_(annotation_types))
 
     annotations = query.all()
 
@@ -277,6 +278,16 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
             "image_id": image_dice_id,
             "class_id": _parse_class_id(ann.class_id),
             "class_name": ann.class_name,
+            "attributes": ann.attributes or {}
+        }
+    elif ann.annotation_type == 'no_object':
+        # No object / background image marker
+        return {
+            "id": ann.id,
+            "image_id": image_dice_id,
+            "class_id": -1,  # Special ID for background
+            "class_name": "__background__",
+            "is_background": True,
             "attributes": ann.attributes or {}
         }
     else:

@@ -305,24 +305,24 @@ async def publish_version(
                 detail=f"Version {new_version_number} for task {task_type} already exists",
             )
 
-        # Phase 2.9: Map task_type to annotation_type
+        # Phase 2.9: Map task_type to annotation_types
         # classification -> classification
-        # detection -> bbox
+        # detection -> bbox, no_object
         # segmentation -> polygon
-        task_to_annotation_type_map = {
-            'classification': 'classification',
-            'detection': 'bbox',
-            'segmentation': 'polygon',
-            'keypoints': 'keypoints',
-            'line': 'line',
+        task_to_annotation_types_map = {
+            'classification': ['classification'],
+            'detection': ['bbox', 'no_object'],  # Include no_object
+            'segmentation': ['polygon'],
+            'keypoints': ['keypoints'],
+            'line': ['line'],
         }
 
-        annotation_type = task_to_annotation_type_map.get(task_type, task_type)
+        annotation_types = task_to_annotation_types_map.get(task_type, [task_type])
 
         # Get all annotations for this task type
         query = labeler_db.query(Annotation).filter(
             Annotation.project_id == project_id,
-            Annotation.annotation_type == annotation_type
+            Annotation.annotation_type.in_(annotation_types)
         )
 
         if not publish_request.include_draft:

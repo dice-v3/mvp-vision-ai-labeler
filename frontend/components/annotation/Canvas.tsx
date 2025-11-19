@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ClassSelectorModal from './ClassSelectorModal';
-import { createAnnotation, updateAnnotation } from '@/lib/api/annotations';
+import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
@@ -46,6 +46,7 @@ export default function Canvas() {
     goToPrevImage,
     setCurrentIndex,
     currentTask, // Phase 2.9
+    deleteAnnotation,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -880,6 +881,83 @@ export default function Canvas() {
   };
 
   // Phase 2.7: Confirm Image handler
+  // Handle No Object annotation
+  const handleNoObject = useCallback(async () => {
+    if (!currentImage || !project) return;
+
+    try {
+      // Create no_object annotation
+      const annotationData: AnnotationCreateRequest = {
+        project_id: project.id,
+        image_id: currentImage.id,
+        annotation_type: 'no_object',
+        geometry: { type: 'no_object' },
+        class_id: null,
+        class_name: '__background__',
+      };
+
+      const savedAnnotation = await createAnnotation(annotationData);
+
+      // Add to store
+      addAnnotation({
+        id: savedAnnotation.id.toString(),
+        projectId: project.id,
+        imageId: currentImage.id,
+        annotationType: 'no_object',
+        classId: null,
+        className: '__background__',
+        geometry: { type: 'no_object' },
+        confidence: savedAnnotation.confidence,
+        attributes: savedAnnotation.attributes,
+        createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+        updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+      });
+
+      // Update image status and has_no_object flag
+      useAnnotationStore.setState((state) => ({
+        images: state.images.map(img =>
+          img.id === currentImage.id
+            ? {
+                ...img,
+                annotation_count: (img.annotation_count || 0) + 1,
+                status: 'in-progress',
+                has_no_object: true,
+              }
+            : img
+        )
+      }));
+
+      toast.info('No Object로 표시되었습니다.', 3000);
+    } catch (err) {
+      console.error('Failed to create no_object annotation:', err);
+      toast.error('No Object 저장에 실패했습니다.');
+    }
+  }, [currentImage, project, addAnnotation]);
+
+  // Handle delete selected annotation
+  const handleDeleteSelectedAnnotation = useCallback(async () => {
+    if (!selectedAnnotationId || !currentImage) return;
+
+    try {
+      await deleteAnnotationAPI(selectedAnnotationId);
+      deleteAnnotation(selectedAnnotationId);
+
+      // Update image annotation count
+      useAnnotationStore.setState((state) => ({
+        images: state.images.map(img =>
+          img.id === currentImage.id
+            ? { ...img, annotation_count: Math.max(0, (img.annotation_count || 1) - 1) }
+            : img
+        )
+      }));
+
+      toast.success('Annotation이 삭제되었습니다.', 3000);
+    } catch (err) {
+      console.error('Failed to delete annotation:', err);
+      toast.error('삭제에 실패했습니다.');
+    }
+  }, [selectedAnnotationId, currentImage, deleteAnnotation]);
+
   const handleConfirmImage = useCallback(async () => {
     if (!currentImage || !project) return;
     if (confirmingImage) return;
@@ -936,7 +1014,7 @@ export default function Canvas() {
     }
   }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage, setCurrentIndex]);
 
-  // Phase 2.7: Keyboard shortcut for Confirm Image (Space)
+  // Phase 2.7: Keyboard shortcuts for Canvas
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle shortcuts when typing in input fields
@@ -952,11 +1030,17 @@ export default function Canvas() {
         e.preventDefault();
         handleConfirmImage();
       }
+
+      // 0: No Object
+      if (e.key === '0' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleNoObject();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -1138,6 +1222,37 @@ export default function Canvas() {
           </div>
         </div>
       )}
+
+      {/* Utility buttons (top-right) */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2">
+        {/* No Object button */}
+        <button
+          onClick={handleNoObject}
+          className="w-10 h-10 bg-gray-600 hover:bg-gray-700 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105"
+          title="No Object (0)"
+        >
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" strokeWidth={2} />
+            <path strokeLinecap="round" strokeWidth={2} d="M6 18L18 6" />
+          </svg>
+        </button>
+
+        {/* Delete annotation button */}
+        <button
+          onClick={handleDeleteSelectedAnnotation}
+          disabled={!selectedAnnotationId}
+          className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105 ${
+            selectedAnnotationId
+              ? 'bg-red-600 hover:bg-red-700'
+              : 'bg-gray-400 cursor-not-allowed'
+          }`}
+          title="Delete Selected (Del)"
+        >
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
 
       {/* AI Assistant button */}
       <div className="absolute bottom-4 right-4">

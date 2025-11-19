@@ -163,11 +163,21 @@ export default function AnnotationPage() {
         const allAnnotations = await getProjectAnnotations(projectId);
 
         // Count annotations per image (filtered by initial task)
+        // Also track which images have no_object annotation
         const annotationCountMap = new Map<string, number>();
+        const noObjectImageIds = new Set<string>();
+
         allAnnotations.forEach((ann: any) => {
           const imageId = ann.image_id || ann.imageId;
+          const annType = ann.annotation_type;
+
+          // Track no_object images
+          if (annType === 'no_object') {
+            noObjectImageIds.add(imageId);
+          }
+
           // Phase 2.9: Only count annotations for the current task
-          const annTaskType = getTaskTypeForAnnotation(ann.annotation_type);
+          const annTaskType = getTaskTypeForAnnotation(annType);
           if (!initialTask || annTaskType === initialTask) {
             annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
           }
@@ -191,6 +201,8 @@ export default function AnnotationPage() {
             is_confirmed: status?.is_image_confirmed || false,
             status: status?.status || 'not-started',
             confirmed_at: status?.confirmed_at,
+            // Track no_object status
+            has_no_object: noObjectImageIds.has(imgId),
           };
         });
 
