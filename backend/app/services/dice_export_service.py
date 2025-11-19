@@ -39,6 +39,7 @@ def export_to_dice(
     project_id: str,
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
+    task_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Export annotations to DICE format.
@@ -49,6 +50,7 @@ def export_to_dice(
         project_id: Project ID to export
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
+        task_type: Task type to export (detection, classification, segmentation)
 
     Returns:
         DICE format dictionary
@@ -80,6 +82,19 @@ def export_to_dice(
     if image_ids:
         query = query.filter(Annotation.image_id.in_(image_ids))
 
+    # Filter by task_type (map to annotation_type)
+    if task_type:
+        # Map task_type to annotation_types (can be multiple)
+        task_to_annotation_types = {
+            'classification': ['classification'],
+            'detection': ['bbox', 'no_object'],  # Include no_object for detection
+            'segmentation': ['polygon'],
+            'keypoints': ['keypoints'],
+            'line': ['line'],
+        }
+        annotation_types = task_to_annotation_types.get(task_type, [task_type])
+        query = query.filter(Annotation.annotation_type.in_(annotation_types))
+
     annotations = query.all()
 
     # Group annotations by image
@@ -90,14 +105,34 @@ def export_to_dice(
         images_dict[ann.image_id].append(ann)
 
     # Load image_id → file_name mapping from Platform annotations file
-    image_filename_map = _load_image_filename_mapping(dataset, project.task_types[0] if project.task_types else 'detection')
+    # Use provided task_type or fallback to first task type
+    effective_task_type = task_type or (project.task_types[0] if project.task_types else 'detection')
+    image_filename_map = _load_image_filename_mapping(dataset, effective_task_type)
 
     # Build DICE images array
     dice_images = []
     image_id_mapping = {}  # Map image_id to DICE numeric ID
 
-    for idx, (image_id, image_annotations) in enumerate(images_dict.items(), start=1):
-        image_id_mapping[image_id] = idx
+    # Sort by original image_id numerically
+    # IMPORTANT: Preserve original image_id to maintain consistency with DB
+    def sort_key(item):
+        image_id = item[0]
+        try:
+            return (0, int(image_id))  # Numeric sort
+        except ValueError:
+            return (1, image_id)  # String sort as fallback
+
+    sorted_images = sorted(images_dict.items(), key=sort_key)
+
+    for image_id, image_annotations in sorted_images:
+        # Use original image_id as DICE ID (not new sequential number)
+        try:
+            dice_id = int(image_id)
+        except ValueError:
+            # If image_id is not numeric, use hash-based ID
+            dice_id = abs(hash(image_id)) % 1000000
+
+        image_id_mapping[image_id] = dice_id
 
         # Get image metadata from image_annotation_status
         status = db.query(ImageAnnotationStatus).filter(
@@ -138,14 +173,14 @@ def export_to_dice(
         height = image_info.get('height', 0)
 
         dice_image = {
-            "id": idx,
+            "id": dice_id,
             "file_name": file_name,
             "width": width,
             "height": height,
             "depth": 3,  # Assume RGB images
             "split": "train",  # TODO: Implement train/val/test split logic
             "annotations": [
-                _convert_annotation_to_dice(ann, idx)
+                _convert_annotation_to_dice(ann, dice_id)
                 for ann in image_annotations
             ],
             "metadata": {
@@ -158,18 +193,35 @@ def export_to_dice(
         }
         dice_images.append(dice_image)
 
+    # Get task-specific classes
+    # Use task_classes if available, otherwise fall back to project.classes
+    if task_type and project.task_classes and task_type in project.task_classes:
+        task_classes = project.task_classes[task_type]
+    else:
+        task_classes = project.classes
+
+    # Map task_type to DICE task_type format
+    dice_task_type_mapping = {
+        "detection": "object_detection",
+        "classification": "classification",
+        "segmentation": "instance_segmentation",
+        "keypoints": "keypoint_detection",
+        "line": "line_detection",
+    }
+    dice_task_type = dice_task_type_mapping.get(effective_task_type, effective_task_type)
+
     # Build final DICE data
     dice_data = {
         "format_version": "1.0",
         "dataset_id": project.dataset_id,
         "dataset_name": dataset.name if dataset else project.name,
-        "task_type": _get_task_type(project),
+        "task_type": dice_task_type,
         "created_at": project.created_at.isoformat() if project.created_at else datetime.utcnow().isoformat(),
         "last_modified_at": datetime.utcnow().isoformat(),
         "version": 1,  # TODO: Get actual version number
-        "classes": _convert_classes_to_dice(project.classes),
+        "classes": _convert_classes_to_dice(task_classes),
         "images": dice_images,
-        "statistics": _calculate_statistics(dice_images, project.classes)
+        "statistics": _calculate_statistics(dice_images, task_classes)
     }
 
     return dice_data
@@ -179,10 +231,21 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
     """Convert DB annotation to DICE annotation format."""
     if ann.annotation_type == 'bbox':
         geometry = ann.geometry
-        x = float(geometry.get('x', 0))
-        y = float(geometry.get('y', 0))
-        width = float(geometry.get('width', 0))
-        height = float(geometry.get('height', 0))
+
+        # Handle both formats:
+        # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
+        # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
+        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+            bbox = geometry['bbox']
+            x = float(bbox[0]) if len(bbox) > 0 else 0
+            y = float(bbox[1]) if len(bbox) > 1 else 0
+            width = float(bbox[2]) if len(bbox) > 2 else 0
+            height = float(bbox[3]) if len(bbox) > 3 else 0
+        else:
+            x = float(geometry.get('x', 0))
+            y = float(geometry.get('y', 0))
+            width = float(geometry.get('width', 0))
+            height = float(geometry.get('height', 0))
 
         return {
             "id": ann.id,
@@ -217,6 +280,16 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
             "class_name": ann.class_name,
             "attributes": ann.attributes or {}
         }
+    elif ann.annotation_type == 'no_object':
+        # No object / background image marker
+        return {
+            "id": ann.id,
+            "image_id": image_dice_id,
+            "class_id": -1,  # Special ID for background
+            "class_name": "__background__",
+            "is_background": True,
+            "attributes": ann.attributes or {}
+        }
     else:
         # Generic fallback
         return {
@@ -249,32 +322,50 @@ def _parse_class_id(class_id: Optional[str]) -> int:
         return hash(class_id) % 1000
 
 
-def _convert_classes_to_dice(classes: List[Dict]) -> List[Dict]:
+def _convert_classes_to_dice(classes) -> List[Dict]:
     """Convert project classes to DICE format."""
     if not classes:
         return []
 
     dice_classes = []
-    for cls in classes:
-        # Handle both dict and object formats
-        if isinstance(cls, dict):
-            class_id = cls.get('id')
-            class_name = cls.get('name')
-            color = cls.get('color')
-            supercategory = cls.get('supercategory', 'object')
-        else:
-            class_id = getattr(cls, 'id', None)
-            class_name = getattr(cls, 'name', None)
-            color = getattr(cls, 'color', None)
-            supercategory = getattr(cls, 'supercategory', 'object')
 
-        dice_class = {
-            "id": _parse_class_id(class_id),
-            "name": class_name or str(class_id),
-            "color": color or "#000000",
-            "supercategory": supercategory
-        }
-        dice_classes.append(dice_class)
+    # Handle dict format (new): {class_id: {name, color, order, ...}}
+    if isinstance(classes, dict):
+        # Sort by order field, then by class_id as fallback
+        sorted_classes = sorted(
+            classes.items(),
+            key=lambda x: (x[1].get("order", 0), x[0])
+        )
+        for idx, (class_id, class_info) in enumerate(sorted_classes):
+            dice_class = {
+                "id": idx,  # Use order-based index for DICE
+                "name": class_info.get('name', class_id),
+                "color": class_info.get('color', "#000000"),
+                "supercategory": class_info.get('supercategory', 'object')
+            }
+            dice_classes.append(dice_class)
+    # Handle list format (legacy): [{id, name, color, ...}, ...]
+    elif isinstance(classes, list):
+        for cls in classes:
+            # Handle both dict and object formats
+            if isinstance(cls, dict):
+                class_id = cls.get('id')
+                class_name = cls.get('name')
+                color = cls.get('color')
+                supercategory = cls.get('supercategory', 'object')
+            else:
+                class_id = getattr(cls, 'id', None)
+                class_name = getattr(cls, 'name', None)
+                color = getattr(cls, 'color', None)
+                supercategory = getattr(cls, 'supercategory', 'object')
+
+            dice_class = {
+                "id": _parse_class_id(class_id),
+                "name": class_name or str(class_id),
+                "color": color or "#000000",
+                "supercategory": supercategory
+            }
+            dice_classes.append(dice_class)
 
     return dice_classes
 

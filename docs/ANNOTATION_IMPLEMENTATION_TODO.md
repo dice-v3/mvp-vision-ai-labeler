@@ -12,16 +12,27 @@
 | Phase | Status | Progress | Target Week |
 |-------|--------|----------|-------------|
 | Phase 1: Core Canvas | ✅ Complete | 44/45 (98%) | Week 1 |
-| Phase 2: Advanced Features | 🔄 In Progress | 0/69 (+42 tasks) | Week 2-3 |
-| Phase 3: AI Integration | ⏸️ Pending | 0/16 | Week 4 |
-| Phase 4: Polish & Optimization | ⏸️ Pending | 0/20 | Week 5 |
-| Phase 5: Multi-Task Support | ⏸️ Pending | 0/18 | Weeks 6-7 |
+| Phase 2: Advanced Features | ✅ Complete | 85% core features | Week 2-6 |
+| Phase 3: Multi-Task Tools | 🔄 In Progress | 13/29 (45%) | Weeks 7-8 |
+| Phase 4: AI Integration | ⏸️ Pending | 0/22 | Weeks 9-10 |
+| Phase 5: Polish & Optimization | ⏸️ Pending | 0/20 | Week 11 |
 
-**Overall Progress**: 68/183 tasks (37%)
+**Overall Progress**: Phase 2 complete, Phase 3.2 complete
 **Phase 2 Breakdown**:
-- 2.7 Confirmation: 12/13 tasks (17h completed, 3.5h remaining) ✅ Feature Complete!
-- 2.8 Version Mgmt: 12/15 tasks (15h completed, 6h remaining) ✅ Backend Complete!
-- Other features: 0/45 tasks (96h)
+- 2.7 Confirmation: 12/13 tasks ✅ Feature Complete!
+- 2.8 Version Mgmt: 12/15 tasks ✅ Backend Complete!
+- 2.9 Task-Based Architecture: ✅ Complete!
+- 2.10.1 Dataset Deletion: ✅ Complete!
+- Other features: 0/45 tasks (Undo/Redo, Shortcuts, etc.)
+
+**Phase 3 Breakdown**:
+- 3.1 Tool Architecture & Registry: ✅ Complete (12h)
+- 3.2 Classification Tool: ✅ Complete (8h)
+  - ClassificationTool.ts, ClassificationPanel.tsx
+  - Class management (auto-ID, order, reorder UI)
+  - Export services sorted by order
+  - Task-filtered annotation counts
+  - Canvas click popup for class selection
 
 ---
 
@@ -837,12 +848,332 @@
 
 ---
 
-## Phase 3: AI Integration (Week 3)
+## Phase 3: Multi-Task Annotation Tools (Weeks 7-8) ⭐ IN PROGRESS
 
-**Goal**: AI-assisted annotation with model predictions
-**Target Completion**: 2025-12-05
+**Goal**: Implement annotation tools for Classification, Segmentation, and extensible tool system
+**Target Completion**: 2025-12-06
+**Status**: 🔄 In Progress (3.1, 3.2 Complete)
+**Priority**: High - Core feature expansion
 
-### 3.1 AI Assist Button
+**Progress**:
+- 3.1 Tool Architecture & Registry: ✅ Complete (12h actual)
+- 3.2 Classification Tool: ✅ Complete (8h actual)
+- 3.3 Polygon/Segmentation Tool: ⏸️ Pending
+- 3.4 Rotated BBox Tool: ⏸️ Pending
+- 3.5 Keypoints Tool: ⏸️ Pending
+- 3.6 Text/Caption Tool: ⏸️ Pending
+
+### 3.1 Tool Architecture & Registry
+
+- [x] **Abstract annotation tool interface** ✅ COMPLETED
+  - Define AnnotationTool interface
+  - Methods: renderAnnotation, renderPreview, renderHandles
+  - Event handlers: onMouseDown/Move/Up, onKeyDown
+  - Validation: validate, getGeometry, fromGeometry
+  - Serialization: toJSON, fromJSON
+  - **Estimate**: 4 hours
+  - **Actual**: 3 hours
+  - **File**: `frontend/lib/annotation/AnnotationTool.ts`
+
+- [x] **Tool registry system** ✅ COMPLETED
+  - Register tools by annotation type (bbox, polygon, classification, etc.)
+  - Factory pattern for tool creation
+  - Tool configuration from project.task_config
+  - Hot-swap tools without page reload
+  - **Estimate**: 3 hours
+  - **Actual**: 2 hours
+  - **File**: `frontend/lib/annotation/ToolRegistry.ts`
+
+- [x] **Refactor existing BBox tool** ✅ COMPLETED
+  - Extract to separate tool class implementing interface
+  - Move rendering logic from Canvas.tsx to BBoxTool
+  - Support tool-specific keyboard shortcuts
+  - Resize bbox helper method
+  - **Estimate**: 3 hours
+  - **Actual**: 3 hours
+  - **File**: `frontend/lib/annotation/tools/BBoxTool.ts`
+
+- [x] **Canvas integration with ToolRegistry** ✅ COMPLETED
+  - Use ToolRegistry.getTool() for rendering
+  - BBoxTool.renderAnnotation() and renderHandles()
+  - BBoxTool.renderPreview() for drawing preview
+  - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **File**: `frontend/components/annotation/Canvas.tsx`
+
+- [x] **Bug fixes for BBox editing** ✅ COMPLETED
+  - Added PUT method to APIClient (was missing)
+  - Fixed Confirm button not activating immediately after bbox edit
+  - Fixed cursor state management (React state instead of DOM)
+  - BBox selection only in Select mode (not in BBox mode)
+  - **Actual**: 2 hours
+  - **Files**:
+    - `frontend/lib/api/client.ts` (added put method)
+    - `frontend/components/annotation/Canvas.tsx` (cursor state, selection logic)
+
+### 3.2 Classification Tool
+
+- [x] **Classification annotation type** ✅ COMPLETED
+  - Image-level labels (no geometry)
+  - Single-label mode: Radio buttons
+  - Multi-label mode: Checkboxes
+  - Store as annotation with type='classification'
+  - **Estimate**: 4 hours
+  - **Actual**: 3 hours
+  - **File**: `frontend/lib/annotation/tools/ClassificationTool.ts`
+
+- [x] **Classification UI panel** ✅ COMPLETED
+  - Dedicated panel in RightPanel when classification task active
+  - Display all available classes with colors
+  - Show current selection state
+  - Quick keyboard shortcuts (1-9)
+  - **Estimate**: 3 hours
+  - **Actual**: 2 hours
+  - **File**: `frontend/components/annotation/ClassificationPanel.tsx`
+
+- [x] **Classification state management** ✅ COMPLETED
+  - Store classification annotations in annotationStore
+  - Support multiple labels per image (multi-label mode)
+  - Sync with backend API
+  - **Estimate**: 2 hours
+  - **Actual**: 1 hour
+
+- [x] **Classification keyboard shortcuts** ✅ COMPLETED
+  - '1-9': Quick select class (sorted by order field)
+  - Canvas click shows class selector popup
+  - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+
+- [x] **Class management improvements** ✅ COMPLETED (NEW)
+  - Auto-generate class ID (8-char UUID)
+  - Order field for class sorting
+  - Reorder UI (up/down arrows) in RightPanel
+  - Focus tracking during reorder
+  - **Actual**: 3 hours
+  - **Files**:
+    - `backend/app/api/v1/endpoints/projects_classes.py`
+    - `backend/app/schemas/class_schema.py`
+    - `frontend/components/annotation/RightPanel.tsx`
+    - `frontend/lib/api/classes.ts`
+
+- [x] **Export services use order field** ✅ COMPLETED (NEW)
+  - YOLO, COCO, DICE export sorted by class order
+  - DICE/COCO export as JSON (not zip)
+  - **Actual**: 1 hour
+  - **Files**:
+    - `backend/app/services/yolo_export_service.py`
+    - `backend/app/services/coco_export_service.py`
+    - `backend/app/services/dice_export_service.py`
+    - `backend/app/core/storage.py`
+
+- [x] **Task-filtered annotation counts** ✅ COMPLETED (NEW)
+  - ImageList Ann count filtered by current task
+  - Annotation page counts by task type
+  - Image status updates include annotation_count
+  - **Actual**: 1 hour
+  - **File**: `frontend/app/annotate/[projectId]/page.tsx`
+
+- [x] **Classification label rendering** ✅ COMPLETED (NEW)
+  - Label badge positioned on image (not canvas origin)
+  - Badge shows class name with class color
+  - **Actual**: 0.5 hours
+  - **File**: `frontend/lib/annotation/tools/ClassificationTool.ts`
+
+### 3.3 Polygon/Segmentation Tool
+
+- [ ] **Polygon drawing**
+  - Click to add vertices
+  - Show preview line from last vertex to cursor
+  - Double-click or click near first vertex to close
+  - Minimum 3 vertices validation
+  - Cancel with Escape key
+  - **Estimate**: 5 hours
+  - **File**: `frontend/lib/annotation/tools/PolygonTool.ts`
+
+- [ ] **Polygon editing**
+  - Click vertex to select (show as larger circle)
+  - Drag vertex to move
+  - Double-click edge to add vertex
+  - Delete key to remove selected vertex
+  - Drag inside polygon to move entire shape
+  - **Estimate**: 5 hours
+
+- [ ] **Polygon rendering**
+  - Fill with semi-transparent class color (opacity 0.3)
+  - Stroke outline (2px)
+  - Render vertices as circles (6px radius)
+  - Selected state: Thicker stroke (3px), larger vertices
+  - Hover state: Highlight nearest vertex/edge
+  - **Estimate**: 3 hours
+
+- [ ] **Polygon to mask conversion (optional)**
+  - Convert polygon to binary mask
+  - Support for export formats requiring masks
+  - **Estimate**: 2 hours
+
+### 3.4 Rotated Bounding Box Tool
+
+- [ ] **Rotated bbox drawing**
+  - Draw initial bbox with drag
+  - Rotation handle at top center
+  - Rotate by dragging handle
+  - Display rotation angle in tooltip
+  - **Estimate**: 4 hours
+  - **File**: `frontend/lib/annotation/tools/RotatedBBoxTool.ts`
+
+- [ ] **Rotated bbox editing**
+  - 8 resize handles (corners + midpoints)
+  - Rotation handle with angle snap (shift for 15° increments)
+  - Keyboard rotation: R/Shift+R for ±5°
+  - **Estimate**: 3 hours
+
+- [ ] **Rotated bbox rendering**
+  - Apply CSS transform for rotation
+  - Render rotation angle badge
+  - Handle coordinate system for rotated boxes
+  - **Estimate**: 2 hours
+
+### 3.5 Keypoints Tool (Basic)
+
+- [ ] **Keypoint skeleton definition**
+  - Load skeleton from task_config (e.g., COCO-17)
+  - Define keypoint names and connections
+  - Support custom skeleton definitions
+  - **Estimate**: 2 hours
+
+- [ ] **Keypoint placement**
+  - Click to place each keypoint in sequence
+  - Show next expected keypoint name
+  - Skip with 'S' key for occluded points
+  - Show skeleton overlay during placement
+  - **Estimate**: 4 hours
+  - **File**: `frontend/lib/annotation/tools/KeypointsTool.ts`
+
+- [ ] **Keypoint visibility states**
+  - 0: Not labeled (gray)
+  - 1: Labeled but occluded (yellow)
+  - 2: Labeled and visible (green)
+  - Click to cycle through states
+  - **Estimate**: 2 hours
+
+- [ ] **Keypoints rendering**
+  - Draw circles at keypoint positions (radius based on state)
+  - Draw skeleton connections (lines between keypoints)
+  - Color-code by visibility state
+  - Labels on hover
+  - **Estimate**: 3 hours
+
+### 3.6 Text/Caption Tool (VLM Support)
+
+- [ ] **Object-level text annotation**
+  - Attach text labels to existing annotations (bbox, polygon, etc.)
+  - Text fields appear when annotation is selected
+  - Support multiple text fields per object (name, description, attributes)
+  - Store text in annotation.attributes or dedicated text field
+  - **Estimate**: 4 hours
+  - **File**: `frontend/lib/annotation/tools/TextTool.ts`
+
+- [ ] **Image-level text annotation**
+  - Global caption/description for entire image
+  - Store as separate annotation with type='text' (no geometry)
+  - Support multiple image-level fields
+  - **Estimate**: 2 hours
+
+- [ ] **Text input UI panel**
+  - Inline text fields in RightPanel annotation card
+  - Expandable text area for long descriptions
+  - Multiple text fields based on task_config
+  - Character/word count display
+  - Auto-save on blur
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/annotation/TextPanel.tsx`
+
+- [ ] **Text field configuration**
+  - Define fields in task_config (e.g., caption, alt_text, description)
+  - Field types: single-line, multi-line, structured (QA)
+  - Object-level vs image-level field designation
+  - Validation rules (min/max length, required)
+  - **Estimate**: 2 hours
+
+- [ ] **VLM export format**
+  - JSON Lines format for VLM training
+  - Support region-text pairs (bbox + description)
+  - Support image-text pairs
+  - Support conversation format (QA)
+  - **Estimate**: 2 hours
+
+### 3.7 Tool Panel & Toolbar Updates
+
+- [ ] **Dynamic tool panel**
+  - Show available tools based on current task type
+  - Detection: BBox, Rotated BBox
+  - Segmentation: Polygon, BBox
+  - Classification: (no drawing tools)
+  - Keypoints: Keypoint tool
+  - Text/Caption: (no drawing tools)
+  - **Estimate**: 2 hours
+
+- [ ] **Tool-specific cursors**
+  - Crosshair for BBox/Polygon
+  - Custom cursor for keypoints (numbered)
+  - Default cursor for classification/text
+  - **Estimate**: 1 hour
+
+- [ ] **Tool keyboard shortcuts**
+  - 'V': BBox tool
+  - 'P': Polygon tool
+  - 'K': Keypoints tool
+  - 'O': Rotated BBox
+  - 'T': Text tool
+  - 'R': Select tool (existing)
+  - **Estimate**: 1 hour
+
+### 3.8 Backend Support
+
+- [ ] **Annotation type validation**
+  - Validate geometry based on annotation_type
+  - BBox: [x, y, width, height]
+  - Rotated BBox: [x, y, width, height, angle]
+  - Polygon: [[x1,y1], [x2,y2], ...]
+  - Classification: null (image-level)
+  - Keypoints: [[x1,y1,v1], [x2,y2,v2], ...]
+  - Text: {field_name: text_value, ...}
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/schemas/annotation.py`
+
+- [ ] **Export format support**
+  - COCO polygon format (segmentation)
+  - COCO keypoints format
+  - YOLO segmentation format
+  - JSON Lines for VLM (image-text pairs)
+  - Update DICE export for new types
+  - **Estimate**: 4 hours
+
+### 3.9 Testing & Documentation
+
+- [ ] **Tool integration tests**
+  - Test each tool's drawing/editing
+  - Test tool switching
+  - Test keyboard shortcuts
+  - **Estimate**: 3 hours
+
+- [ ] **Tool documentation**
+  - Usage guide for each tool
+  - Keyboard shortcuts reference
+  - Export format specifications
+  - **Estimate**: 2 hours
+
+**Subtotal**: ~78 hours
+
+---
+
+## Phase 4: AI Integration (Weeks 9-10)
+
+**Goal**: AI-assisted annotation with model predictions + VLM text generation
+**Target Completion**: 2025-12-20
+**Status**: ⏸️ Pending
+
+### 4.1 AI Assist Button
 
 - [ ] **UI button in bottom bar**
   - Icon: 🤖
@@ -857,23 +1188,23 @@
   - Run button
   - **Estimate**: 3 hours
 
-### 3.2 Model Inference
+### 4.2 Model Inference
 
 - [ ] **Backend endpoint**
   - POST `/api/v1/annotations/ai-assist`
   - Request: project_id, image_id, model_id, confidence_threshold
-  - Response: List of predicted bboxes
+  - Response: List of predicted bboxes/polygons
   - **Estimate**: 4 hours
   - **File**: `backend/app/api/v1/endpoints/ai_assist.py`
 
 - [ ] **Model integration**
-  - Load YOLOv8 model
+  - Load YOLOv8 model (detection/segmentation)
   - Run inference on image
   - Filter by confidence threshold
   - Return predictions in standard format
   - **Estimate**: 4 hours
 
-### 3.3 Predictions Rendering
+### 4.3 Predictions Rendering
 
 - [ ] **Render predictions on canvas**
   - Dashed border (distinguishes from user annotations)
@@ -888,7 +1219,7 @@
   - Show confidence score
   - **Estimate**: 2 hours
 
-### 3.4 Review & Accept/Reject
+### 4.4 Review & Accept/Reject
 
 - [ ] **Accept prediction**
   - Click ✓ or press Space
@@ -915,7 +1246,7 @@
   - Bulk POST to backend
   - **Estimate**: 2 hours
 
-### 3.5 AI Confidence Scores
+### 4.5 AI Confidence Scores
 
 - [ ] **Display confidence in annotations list**
   - Show "Conf: 95%" for AI-assisted annotations
@@ -929,14 +1260,58 @@
   - Low (<70%): Dashed
   - **Estimate**: 2 hours
 
+### 4.6 AI Text Generation (VLM)
+
+- [ ] **VLM integration backend**
+  - POST `/api/v1/annotations/ai-caption`
+  - Support multiple VLM models (GPT-4V, LLaVA, etc.)
+  - Request: image_id, annotation_id (optional), prompt_template
+  - Response: generated text
+  - **Estimate**: 4 hours
+  - **File**: `backend/app/api/v1/endpoints/ai_assist.py`
+
+- [ ] **Image-level caption generation**
+  - Generate caption for entire image
+  - Customizable prompt templates
+  - Multiple caption styles (brief, detailed, technical)
+  - **Estimate**: 2 hours
+
+- [ ] **Object-level description generation**
+  - Generate description for selected bbox/polygon region
+  - Crop region and send to VLM
+  - Context-aware prompts (include surrounding context)
+  - **Estimate**: 3 hours
+
+- [ ] **Batch text generation**
+  - Generate captions for multiple images
+  - Generate descriptions for all objects in image
+  - Progress indicator and cancel support
+  - **Estimate**: 2 hours
+
+- [ ] **Text generation UI**
+  - "Generate" button in TextPanel
+  - Model selection dropdown
+  - Prompt template selection
+  - Edit generated text before saving
+  - **Estimate**: 3 hours
+
+- [ ] **Text review workflow**
+  - Mark generated text as "AI-generated"
+  - Review and approve/edit workflow
+  - Confidence score for generated text
+  - **Estimate**: 2 hours
+
+**Subtotal**: ~42 hours
+
 ---
 
-## Phase 4: Polish & Optimization (Week 4)
+## Phase 5: Polish & Optimization (Week 11)
 
 **Goal**: Performance, error handling, user experience
-**Target Completion**: 2025-12-12
+**Target Completion**: 2025-01-04
+**Status**: ⏸️ Pending
 
-### 4.1 Performance Optimization
+### 5.1 Performance Optimization
 
 - [ ] **Canvas rendering optimization**
   - Viewport culling (only render visible annotations)
@@ -963,7 +1338,7 @@
   - Load ±20 images buffer
   - **Estimate**: 2 hours
 
-### 4.2 Error Handling
+### 5.2 Error Handling
 
 - [ ] **Network error handling**
   - Retry with exponential backoff
@@ -989,7 +1364,7 @@
   - Report to error tracking
   - **Estimate**: 2 hours
 
-### 4.3 Loading States
+### 5.3 Loading States
 
 - [ ] **Loading indicators**
   - Image loading spinner
@@ -1003,7 +1378,7 @@
   - Canvas placeholder
   - **Estimate**: 2 hours
 
-### 4.4 Confirmation Modals
+### 5.4 Confirmation Modals
 
 - [ ] **Delete annotation confirmation**
   - "Are you sure?"
@@ -1020,7 +1395,7 @@
   - Options: Save & Continue / Discard / Cancel
   - **Estimate**: 2 hours
 
-### 4.5 Onboarding & Help
+### 5.5 Onboarding & Help
 
 - [ ] **First-time tutorial**
   - Overlay guide on first visit
@@ -1039,7 +1414,7 @@
   - Feature guide
   - **Estimate**: 2 hours
 
-### 4.6 User Testing & Feedback
+### 5.6 User Testing & Feedback
 
 - [ ] **Internal testing**
   - Test with 100+ images
@@ -1059,121 +1434,7 @@
   - Track error rates
   - **Estimate**: 2 hours
 
----
-
-## Phase 5: Multi-Task Support (Weeks 5-6)
-
-**Goal**: Support Polygon, Classification, Keypoints
-**Target Completion**: 2025-12-19
-
-### 5.1 Tool Registration System
-
-- [ ] **Abstract annotation tool interface**
-  - Define AnnotationTool interface
-  - renderAnnotation, renderPreview methods
-  - onMouseDown/Move/Up handlers
-  - validate, toJSON, fromJSON
-  - **Estimate**: 3 hours
-  - **File**: `frontend/lib/annotation/AnnotationTool.ts`
-
-- [ ] **Tool registry**
-  - Register bbox, polygon, classification, keypoints tools
-  - Select active tool from registry
-  - Modular architecture
-  - **Estimate**: 2 hours
-
-### 5.2 Polygon Tool
-
-- [ ] **Polygon drawing**
-  - Click to add vertices
-  - Show preview line to cursor
-  - Auto-close when clicking near first vertex
-  - Minimum 3 vertices
-  - **Estimate**: 4 hours
-  - **File**: `frontend/components/annotation/tools/PolygonTool.tsx`
-
-- [ ] **Polygon editing**
-  - Click vertex to select
-  - Drag to move vertex
-  - Delete vertex (right-click or Delete key)
-  - Add vertex (click on edge)
-  - **Estimate**: 4 hours
-
-- [ ] **Polygon rendering**
-  - Fill with semi-transparent color
-  - Stroke outline
-  - Show vertices as circles
-  - Highlight selected vertex
-  - **Estimate**: 2 hours
-
-### 5.3 Classification Tool
-
-- [ ] **Classification UI**
-  - Single-label: Dropdown or radio buttons
-  - Multi-label: Checkboxes
-  - Hierarchical: Tree structure (future)
-  - **Estimate**: 3 hours
-  - **File**: `frontend/components/annotation/tools/ClassificationTool.tsx`
-
-- [ ] **Keyboard shortcuts for classification**
-  - '1-9' for quick select
-  - 'C' to activate tool
-  - Visual feedback on selection
-  - **Estimate**: 2 hours
-
-- [ ] **Save classification to image**
-  - No bbox, just image-level label
-  - POST to backend
-  - Display in annotations list
-  - **Estimate**: 2 hours
-
-### 5.4 Keypoints Tool (Basic)
-
-- [ ] **Keypoints placement**
-  - Click to place keypoint
-  - Load skeleton definition (COCO-17 or custom)
-  - Show skeleton overlay
-  - **Estimate**: 4 hours
-  - **File**: `frontend/components/annotation/tools/KeypointsTool.tsx`
-
-- [ ] **Visibility flags**
-  - 0: Not labeled
-  - 1: Labeled but occluded
-  - 2: Labeled and visible
-  - Click to cycle through states
-  - **Estimate**: 2 hours
-
-- [ ] **Keypoints rendering**
-  - Draw circles at keypoint positions
-  - Draw lines for skeleton connections
-  - Color-code by visibility
-  - **Estimate**: 2 hours
-
-### 5.5 Task Switcher UI
-
-- [ ] **Task type selector**
-  - Dropdown in top bar or left panel
-  - Switch between: Detection / Segmentation / Classification / Keypoints
-  - Load appropriate tool
-  - **Estimate**: 2 hours
-
-- [ ] **Dynamic UI based on task type**
-  - Show/hide attributes panel
-  - Show/hide class selector (not needed for keypoints)
-  - Adjust right panel layout
-  - **Estimate**: 3 hours
-
-### 5.6 Configuration-Driven UI
-
-- [ ] **Load task config from project**
-  - Parse project.task_config
-  - Enable/disable features based on config
-  - **Estimate**: 2 hours
-
-- [ ] **Attributes from config**
-  - Dynamically generate attribute inputs
-  - Support all 7 input types
-  - **Estimate**: 3 hours
+**Subtotal**: ~40 hours
 
 ---
 
@@ -1276,31 +1537,41 @@
 
 ### Total Estimated Hours
 
-| Phase | Tasks | Hours |
-|-------|-------|-------|
-| Phase 1: Core Canvas | 45 tasks | 90 hours |
-| Phase 2: Advanced Features | 69 tasks (+42) | 138 hours (+84) |
-|   - 2.7 Confirmation | 13 tasks | 21 hours |
-|   - 2.8 Version Mgmt | 11 tasks | 21 hours |
-|   - Other features | 45 tasks | 96 hours |
-| Phase 3: AI Integration | 16 tasks | 32 hours |
-| Phase 4: Polish & Platform Migration | 20 tasks | 40 hours (+storage migration) |
-| Phase 5: Multi-Task | 18 tasks | 36 hours |
-| Testing | 8 tasks | 23 hours |
-| Documentation | 3 tasks | 12 hours |
-| Deployment | 4 tasks | 8 hours |
-| **TOTAL** | **183 tasks** (+42) | **379 hours** (+84) |
+| Phase | Tasks | Hours | Status |
+|-------|-------|-------|--------|
+| Phase 1: Core Canvas | 45 tasks | 90 hours | ✅ Complete |
+| Phase 2: Advanced Features | 69 tasks | 138 hours | 🔄 85% Complete |
+|   - 2.7 Confirmation | 13 tasks | 21 hours | ✅ Complete |
+|   - 2.8 Version Mgmt | 15 tasks | 25 hours | ✅ Complete |
+|   - 2.9 Task Architecture | 15 tasks | 25 hours | ✅ Complete |
+|   - 2.10 Dataset Mgmt | 20 tasks | 62 hours | 🔄 In Progress |
+| Phase 3: Multi-Task Tools | 29 tasks | 78 hours | ⏸️ Pending |
+| Phase 4: AI Integration | 22 tasks | 42 hours | ⏸️ Pending |
+| Phase 5: Polish & Optimization | 20 tasks | 40 hours | ⏸️ Pending |
+| Testing | 8 tasks | 23 hours | ⏸️ Pending |
+| Documentation | 3 tasks | 12 hours | ⏸️ Pending |
+| Deployment | 4 tasks | 8 hours | ⏸️ Pending |
+| **TOTAL** | **~210 tasks** | **~490 hours** | |
 
 ### Timeline
 
 - **Week 1** (Nov 14-21): Phase 1 (90h) ✅ Complete
-- **Week 2-3** (Nov 22-Dec 5): Phase 2 (138h)
-  - Priority: 2.7 Confirmation + 2.8 Version Mgmt (42h) ⭐
-  - Secondary: Shortcuts, Undo/Redo, Settings (96h)
-- **Week 4** (Dec 6-12): Phase 3 (32h)
-- **Week 5** (Dec 13-19): Phase 4 (40h) + Platform API Migration
-- **Week 6-7** (Dec 20-26): Phase 5 (36h) + Testing (23h)
-- **Week 7-8** (Dec 27-Jan 2): Docs (12h) + Deployment (8h) + Buffer
+- **Week 2-6** (Nov 22-Nov 30): Phase 2 (138h) 🔄 In Progress
+  - 2.7 Confirmation ✅ Complete
+  - 2.8 Version Mgmt ✅ Complete
+  - 2.9 Task Architecture ✅ Complete
+  - 2.10 Dataset Mgmt 🔄 In Progress
+- **Week 7-8** (Dec 1-14): Phase 3 - Multi-Task Tools (78h) ⭐ NEXT
+  - Classification Tool
+  - Polygon/Segmentation Tool
+  - Rotated BBox Tool
+  - Keypoints Tool (Basic)
+  - Text/Caption Tool (VLM)
+- **Week 9-10** (Dec 15-28): Phase 4 - AI Integration (42h)
+  - Detection/Segmentation AI Assist
+  - VLM Text Generation
+- **Week 11** (Dec 29-Jan 4): Phase 5 - Polish & Optimization (40h)
+- **Week 12-13** (Jan 5-17): Testing (23h) + Docs (12h) + Deployment (8h)
 
 ### Success Metrics
 
@@ -1326,18 +1597,19 @@ By end of Phase 5, we should achieve:
 
 ### Dependencies
 
-- **Phase 2** depends on Phase 1 completion
-- **Phase 2.7-2.8** (Confirmation & Version) are **P0** for production
-- **Phase 3** can run parallel to Phase 2 (backend team)
-- **Phase 4** depends on Phases 1-3
-- **Phase 5** depends on Phase 1 (tool abstraction)
+- **Phase 2** depends on Phase 1 completion ✅
+- **Phase 2.7-2.8** (Confirmation & Version) are **P0** for production ✅
+- **Phase 3** (Multi-Task Tools) depends on Phase 2.9 (Task Architecture) ✅
+- **Phase 4** (AI Integration) can run parallel to Phase 3
+- **Phase 5** (Polish) depends on Phases 1-4
 
 ### Risk Mitigation
 
 1. **Performance issues**: Profile early, optimize incrementally
 2. **Scope creep**: Stick to P0/P1 tasks for MVP
-3. **AI integration delays**: Phase 3 is optional for initial launch
+3. **AI integration delays**: Phase 4 is optional for initial launch
 4. **Browser compatibility**: Test on Chrome, Edge, Firefox regularly
+5. **Tool complexity**: Start with simple tools (Classification), then add complex ones (Polygon)
 
 ### Storage Strategy ⭐ NEW
 
@@ -1442,10 +1714,21 @@ POST /api/v1/storage/upload
 
 ---
 
-**Last Updated**: 2025-11-16
-**Next Review**: 2025-11-20
-**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 85% complete (11/13 tasks) 🔄
-**Status**: Phase 1 complete. Phase 2.7 all core features complete!
+**Last Updated**: 2025-11-19
+**Next Review**: 2025-11-23
+**Progress**: Phase 1: ✅ | Phase 2: ✅ | Phase 3: 45% (13/29 tasks)
+**Status**: Phase 3.2 Classification Tool complete with all enhancements.
+
+**Session 2025-11-19** (Classification Tool Implementation):
+- ✅ ClassificationTool.ts - Annotation tool class with badge rendering
+- ✅ ClassificationPanel.tsx - UI panel with keyboard shortcuts
+- ✅ Class auto-ID generation (8-char UUID)
+- ✅ Class order field and reorder UI
+- ✅ Export services sorted by class order
+- ✅ DICE/COCO export as JSON (not zip)
+- ✅ Task-filtered annotation counts in ImageList
+- ✅ Canvas click popup for classification
+- ✅ Fixed dual selection state in class reorder UI
 
 **Phase 2.7 Status** (Updated 2025-11-16):
 ✅ **Completed Tasks (11/13)**:
@@ -1559,60 +1842,63 @@ Complete implementation of task-based annotation architecture enabling independe
 
 ### Phases
 
-#### Phase 2.10.1: Dataset Deletion (Week 7) - P0 Critical
+#### Phase 2.10.1: Dataset Deletion (Week 7) - P0 Critical ✅ COMPLETE
 
 **Goal**: Fix broken datasets + Proper cleanup mechanism
+**Status**: ✅ Complete (2025-11-19)
 **Estimate**: 15 hours
+**Actual**: ~12 hours
 
-- [ ] **Fix: DICE export service** ⚡ IMMEDIATE
-  - Fix `dice_export_service.py:129` to use actual file_path
-  - Load file_name from Platform DB or S3 metadata
-  - Test with folder-structured datasets
+- [x] **Fix: DICE export service** ✅ COMPLETED
+  - Added `_load_image_filename_mapping()` function
+  - Load file_name from Platform annotations file
+  - Fallback to image_id if mapping not found
   - **Estimate**: 2 hours
-  - **Priority**: P0 - Blocking
-  - **Status**: Not started
+  - **Actual**: 2 hours
+  - **File**: `backend/app/services/dice_export_service.py:346-395`
 
-- [ ] **Backend: DELETE /api/v1/datasets/{id}**
+- [x] **Backend: DELETE /api/v1/datasets/{id}** ✅ COMPLETED
   - Cascade delete Labeler DB data
   - Delete S3 files (images + annotations + exports)
   - Delete Platform DB record
-  - Return deletion summary
+  - Return deletion summary with impact details
   - **Estimate**: 3 hours
-  - **File**: `backend/app/api/v1/endpoints/datasets.py`
+  - **Actual**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/datasets.py:538-620`
 
-- [ ] **Backend: Dataset deletion service**
+- [x] **Backend: Dataset deletion service** ✅ COMPLETED
   - `calculate_deletion_impact()` - Preview what will be deleted
   - `delete_labeler_data()` - Remove projects, annotations, versions
   - `delete_s3_data()` - Clean up S3 buckets
   - `create_final_backup()` - Optional export before deletion
   - **Estimate**: 4 hours
+  - **Actual**: 4 hours
   - **File**: `backend/app/services/dataset_delete_service.py`
 
-- [ ] **Frontend: Delete confirmation modal**
+- [x] **Frontend: Delete confirmation modal** ✅ COMPLETED
   - Dataset name verification input
   - Deletion impact display (images, annotations, versions, storage)
   - Optional backup checkbox
   - Loading states
   - **Estimate**: 3 hours
+  - **Actual**: 2.5 hours
   - **File**: `frontend/components/datasets/DeleteDatasetModal.tsx`
 
-- [ ] **Frontend: Delete button integration**
-  - Add delete button to dataset cards
-  - Keyboard shortcut support
+- [x] **Frontend: Delete button integration** ✅ COMPLETED
+  - Delete button in dashboard dataset detail
   - Success/error toast notifications
   - **Estimate**: 1 hour
-  - **File**: `frontend/app/datasets/page.tsx`
+  - **Actual**: 0.5 hours
+  - **File**: `frontend/app/page.tsx`
 
 - [ ] **Test: Delete det-mvtec dataset**
   - Verify all data cleaned up
   - Check orphaned data
   - Re-upload clean dataset
   - **Estimate**: 2 hours
+  - **Status**: Pending testing
 
-**Subtotal**: 15 hours
-
-**Dependency**: Requires Platform deletion impact analysis
-**Blocker**: DICE export bug must be fixed first
+**Subtotal**: 15 hours (13h complete, 2h testing remaining)
 
 #### Phase 2.10.2: Dataset Upload (Weeks 8-9) - P1 High
 
@@ -1711,7 +1997,7 @@ Complete implementation of task-based annotation architecture enabling independe
 
 | Phase | Hours | Priority | Status |
 |-------|-------|----------|--------|
-| 2.10.1: Deletion | 15h | P0 Critical | ⏸️ Ready to start |
+| 2.10.1: Deletion | 15h | P0 Critical | ✅ Complete (13h done) |
 | 2.10.2: Upload | 25h | P1 High | ⏸️ Deferred |
 | 2.10.3: UI | 12h | P2 Medium | ⏸️ Planning |
 | 2.10.4: Safety | 10h | P2 Medium | ⏸️ Planning |

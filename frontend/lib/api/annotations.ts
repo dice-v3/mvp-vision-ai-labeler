@@ -165,7 +165,7 @@ export async function updateAnnotation(
   annotationId: string,
   data: AnnotationUpdateRequest
 ): Promise<Annotation> {
-  return apiClient.patch<Annotation>(`/api/v1/annotations/${annotationId}`, data);
+  return apiClient.put<Annotation>(`/api/v1/annotations/${annotationId}`, data);
 }
 
 /**

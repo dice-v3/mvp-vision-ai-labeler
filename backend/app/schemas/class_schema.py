@@ -1,6 +1,6 @@
 """Class management schemas."""
 
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -9,6 +9,7 @@ class ClassInfo(BaseModel):
     name: str = Field(..., description="Class name")
     color: str = Field(..., description="Color in hex format (e.g., #FF5733)")
     description: Optional[str] = Field(None, description="Class description")
+    order: int = Field(0, description="Display order (0-based)")
 
     class Config:
         from_attributes = True
@@ -16,7 +17,8 @@ class ClassInfo(BaseModel):
 
 class ClassCreateRequest(BaseModel):
     """Request to add a new class to a project."""
-    class_id: str = Field(..., description="Unique class ID (e.g., '1', 'person', etc.)")
+    # class_id is now optional - will be auto-generated if not provided
+    class_id: Optional[str] = Field(None, description="Unique class ID (auto-generated if not provided)")
     name: str = Field(..., description="Class name")
     color: str = Field(..., description="Color in hex format (e.g., #FF5733)")
     description: Optional[str] = Field(None, description="Class description")
@@ -27,6 +29,12 @@ class ClassUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="New class name")
     color: Optional[str] = Field(None, description="New color in hex format")
     description: Optional[str] = Field(None, description="New description")
+    order: Optional[int] = Field(None, description="New display order")
+
+
+class ClassReorderRequest(BaseModel):
+    """Request to reorder classes."""
+    class_ids: List[str] = Field(..., description="List of class IDs in desired order")
 
 
 class ClassResponse(BaseModel):
@@ -35,6 +43,7 @@ class ClassResponse(BaseModel):
     name: str
     color: str
     description: Optional[str] = None
+    order: int = 0
     image_count: int = 0
     bbox_count: int = 0
 

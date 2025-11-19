@@ -204,7 +204,15 @@ export default function ImageList() {
                   </div>
 
                   {/* Status indicator */}
-                  <div className="absolute top-1 right-1">
+                  <div className="absolute top-1 right-1 flex items-center gap-1">
+                    {/* No Object indicator */}
+                    {(img as any).has_no_object && (
+                      <div className="bg-gray-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm" title="No Object">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} strokeDasharray="4 2" />
+                        </svg>
+                      </div>
+                    )}
                     <StatusBadge status={status} />
                   </div>
 
@@ -256,8 +264,18 @@ export default function ImageList() {
                       <td className="py-1.5 px-2 text-center text-gray-600 dark:text-gray-500">
                         {annCount}
                       </td>
-                      <td className="py-1.5 px-2 flex justify-center items-center">
-                        <StatusBadge status={status} />
+                      <td className="py-1.5 px-2">
+                        <div className="flex justify-center items-center gap-1">
+                          {/* No Object indicator */}
+                          {(img as any).has_no_object && (
+                            <div className="bg-gray-600 rounded-full w-4 h-4 flex items-center justify-center" title="No Object">
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} strokeDasharray="4 2" />
+                              </svg>
+                            </div>
+                          )}
+                          <StatusBadge status={status} />
+                        </div>
                       </td>
                     </tr>
                   );

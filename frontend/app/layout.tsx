@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/auth/context';
+import { ToastContainer } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function RootLayout({
         <AuthProvider>
           {children}
         </AuthProvider>
+        <ToastContainer />
+        <ConfirmDialog />
       </body>
     </html>
   );

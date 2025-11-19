@@ -116,6 +116,16 @@ export class APIClient {
   }
 
   /**
+   * PUT request
+   */
+  async put<T>(endpoint: string, data: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
    * DELETE request
    */
   async delete<T>(endpoint: string, data?: any): Promise<T> {

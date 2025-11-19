@@ -287,7 +287,7 @@ class StorageClient:
             key = f"exports/{project_id}/{task_type}/{version_number}/{filename}"
 
             # Determine content type
-            content_type = 'application/json' if export_format == 'coco' else 'application/zip'
+            content_type = 'application/json' if export_format in ['coco', 'dice'] else 'application/zip'
 
             # Upload to S3
             self.s3_client.put_object(

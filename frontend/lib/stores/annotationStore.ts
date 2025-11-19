@@ -89,6 +89,7 @@ export interface Project {
 export interface ClassInfo {
   name: string;
   color: string;
+  order?: number;
   image_count?: number;
   bbox_count?: number;
 }

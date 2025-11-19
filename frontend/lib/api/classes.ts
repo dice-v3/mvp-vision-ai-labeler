@@ -8,12 +8,13 @@ export interface ClassInfo {
   name: string;
   color: string;
   description?: string;
+  order?: number;
   image_count?: number;
   bbox_count?: number;
 }
 
 export interface ClassCreateRequest {
-  class_id: string;
+  class_id?: string; // Optional - auto-generated if not provided
   name: string;
   color: string;
   description?: string;
@@ -23,6 +24,11 @@ export interface ClassUpdateRequest {
   name?: string;
   color?: string;
   description?: string;
+  order?: number;
+}
+
+export interface ClassReorderRequest {
+  class_ids: string[];
 }
 
 export interface ClassResponse {
@@ -30,6 +36,7 @@ export interface ClassResponse {
   name: string;
   color: string;
   description?: string;
+  order: number;
   image_count: number;
   bbox_count: number;
 }
@@ -39,9 +46,13 @@ export interface ClassResponse {
  */
 export async function addClass(
   projectId: string,
-  classData: ClassCreateRequest
+  classData: ClassCreateRequest,
+  taskType?: string
 ): Promise<ClassResponse> {
-  return apiClient.post<ClassResponse>(`/api/v1/projects/${projectId}/classes`, classData);
+  const url = taskType
+    ? `/api/v1/projects/${projectId}/classes?task_type=${taskType}`
+    : `/api/v1/projects/${projectId}/classes`;
+  return apiClient.post<ClassResponse>(url, classData);
 }
 
 /**
@@ -63,4 +74,20 @@ export async function deleteClass(
   classId: string
 ): Promise<void> {
   return apiClient.delete<void>(`/api/v1/projects/${projectId}/classes/${classId}`);
+}
+
+/**
+ * Reorder classes
+ */
+export async function reorderClasses(
+  projectId: string,
+  classIds: string[],
+  taskType?: string
+): Promise<ClassResponse[]> {
+  const url = taskType
+    ? `/api/v1/projects/${projectId}/classes/reorder?task_type=${taskType}`
+    : `/api/v1/projects/${projectId}/classes/reorder`;
+  return apiClient.put<ClassResponse[]>(url, {
+    class_ids: classIds
+  });
 }

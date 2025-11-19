@@ -175,17 +175,28 @@ def _build_categories(project: AnnotationProject) -> List[Dict[str, Any]]:
     """Build COCO categories section from project classes."""
     categories = []
 
-    # project.classes is a list of class definitions
-    # Example: [{"id": "person", "name": "Person", "color": "#FF0000"}, ...]
-    classes = project.classes if isinstance(project.classes, list) else []
-
-    for idx, class_def in enumerate(classes, start=1):
-        category = {
-            "id": idx,
-            "name": class_def.get("name", class_def.get("id", f"class_{idx}")),
-            "supercategory": class_def.get("supercategory", "object"),
-        }
-        categories.append(category)
+    if isinstance(project.classes, dict):
+        # Sort by order field, then by class_id as fallback
+        sorted_classes = sorted(
+            project.classes.items(),
+            key=lambda x: (x[1].get("order", 0), x[0])
+        )
+        for idx, (class_id, class_info) in enumerate(sorted_classes, start=1):
+            category = {
+                "id": idx,
+                "name": class_info.get("name", class_id),
+                "supercategory": class_info.get("supercategory", "object"),
+            }
+            categories.append(category)
+    elif isinstance(project.classes, list):
+        # Legacy list format
+        for idx, class_def in enumerate(project.classes, start=1):
+            category = {
+                "id": idx,
+                "name": class_def.get("name", class_def.get("id", f"class_{idx}")),
+                "supercategory": class_def.get("supercategory", "object"),
+            }
+            categories.append(category)
 
     return categories
 

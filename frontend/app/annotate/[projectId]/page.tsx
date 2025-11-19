@@ -162,11 +162,25 @@ export default function AnnotationPage() {
         // Load all annotations for the project to count per image
         const allAnnotations = await getProjectAnnotations(projectId);
 
-        // Count annotations per image
+        // Count annotations per image (filtered by initial task)
+        // Also track which images have no_object annotation
         const annotationCountMap = new Map<string, number>();
+        const noObjectImageIds = new Set<string>();
+
         allAnnotations.forEach((ann: any) => {
           const imageId = ann.image_id || ann.imageId;
-          annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
+          const annType = ann.annotation_type;
+
+          // Track no_object images
+          if (annType === 'no_object') {
+            noObjectImageIds.add(imageId);
+          }
+
+          // Phase 2.9: Only count annotations for the current task
+          const annTaskType = getTaskTypeForAnnotation(annType);
+          if (!initialTask || annTaskType === initialTask) {
+            annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
+          }
         });
 
         // Phase 2.7/2.9: Load image statuses (filtered by initial task)
@@ -187,6 +201,8 @@ export default function AnnotationPage() {
             is_confirmed: status?.is_image_confirmed || false,
             status: status?.status || 'not-started',
             confirmed_at: status?.confirmed_at,
+            // Track no_object status
+            has_no_object: noObjectImageIds.has(imgId),
           };
         });
 
@@ -234,10 +250,11 @@ export default function AnnotationPage() {
 
         // Update annotation count for current image in the images array
         // Use setState directly to avoid resetting currentImage
+        // Phase 2.9: Use filtered count, not total count
         useAnnotationStore.setState((state) => ({
           images: state.images.map(img =>
             img.id === currentImage.id
-              ? { ...img, annotation_count: annotationsData.length }
+              ? { ...img, annotation_count: filteredAnnotations.length }
               : img
           )
         }));
@@ -260,13 +277,14 @@ export default function AnnotationPage() {
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );
 
-        // Update image statuses in the store
+        // Update image statuses in the store (including annotation count for current task)
         useAnnotationStore.setState((state) => ({
           images: state.images.map(img => {
             const status = imageStatusMap.get(img.id);
             if (status) {
               return {
                 ...img,
+                annotation_count: status.total_annotations, // Phase 2.9: Task-filtered count
                 is_confirmed: status.is_image_confirmed,
                 status: status.status,
                 confirmed_at: status.confirmed_at,
@@ -275,6 +293,7 @@ export default function AnnotationPage() {
             // If no status for this task, set default
             return {
               ...img,
+              annotation_count: 0, // Phase 2.9: No annotations for this task
               is_confirmed: false,
               status: 'not-started',
               confirmed_at: undefined,
