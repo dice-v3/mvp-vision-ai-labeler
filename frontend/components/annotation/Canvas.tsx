@@ -77,7 +77,8 @@ export default function Canvas() {
     bboxH: number,
     handleSize: number = 8
   ): string | null => {
-    const threshold = handleSize / 2 + 2;
+    // Increase threshold for easier handle detection
+    const threshold = handleSize / 2 + 6;
 
     // Corner handles
     if (Math.abs(x - bboxX) < threshold && Math.abs(y - bboxY) < threshold) return 'nw';
