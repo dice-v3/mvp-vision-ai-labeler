@@ -1156,48 +1156,49 @@ export default function Canvas() {
 
     const isBatch = targetImageIds.length > 1;
 
-    setConfirmingImage(true);
-    try {
-      if (isBatch) {
-        // Batch confirm
-        setBatchProgress({ current: 0, total: targetImageIds.length });
+    const processConfirm = async () => {
+      setConfirmingImage(true);
+      try {
+        if (isBatch) {
+          // Batch confirm
+          setBatchProgress({ current: 0, total: targetImageIds.length });
 
-        for (let i = 0; i < targetImageIds.length; i++) {
-          const imageId = targetImageIds[i];
-          setBatchProgress({ current: i + 1, total: targetImageIds.length });
+          for (let i = 0; i < targetImageIds.length; i++) {
+            const imageId = targetImageIds[i];
+            setBatchProgress({ current: i + 1, total: targetImageIds.length });
 
-          // Call API to confirm image
-          await confirmImage(project.id, imageId, currentTask || undefined);
-        }
+            // Call API to confirm image
+            await confirmImage(project.id, imageId, currentTask || undefined);
+          }
 
-        // Update all confirmed images status
-        useAnnotationStore.setState((state) => ({
-          images: state.images.map(img =>
-            targetImageIds.includes(img.id)
-              ? {
-                  ...img,
-                  is_confirmed: true,
-                  status: 'completed',
-                  confirmed_at: new Date().toISOString(),
-                }
-              : img
-          )
-        }));
-
-        // If current image was in selection, update its annotations
-        if (currentImage && targetImageIds.includes(currentImage.id)) {
-          const updatedAnnotations = annotations.map(ann => ({
-            ...ann,
-            annotation_state: 'confirmed',
-            confirmed_at: new Date().toISOString(),
+          // Update all confirmed images status
+          useAnnotationStore.setState((state) => ({
+            images: state.images.map(img =>
+              targetImageIds.includes(img.id)
+                ? {
+                    ...img,
+                    is_confirmed: true,
+                    status: 'completed',
+                    confirmed_at: new Date().toISOString(),
+                  }
+                : img
+            )
           }));
-          useAnnotationStore.setState({ annotations: updatedAnnotations });
-        }
 
-        setBatchProgress(null);
-        clearImageSelection();
-        toast.success(`${targetImageIds.length}개 이미지를 확정했습니다.`, 3000);
-      } else {
+          // If current image was in selection, update its annotations
+          if (currentImage && targetImageIds.includes(currentImage.id)) {
+            const updatedAnnotations = annotations.map(ann => ({
+              ...ann,
+              annotation_state: 'confirmed',
+              confirmed_at: new Date().toISOString(),
+            }));
+            useAnnotationStore.setState({ annotations: updatedAnnotations });
+          }
+
+          setBatchProgress(null);
+          clearImageSelection();
+          toast.success(`${targetImageIds.length}개 이미지를 확정했습니다.`, 3000);
+        } else {
         // Single image confirm (existing logic)
         if (!currentImage) return;
 
@@ -1238,14 +1239,27 @@ export default function Canvas() {
         } else {
           goToNextImage();
         }
+        }
+      } catch (err) {
+        console.error('Failed to confirm image:', err);
+        setBatchProgress(null);
+        toast.error('확정에 실패했습니다.');
+      } finally {
+        setConfirmingImage(false);
       }
+    };
 
-    } catch (err) {
-      console.error('Failed to confirm image:', err);
-      setBatchProgress(null);
-      toast.error('확정에 실패했습니다.');
-    } finally {
-      setConfirmingImage(false);
+    // Show confirm dialog for batch operations
+    if (isBatch) {
+      confirm({
+        title: '이미지 확정',
+        message: `선택한 ${targetImageIds.length}개 이미지를 확정하시겠습니까?`,
+        confirmText: '확정',
+        cancelText: '취소',
+        onConfirm: processConfirm,
+      });
+    } else {
+      processConfirm();
     }
   }, [currentImage, project, confirmingImage, annotations, images, currentIndex, goToNextImage, setCurrentIndex, selectedImageIds, clearImageSelection, currentTask]);
 
@@ -1271,11 +1285,17 @@ export default function Canvas() {
         e.preventDefault();
         handleNoObject();
       }
+
+      // Delete: Delete all annotations (supports batch)
+      if (e.key === 'Delete' && (selectedImageIds.length > 0 || annotations.length > 0)) {
+        e.preventDefault();
+        handleDeleteAllAnnotations();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
