@@ -118,7 +118,17 @@ export default function ClassSelectorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+      tabIndex={-1}
+    >
       <div
         ref={modalRef}
         className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl w-[400px] max-h-[600px] flex flex-col"
@@ -155,20 +165,24 @@ export default function ClassSelectorModal({
               switch (e.key) {
                 case 'Escape':
                   e.preventDefault();
+                  e.stopPropagation();
                   onClose();
                   break;
                 case 'ArrowDown':
                   e.preventDefault();
+                  e.stopPropagation();
                   setSelectedIndex((prev) =>
                     prev < filteredClasses.length - 1 ? prev + 1 : prev
                   );
                   break;
                 case 'ArrowUp':
                   e.preventDefault();
+                  e.stopPropagation();
                   setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
                   break;
                 case 'Enter':
                   e.preventDefault();
+                  e.stopPropagation();
                   if (filteredClasses.length > 0) {
                     const [classId, classInfo] = filteredClasses[selectedIndex];
                     onSelect(classId, classInfo.name);

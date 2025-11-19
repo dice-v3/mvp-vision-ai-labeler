@@ -480,13 +480,16 @@ export default function Canvas() {
       return;
     }
 
-    // If bbox tool is active, start drawing
-    if (tool === 'bbox') {
+    // Check if click is within image bounds
+    const isInImage = x >= imgX && x <= imgX + scaledWidth && y >= imgY && y <= imgY + scaledHeight;
+
+    // If bbox tool is active, start drawing (only within image)
+    if (tool === 'bbox' && isInImage) {
       startDrawing({ x, y });
     }
 
-    // If classification tool is active, show class selector
-    if (tool === 'classification') {
+    // If classification tool is active, show class selector (only within image)
+    if (tool === 'classification' && isInImage) {
       setShowClassSelector(true);
     }
   };
