@@ -6,11 +6,46 @@
 
 'use client';
 
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import ImageList from './ImageList';
 
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 500;
+const DEFAULT_WIDTH = 280;
+
 export default function LeftPanel() {
   const { panels, toggleLeftPanel } = useAnnotationStore();
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
+      setWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   if (!panels.left) {
     return (
@@ -27,7 +62,11 @@ export default function LeftPanel() {
   }
 
   return (
-    <div className="w-[280px] bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out">
+    <div
+      ref={panelRef}
+      style={{ width: `${width}px` }}
+      className="bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700 flex flex-col relative select-none"
+    >
       {/* Header */}
       <div className="p-4 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Images</h3>
@@ -46,6 +85,14 @@ export default function LeftPanel() {
       <div className="flex-1 overflow-y-auto">
         <ImageList />
       </div>
+
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className={`absolute top-0 right-0 w-1 h-full cursor-ew-resize hover:bg-violet-500 transition-colors ${
+          isResizing ? 'bg-violet-500' : 'bg-transparent'
+        }`}
+      />
     </div>
   );
 }

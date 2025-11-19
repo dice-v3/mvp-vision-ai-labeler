@@ -276,6 +276,12 @@ export default function Canvas() {
       const classInfo = classId ? project.classes[classId] : null;
       const color = classInfo?.color || '#9333ea';
 
+      // Handle no_object annotation specially - draw badge
+      if (ann.geometry.type === 'no_object' || ann.annotationType === 'no_object') {
+        drawNoObjectBadge(ctx, offsetX, offsetY);
+        return;
+      }
+
       // Get the appropriate tool for this annotation type
       const tool = ToolRegistry.getTool(ann.geometry.type);
 
@@ -297,6 +303,46 @@ export default function Canvas() {
         }
       }
     });
+  };
+
+  // Draw No Object badge (similar to classification badge)
+  const drawNoObjectBadge = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number) => {
+    const badgeX = offsetX + 10;
+    const badgeY = offsetY + 10;
+    const padding = 8;
+    const fontSize = 14;
+
+    const labelText = 'No Object';
+
+    // Measure text
+    ctx.font = `${fontSize}px sans-serif`;
+    const textWidth = ctx.measureText(labelText).width;
+
+    // Draw badge background (gray color for no object)
+    ctx.fillStyle = 'rgba(107, 114, 128, 0.8)'; // gray-500
+
+    const badgeWidth = textWidth + padding * 2;
+    const badgeHeight = fontSize + padding * 2;
+
+    // Rounded rectangle
+    const radius = 4;
+    ctx.beginPath();
+    ctx.moveTo(badgeX + radius, badgeY);
+    ctx.lineTo(badgeX + badgeWidth - radius, badgeY);
+    ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY, badgeX + badgeWidth, badgeY + radius);
+    ctx.lineTo(badgeX + badgeWidth, badgeY + badgeHeight - radius);
+    ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY + badgeHeight, badgeX + badgeWidth - radius, badgeY + badgeHeight);
+    ctx.lineTo(badgeX + radius, badgeY + badgeHeight);
+    ctx.quadraticCurveTo(badgeX, badgeY + badgeHeight, badgeX, badgeY + badgeHeight - radius);
+    ctx.lineTo(badgeX, badgeY + radius);
+    ctx.quadraticCurveTo(badgeX, badgeY, badgeX + radius, badgeY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw text
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelText, badgeX + padding, badgeY + badgeHeight / 2);
   };
 
   // Draw bbox preview while drawing using Tool system

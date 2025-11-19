@@ -151,6 +151,12 @@ export default function ClassSelectorModal({
               setSearch(e.target.value);
               setSelectedIndex(0);
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+              }
+            }}
             placeholder="Search classes..."
             className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:border-violet-500"
           />

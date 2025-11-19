@@ -16,7 +16,6 @@ import {
 import { useState, useEffect } from 'react';
 import AddClassModal from './AddClassModal';
 import AnnotationHistory from './AnnotationHistory';
-import ClassificationPanel from './ClassificationPanel';
 import { getProjectById } from '@/lib/api/projects';
 import { reorderClasses } from '@/lib/api/classes';
 
@@ -275,13 +274,6 @@ export default function RightPanel() {
           </button>
         </div>
       </div>
-
-      {/* Classification Panel - shown when classification task is active */}
-      {currentTask === 'classification' && (
-        <div className="border-b border-gray-300 dark:border-gray-700">
-          <ClassificationPanel />
-        </div>
-      )}
 
       {/* Annotations List */}
       <div className="overflow-y-auto p-4 border-b border-gray-300 dark:border-gray-700">
