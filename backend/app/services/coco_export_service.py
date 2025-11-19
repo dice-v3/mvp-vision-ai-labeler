@@ -5,13 +5,16 @@ Converts database annotations to COCO JSON format.
 COCO format specification: https://cocodataset.org/#format-data
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.db.models.labeler import Annotation, AnnotationProject
 from app.db.models.platform import Dataset
+
+# Korea Standard Time (UTC+9)
+KST = timezone(timedelta(hours=9))
 
 
 def export_to_coco(
@@ -80,13 +83,14 @@ def export_to_coco(
 
 def _build_info(project: AnnotationProject, dataset: Dataset) -> Dict[str, Any]:
     """Build COCO info section."""
+    now_kst = datetime.now(KST)
     return {
         "description": project.description or f"{project.name} - Annotations",
         "url": "",
         "version": "1.0",
-        "year": datetime.utcnow().year,
+        "year": now_kst.year,
         "contributor": "",
-        "date_created": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "date_created": now_kst.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 

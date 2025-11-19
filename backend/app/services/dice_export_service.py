@@ -22,11 +22,24 @@ DICE Format Structure:
 }
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import json
+
+# Korea Standard Time (UTC+9)
+KST = timezone(timedelta(hours=9))
+
+
+def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
+    """Convert datetime to KST timezone and return ISO format string."""
+    if dt is None:
+        return None
+    # Assume UTC if no timezone info
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(KST).isoformat()
 
 from app.db.models.labeler import Annotation, AnnotationProject, ImageAnnotationStatus
 from app.db.models.platform import Dataset, User
@@ -198,9 +211,9 @@ def export_to_dice(
             ],
             "metadata": {
                 "labeled_by": labeled_by_user.email if labeled_by_user else None,
-                "labeled_at": image_annotations[0].created_at.isoformat() if image_annotations else None,
+                "labeled_at": to_kst_isoformat(image_annotations[0].created_at) if image_annotations else None,
                 "reviewed_by": reviewed_by_user.email if reviewed_by_user else None,
-                "reviewed_at": status.confirmed_at.isoformat() if status and status.confirmed_at else None,
+                "reviewed_at": to_kst_isoformat(status.confirmed_at) if status and status.confirmed_at else None,
                 "source": "platform_labeler_v1.0"
             }
         }
@@ -229,8 +242,8 @@ def export_to_dice(
         "dataset_id": project.dataset_id,
         "dataset_name": dataset.name if dataset else project.name,
         "task_type": dice_task_type,
-        "created_at": project.created_at.isoformat() if project.created_at else datetime.utcnow().isoformat(),
-        "last_modified_at": datetime.utcnow().isoformat(),
+        "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
+        "last_modified_at": to_kst_isoformat(datetime.utcnow()),
         "version": 1,  # TODO: Get actual version number
         "classes": _convert_classes_to_dice(task_classes),
         "images": dice_images,
