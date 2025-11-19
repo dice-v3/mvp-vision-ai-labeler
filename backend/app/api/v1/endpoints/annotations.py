@@ -118,6 +118,10 @@ async def create_annotation(
         )
 
     # Create annotation
+    # no_object annotations are automatically confirmed since they represent
+    # an explicit decision that the image has no objects
+    annotation_state = "confirmed" if annotation.annotation_type == "no_object" else "draft"
+
     new_annotation = Annotation(
         project_id=annotation.project_id,
         image_id=annotation.image_id,
@@ -130,6 +134,7 @@ async def create_annotation(
         notes=annotation.notes,
         created_by=current_user.id,
         is_verified=False,
+        annotation_state=annotation_state,
     )
 
     labeler_db.add(new_annotation)
@@ -468,6 +473,9 @@ async def batch_create_annotations(
                 continue
 
             # Create annotation
+            # no_object annotations are automatically confirmed
+            ann_state = "confirmed" if annotation_data.annotation_type == "no_object" else "draft"
+
             new_annotation = Annotation(
                 project_id=annotation_data.project_id,
                 image_id=annotation_data.image_id,
@@ -480,6 +488,7 @@ async def batch_create_annotations(
                 notes=annotation_data.notes,
                 created_by=current_user.id,
                 is_verified=False,
+                annotation_state=ann_state,
             )
 
             labeler_db.add(new_annotation)
