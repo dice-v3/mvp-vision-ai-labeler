@@ -113,16 +113,25 @@ def _build_class_mapping(project: AnnotationProject) -> Dict[str, int]:
     Build class_id to index mapping.
 
     YOLO uses integer class IDs starting from 0.
+    Classes are sorted by their 'order' field to ensure consistent export.
     """
     class_mapping = {}
 
-    # project.classes is a list of class definitions
-    classes = project.classes if isinstance(project.classes, list) else []
-
-    for idx, class_def in enumerate(classes):
-        class_id = class_def.get("id")
-        if class_id:
+    # project.classes can be dict or list
+    if isinstance(project.classes, dict):
+        # Sort by order field, then by class_id as fallback
+        sorted_classes = sorted(
+            project.classes.items(),
+            key=lambda x: (x[1].get("order", 0), x[0])
+        )
+        for idx, (class_id, class_info) in enumerate(sorted_classes):
             class_mapping[class_id] = idx
+    elif isinstance(project.classes, list):
+        # Legacy list format
+        for idx, class_def in enumerate(project.classes):
+            class_id = class_def.get("id")
+            if class_id:
+                class_mapping[class_id] = idx
 
     return class_mapping
 
@@ -174,16 +183,23 @@ def _build_classes_txt(project: AnnotationProject, class_mapping: Dict[str, int]
 
     Format: One class name per line, in order of class index.
     """
-    classes = project.classes if isinstance(project.classes, list) else []
-
     # Create ordered list of class names
     class_names = [""] * len(class_mapping)
-    for class_def in classes:
-        class_id = class_def.get("id")
-        class_name = class_def.get("name", class_id)
-        if class_id in class_mapping:
-            idx = class_mapping[class_id]
-            class_names[idx] = class_name
+
+    if isinstance(project.classes, dict):
+        for class_id, class_info in project.classes.items():
+            class_name = class_info.get("name", class_id)
+            if class_id in class_mapping:
+                idx = class_mapping[class_id]
+                class_names[idx] = class_name
+    elif isinstance(project.classes, list):
+        # Legacy list format
+        for class_def in project.classes:
+            class_id = class_def.get("id")
+            class_name = class_def.get("name", class_id)
+            if class_id in class_mapping:
+                idx = class_mapping[class_id]
+                class_names[idx] = class_name
 
     return "\n".join(class_names)
 

@@ -16,7 +16,9 @@ import {
 import { useState, useEffect } from 'react';
 import AddClassModal from './AddClassModal';
 import AnnotationHistory from './AnnotationHistory';
+import ClassificationPanel from './ClassificationPanel';
 import { getProjectById } from '@/lib/api/projects';
+import { reorderClasses } from '@/lib/api/classes';
 
 export default function RightPanel() {
   const {
@@ -39,6 +41,51 @@ export default function RightPanel() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
   const [classStats, setClassStats] = useState<Record<string, { bboxCount: number; imageCount: number }>>({});
+  const [isReordering, setIsReordering] = useState(false);
+  const [focusedClassId, setFocusedClassId] = useState<string | null>(null);
+
+  // Get sorted classes by order
+  const getSortedClasses = () => {
+    const currentClasses = getCurrentClasses();
+    return Object.entries(currentClasses).sort(
+      (a, b) => (a[1].order || 0) - (b[1].order || 0)
+    );
+  };
+
+  // Handle class reordering
+  const handleMoveClass = async (classId: string, direction: 'up' | 'down') => {
+    if (!project || isReordering) return;
+
+    const sortedClasses = getSortedClasses();
+    const currentIndex = sortedClasses.findIndex(([id]) => id === classId);
+
+    if (currentIndex === -1) return;
+    if (direction === 'up' && currentIndex === 0) return;
+    if (direction === 'down' && currentIndex === sortedClasses.length - 1) return;
+
+    setIsReordering(true);
+    // Keep focus on the class being moved
+    setFocusedClassId(classId);
+
+    try {
+      // Create new order
+      const newOrder = sortedClasses.map(([id]) => id);
+      const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+      // Swap positions
+      [newOrder[currentIndex], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[currentIndex]];
+
+      // Call API with current task type
+      await reorderClasses(project.id, newOrder, currentTask || undefined);
+
+      // Refresh project data
+      await handleClassAdded();
+    } catch (err) {
+      console.error('Failed to reorder classes:', err);
+    } finally {
+      setIsReordering(false);
+    }
+  };
 
   // Phase 2.9: Map annotation_type to task type for filtering
   const getTaskTypeForAnnotation = (annotationType: string): string => {
@@ -229,12 +276,23 @@ export default function RightPanel() {
         </div>
       </div>
 
+      {/* Classification Panel - shown when classification task is active */}
+      {currentTask === 'classification' && (
+        <div className="border-b border-gray-300 dark:border-gray-700">
+          <ClassificationPanel />
+        </div>
+      )}
+
       {/* Annotations List */}
       <div className="overflow-y-auto p-4 border-b border-gray-300 dark:border-gray-700">
         {annotations.length === 0 && (
           <div className="text-center py-8 text-gray-500 dark:text-gray-500">
             <p className="text-sm">No annotations yet</p>
-            <p className="text-xs mt-2">Draw a bbox to start labeling</p>
+            <p className="text-xs mt-2">
+              {currentTask === 'classification'
+                ? 'Select a class above to classify this image'
+                : 'Draw a bbox to start labeling'}
+            </p>
           </div>
         )}
 
@@ -364,7 +422,15 @@ export default function RightPanel() {
       </div>
 
       {/* Class List Section */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div
+        className="flex-1 overflow-y-auto p-3"
+        onClick={(e) => {
+          // Clear focus when clicking on empty space (not on a class item)
+          if (e.target === e.currentTarget) {
+            setFocusedClassId(null);
+          }
+        }}
+      >
         <div className="flex items-center justify-between mb-1.5">
           <h4 className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Classes</h4>
           <button
@@ -422,31 +488,82 @@ export default function RightPanel() {
           return null;
         })()}
 
-        {/* Phase 2.9: Display only classes for current task */}
-        {project && Object.entries(getCurrentClasses()).map(([classId, classInfo], index) => {
-          // Get stats from loaded class statistics
-          const stats = classStats[classId] || { bboxCount: 0, imageCount: 0 };
+        {/* Phase 2.9: Display only classes for current task (sorted by order) */}
+        {project && (() => {
+          const sortedClasses = getSortedClasses();
+          return sortedClasses.map(([classId, classInfo], index) => {
+            // Get stats from loaded class statistics
+            const stats = classStats[classId] || { bboxCount: 0, imageCount: 0 };
+            const isFirst = index === 0;
+            const isLast = index === sortedClasses.length - 1;
+            const isFocused = focusedClassId === classId;
 
-          return (
-            <div
-              key={classId}
-              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer mb-0.5"
-            >
+            return (
               <div
-                className="w-3 h-3 rounded flex-shrink-0"
-                style={{ backgroundColor: classInfo.color }}
-              ></div>
-              <span className="text-[11px] text-gray-900 dark:text-gray-300 flex-1 truncate" title={classInfo.name}>
-                {classInfo.name}
-              </span>
-              <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-500">
-                <span title={`${stats.bboxCount} bounding boxes across ${stats.imageCount} images`}>
-                  {stats.bboxCount} ({stats.imageCount})
+                key={classId}
+                className={`flex items-center gap-1 px-2 py-1 rounded mb-0.5 group cursor-pointer ${
+                  isFocused
+                    ? 'bg-violet-100 dark:bg-violet-900/30 ring-1 ring-violet-400'
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+                onClick={() => setFocusedClassId(classId)}
+              >
+                {/* Reorder buttons */}
+                <div className={`flex flex-col gap-0 transition-opacity ${
+                  isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleMoveClass(classId, 'up'); }}
+                    disabled={isFirst || isReordering}
+                    className={`p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600 ${
+                      isFirst ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                    title="Move up"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleMoveClass(classId, 'down'); }}
+                    disabled={isLast || isReordering}
+                    className={`p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600 ${
+                      isLast ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                    title="Move down"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Order number */}
+                <span className="text-[9px] text-gray-400 dark:text-gray-500 w-3 text-center flex-shrink-0">
+                  {index}
                 </span>
+
+                {/* Color indicator */}
+                <div
+                  className="w-3 h-3 rounded flex-shrink-0"
+                  style={{ backgroundColor: classInfo.color }}
+                ></div>
+
+                {/* Class name */}
+                <span className="text-[11px] text-gray-900 dark:text-gray-300 flex-1 truncate" title={classInfo.name}>
+                  {classInfo.name}
+                </span>
+
+                {/* Stats */}
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-500">
+                  <span title={`${stats.bboxCount} bounding boxes across ${stats.imageCount} images`}>
+                    {stats.bboxCount} ({stats.imageCount})
+                  </span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
         {/* Phase 2.9: Check current task classes */}
         {(!project || Object.keys(getCurrentClasses()).length === 0) && (
           <div className="text-[10px] text-gray-600 dark:text-gray-500">
@@ -465,6 +582,7 @@ export default function RightPanel() {
           onClose={() => setIsAddClassModalOpen(false)}
           projectId={project.id}
           onClassAdded={handleClassAdded}
+          currentTask={currentTask}
         />
       )}
     </div>

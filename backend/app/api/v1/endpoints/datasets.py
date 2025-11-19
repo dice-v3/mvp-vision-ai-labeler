@@ -395,63 +395,73 @@ async def list_dataset_images(
 
     images = []
 
-    # Try to load annotations.json if available
+    # Load metadata from annotations.json (for width/height info)
+    image_metadata = {}
     if dataset.annotation_path:
         annotations_data = load_annotations_from_s3(dataset.annotation_path)
         if annotations_data:
-            images = annotations_data.get('images', [])
+            # Build metadata lookup by file_name
+            for img in annotations_data.get('images', []):
+                file_name = img.get('file_name')
+                if file_name:
+                    image_metadata[file_name] = {
+                        'width': img.get('width'),
+                        'height': img.get('height'),
+                    }
 
-    # If no annotations.json or empty, list images directly from S3
-    if not images:
-        try:
-            s3_client = boto3.client(
-                's3',
-                endpoint_url=settings.S3_ENDPOINT,
-                aws_access_key_id=settings.S3_ACCESS_KEY,
-                aws_secret_access_key=settings.S3_SECRET_KEY,
-                region_name=settings.S3_REGION,
-                config=Config(signature_version='s3v4')
-            )
+    # Always list images from S3 to get complete list
+    try:
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=settings.S3_ENDPOINT,
+            aws_access_key_id=settings.S3_ACCESS_KEY,
+            aws_secret_access_key=settings.S3_SECRET_KEY,
+            region_name=settings.S3_REGION,
+            config=Config(signature_version='s3v4')
+        )
 
-            # List objects in the images/ directory
-            images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
-            response = s3_client.list_objects_v2(
-                Bucket=settings.S3_BUCKET_DATASETS,
-                Prefix=images_prefix,
-                MaxKeys=limit
-            )
+        # List ALL objects in the images/ directory (no MaxKeys limit here)
+        images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
+        paginator = s3_client.get_paginator('list_objects_v2')
 
-            # Convert S3 objects to image format
-            if 'Contents' in response:
-                for idx, obj in enumerate(response['Contents']):
-                    # Get the full key
-                    full_key = obj['Key']
-                    # Skip if it's a directory marker
-                    if full_key.endswith('/'):
-                        continue
+        all_objects = []
+        for page in paginator.paginate(Bucket=settings.S3_BUCKET_DATASETS, Prefix=images_prefix):
+            if 'Contents' in page:
+                all_objects.extend(page['Contents'])
 
-                    # Extract relative path from images/ directory
-                    # e.g., "datasets/{id}/images/bottle/broken_large/000.png" -> "bottle/broken_large/000.png"
-                    if '/images/' in full_key:
-                        relative_path = full_key.split('/images/', 1)[1]
-                    else:
-                        relative_path = full_key.split('/')[-1]
+        # Convert S3 objects to image format
+        for idx, obj in enumerate(all_objects):
+            # Get the full key
+            full_key = obj['Key']
+            # Skip if it's a directory marker
+            if full_key.endswith('/'):
+                continue
 
-                    if not relative_path:
-                        continue
+            # Extract relative path from images/ directory
+            # e.g., "datasets/{id}/images/bottle/broken_large/000.png" -> "bottle/broken_large/000.png"
+            if '/images/' in full_key:
+                relative_path = full_key.split('/images/', 1)[1]
+            else:
+                relative_path = full_key.split('/')[-1]
 
-                    images.append({
-                        'id': idx + 1,
-                        'file_name': relative_path,  # Store relative path from images/
-                        'width': None,
-                        'height': None,
-                    })
-        except Exception as e:
-            print(f"Error listing images from S3: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to list images: {str(e)}",
-            )
+            if not relative_path:
+                continue
+
+            # Get metadata from annotations.json if available
+            metadata = image_metadata.get(relative_path, {})
+
+            images.append({
+                'id': idx + 1,
+                'file_name': relative_path,  # Store relative path from images/
+                'width': metadata.get('width'),
+                'height': metadata.get('height'),
+            })
+    except Exception as e:
+        print(f"Error listing images from S3: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list images: {str(e)}",
+        )
 
     if not images:
         return []

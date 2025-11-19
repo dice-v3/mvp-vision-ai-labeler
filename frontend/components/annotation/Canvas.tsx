@@ -14,6 +14,7 @@ import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
 import type { CanvasRenderContext } from '@/lib/annotation';
+import { toast } from '@/lib/stores/toastStore';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,6 +59,7 @@ export default function Canvas() {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number; bbox: number[] } | null>(null);
+  const [canvasCursor, setCanvasCursor] = useState('default');
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -127,6 +129,15 @@ export default function Canvas() {
         return 'default';
     }
   };
+
+  // Update cursor when tool changes
+  useEffect(() => {
+    if (tool === 'bbox') {
+      setCanvasCursor('crosshair');
+    } else {
+      setCanvasCursor('default');
+    }
+  }, [tool]);
 
   // Load image when currentImage changes
   useEffect(() => {
@@ -346,55 +357,61 @@ export default function Canvas() {
     const imgX = (rect.width - scaledWidth) / 2 + pan.x;
     const imgY = (rect.height - scaledHeight) / 2 + pan.y;
 
-    // Check if clicking on a handle of the selected annotation
-    if (selectedAnnotationId) {
-      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
-        const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
+    // Only handle selection and resizing in select mode
+    if (tool === 'select') {
+      // Check if clicking on a handle of the selected annotation
+      if (selectedAnnotationId) {
+        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+        if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
+          const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
 
-        const scaledX = bboxX * zoom + imgX;
-        const scaledY = bboxY * zoom + imgY;
-        const scaledW = bboxW * zoom;
-        const scaledH = bboxH * zoom;
+          const scaledX = bboxX * zoom + imgX;
+          const scaledY = bboxY * zoom + imgY;
+          const scaledW = bboxW * zoom;
+          const scaledH = bboxH * zoom;
 
-        const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
-        if (handle) {
-          // Start resizing
-          setIsResizing(true);
-          setResizeHandle(handle);
-          setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
-          return;
+          const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
+          if (handle) {
+            // Start resizing
+            setIsResizing(true);
+            setResizeHandle(handle);
+            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
+            setCanvasCursor(getCursorForHandle(handle));
+            return;
+          }
         }
       }
-    }
 
-    // Check if clicking on any bbox to select it
-    let clickedAnnotation: typeof annotations[0] | null = null;
-    for (const ann of annotations) {
-      if (!isAnnotationVisible(ann.id)) continue;
-      if (ann.geometry.type === 'bbox') {
-        const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
-        const scaledX = bboxX * zoom + imgX;
-        const scaledY = bboxY * zoom + imgY;
-        const scaledW = bboxW * zoom;
-        const scaledH = bboxH * zoom;
+      // Check if clicking on any bbox to select it
+      let clickedAnnotation: typeof annotations[0] | null = null;
+      for (const ann of annotations) {
+        if (!isAnnotationVisible(ann.id)) continue;
+        if (ann.geometry.type === 'bbox') {
+          const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
+          const scaledX = bboxX * zoom + imgX;
+          const scaledY = bboxY * zoom + imgY;
+          const scaledW = bboxW * zoom;
+          const scaledH = bboxH * zoom;
 
-        if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
-          clickedAnnotation = ann;
-          break; // Take the first one (topmost)
+          if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+            clickedAnnotation = ann;
+            break; // Take the first one (topmost)
+          }
         }
       }
-    }
 
-    if (clickedAnnotation) {
-      // Select the clicked annotation
-      selectAnnotation(clickedAnnotation.id);
-      return;
-    }
+      if (clickedAnnotation) {
+        // Select the clicked annotation
+        selectAnnotation(clickedAnnotation.id);
+        // Set cursor to move since we're inside the bbox
+        setCanvasCursor('move');
+        return;
+      }
 
-    // If nothing clicked, deselect
-    if (selectedAnnotationId && tool === 'select') {
-      selectAnnotation(null);
+      // If nothing clicked, deselect
+      if (selectedAnnotationId) {
+        selectAnnotation(null);
+      }
     }
 
     // If select tool is active, start panning
@@ -415,6 +432,11 @@ export default function Canvas() {
     if (tool === 'bbox') {
       startDrawing({ x, y });
     }
+
+    // If classification tool is active, show class selector
+    if (tool === 'classification') {
+      setShowClassSelector(true);
+    }
   };
 
   // Mouse move handler
@@ -425,9 +447,7 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    setCursor({ x, y });
-
-    // Update cursor style based on position
+    // Update cursor style based on position (before setCursor to avoid render race)
     if (!isResizing && !isDrawing && !isPanning) {
       const { zoom, pan } = canvasState;
       const scaledWidth = image.width * zoom;
@@ -444,8 +464,8 @@ export default function Canvas() {
         newCursor = tool === 'bbox' ? 'crosshair' : 'default';
       }
 
-      // Check if hovering over selected annotation's handle
-      if (selectedAnnotationId) {
+      // Check if hovering over selected annotation's handle (only in select mode)
+      if (tool === 'select' && selectedAnnotationId) {
         const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
         if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
           const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
@@ -463,8 +483,8 @@ export default function Canvas() {
         }
       }
 
-      // Check if hovering over any bbox (for click to select)
-      if (isInImage && (newCursor === 'default' || newCursor === 'crosshair' || (tool === 'select' && newCursor === 'default'))) {
+      // Check if hovering over any bbox (for click to select) - only in select mode
+      if (tool === 'select' && isInImage && newCursor === 'default') {
         for (const ann of annotations) {
           if (!isAnnotationVisible(ann.id)) continue;
           if (ann.geometry.type === 'bbox') {
@@ -482,10 +502,12 @@ export default function Canvas() {
         }
       }
 
-      if (canvasRef.current) {
-        canvasRef.current.style.cursor = newCursor;
-      }
+      // Update cursor state
+      setCanvasCursor(newCursor);
     }
+
+    // Update cursor position for crosshair (after cursor style update)
+    setCursor({ x, y });
 
     // Handle resizing
     if (isResizing && resizeStart && resizeHandle && selectedAnnotationId) {
@@ -588,25 +610,89 @@ export default function Canvas() {
       setIsResizing(false);
       setResizeHandle(null);
       setResizeStart(null);
+      // Reset cursor to move (still inside bbox)
+      setCanvasCursor('move');
 
-      // Save updated bbox to backend
+      // Save updated bbox to backend (with clipping)
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
       if (updatedAnn && updatedAnn.geometry.type === 'bbox' && project && currentImage) {
         try {
+          // Get bbox values
+          const bbox = updatedAnn.geometry.bbox as number[];
+          let [bx, by, bw, bh] = bbox;
+
+          // Clip to image bounds
+          const imgWidth = image?.width || currentImage.width || 0;
+          const imgHeight = image?.height || currentImage.height || 0;
+          let wasClipped = false;
+
+          // Clip left edge
+          if (bx < 0) {
+            bw += bx;
+            bx = 0;
+            wasClipped = true;
+          }
+          // Clip top edge
+          if (by < 0) {
+            bh += by;
+            by = 0;
+            wasClipped = true;
+          }
+          // Clip right edge
+          if (bx + bw > imgWidth) {
+            bw = imgWidth - bx;
+            wasClipped = true;
+          }
+          // Clip bottom edge
+          if (by + bh > imgHeight) {
+            bh = imgHeight - by;
+            wasClipped = true;
+          }
+
+          // Ensure positive dimensions
+          bw = Math.max(0, bw);
+          bh = Math.max(0, bh);
+
+          // Show warning if clipped
+          if (wasClipped) {
+            toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
+          }
+
+          // Update geometry with clipped values
+          const clippedGeometry = {
+            type: 'bbox',
+            bbox: [bx, by, bw, bh],
+          };
+
+          // Update local store with clipped geometry
+          useAnnotationStore.setState((state) => ({
+            annotations: state.annotations.map(ann =>
+              ann.id === selectedAnnotationId
+                ? { ...ann, geometry: clippedGeometry }
+                : ann
+            )
+          }));
+
           const updateData: AnnotationUpdateRequest = {
-            geometry: updatedAnn.geometry,
+            geometry: clippedGeometry,
           };
           await updateAnnotation(selectedAnnotationId, updateData);
 
           // Update image status to in_progress and unconfirm
+          // Update both images array and currentImage for immediate UI update
+          const updatedCurrentImage = {
+            ...currentImage,
+            is_confirmed: false,
+            status: 'in-progress',
+          };
+
           useAnnotationStore.setState((state) => ({
+            currentImage: state.currentImage?.id === currentImage.id
+              ? updatedCurrentImage
+              : state.currentImage,
             images: state.images.map(img =>
               img.id === currentImage.id
-                ? {
-                    ...img,
-                    is_confirmed: false,
-                    status: 'in-progress',
-                  }
+                ? updatedCurrentImage
                 : img
             )
           }));
@@ -664,21 +750,77 @@ export default function Canvas() {
 
   // Handle class selection
   const handleClassSelect = async (classId: string, className: string) => {
-    if (!pendingBbox || !currentImage || !project) return;
+    if (!currentImage || !project) return;
 
     setShowClassSelector(false);
     setIsSaving(true);
 
     try {
-      // Create annotation request
-      const annotationData: AnnotationCreateRequest = {
+      let annotationData: AnnotationCreateRequest;
+      let annotationType: 'bbox' | 'classification';
+      let geometry: any;
+
+      // Check if this is for bbox or classification
+      if (pendingBbox) {
+        // BBox annotation
+        annotationType = 'bbox';
+
+        // Clip bbox to image bounds
+        const imgWidth = image?.width || currentImage.width || 0;
+        const imgHeight = image?.height || currentImage.height || 0;
+
+        let { x, y, w, h } = pendingBbox;
+        let wasClipped = false;
+
+        // Clip left edge
+        if (x < 0) {
+          w += x; // reduce width by overflow
+          x = 0;
+          wasClipped = true;
+        }
+        // Clip top edge
+        if (y < 0) {
+          h += y; // reduce height by overflow
+          y = 0;
+          wasClipped = true;
+        }
+        // Clip right edge
+        if (x + w > imgWidth) {
+          w = imgWidth - x;
+          wasClipped = true;
+        }
+        // Clip bottom edge
+        if (y + h > imgHeight) {
+          h = imgHeight - y;
+          wasClipped = true;
+        }
+
+        // Ensure positive dimensions
+        w = Math.max(0, w);
+        h = Math.max(0, h);
+
+        // Show warning if clipped
+        if (wasClipped) {
+          toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
+        }
+
+        geometry = {
+          type: 'bbox',
+          bbox: [x, y, w, h],
+        };
+      } else {
+        // Classification annotation
+        annotationType = 'classification';
+        geometry = {
+          type: 'classification',
+        };
+      }
+
+      annotationData = {
         project_id: project.id,
         image_id: currentImage.id,
-        annotation_type: 'bbox',
-        geometry: {
-          type: 'bbox',
-          bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
-        },
+        annotation_type: annotationType,
+        geometry: geometry,
         class_id: classId,
         class_name: className,
       };
@@ -691,13 +833,10 @@ export default function Canvas() {
         id: savedAnnotation.id.toString(),
         projectId: project.id,
         imageId: currentImage.id,
-        annotationType: 'bbox',
+        annotationType: annotationType,
         classId: classId,
         className: className,
-        geometry: {
-          type: 'bbox',
-          bbox: [pendingBbox.x, pendingBbox.y, pendingBbox.w, pendingBbox.h],
-        },
+        geometry: geometry,
         confidence: savedAnnotation.confidence,
         attributes: savedAnnotation.attributes,
         createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
@@ -706,15 +845,21 @@ export default function Canvas() {
 
       // Update current image status only (not all images)
       // This prevents resetting other images' status
+      // Update both images array and currentImage for immediate UI update
+      const updatedCurrentImage = {
+        ...currentImage,
+        annotation_count: ((currentImage as any).annotation_count || 0) + 1,
+        is_confirmed: false,
+        status: 'in-progress',
+      };
+
       useAnnotationStore.setState((state) => ({
+        currentImage: state.currentImage?.id === currentImage.id
+          ? updatedCurrentImage
+          : state.currentImage,
         images: state.images.map(img =>
           img.id === currentImage.id
-            ? {
-                ...img,
-                annotation_count: (img.annotation_count || 0) + 1,
-                is_confirmed: false,
-                status: 'in-progress',
-              }
+            ? updatedCurrentImage
             : img
         )
       }));
@@ -869,7 +1014,7 @@ export default function Canvas() {
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+        style={{ cursor: isPanning ? 'grabbing' : canvasCursor }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

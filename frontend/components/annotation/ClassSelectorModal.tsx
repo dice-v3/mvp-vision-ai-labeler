@@ -22,17 +22,22 @@ export default function ClassSelectorModal({
   onSelect,
   position,
 }: ClassSelectorModalProps) {
-  const { project } = useAnnotationStore();
+  const { project, getCurrentClasses } = useAnnotationStore();
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Get classes from project
-  const classes = project?.classes ? Object.entries(project.classes) : [];
+  // Get task-specific classes (Phase 2.9)
+  const taskClasses = getCurrentClasses();
+  const classes = taskClasses ? Object.entries(taskClasses) : [];
 
-  // Filter classes by search
-  const filteredClasses = classes.filter(([_, classInfo]) =>
+  // Sort classes by order, then filter by search
+  const sortedClasses = [...classes].sort(
+    (a, b) => ((a[1] as any).order || 0) - ((b[1] as any).order || 0)
+  );
+
+  const filteredClasses = sortedClasses.filter(([_, classInfo]) =>
     classInfo.name.toLowerCase().includes(search.toLowerCase())
   );
 

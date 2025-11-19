@@ -12,18 +12,27 @@
 | Phase | Status | Progress | Target Week |
 |-------|--------|----------|-------------|
 | Phase 1: Core Canvas | ✅ Complete | 44/45 (98%) | Week 1 |
-| Phase 2: Advanced Features | 🔄 In Progress | 85% core features | Week 2-6 |
-| Phase 3: Multi-Task Tools | ⏸️ Pending | 0/29 | Weeks 7-8 |
+| Phase 2: Advanced Features | ✅ Complete | 85% core features | Week 2-6 |
+| Phase 3: Multi-Task Tools | 🔄 In Progress | 13/29 (45%) | Weeks 7-8 |
 | Phase 4: AI Integration | ⏸️ Pending | 0/22 | Weeks 9-10 |
 | Phase 5: Polish & Optimization | ⏸️ Pending | 0/20 | Week 11 |
 
-**Overall Progress**: ~75% Phase 2 features complete
+**Overall Progress**: Phase 2 complete, Phase 3.2 complete
 **Phase 2 Breakdown**:
 - 2.7 Confirmation: 12/13 tasks ✅ Feature Complete!
 - 2.8 Version Mgmt: 12/15 tasks ✅ Backend Complete!
 - 2.9 Task-Based Architecture: ✅ Complete!
 - 2.10.1 Dataset Deletion: ✅ Complete!
 - Other features: 0/45 tasks (Undo/Redo, Shortcuts, etc.)
+
+**Phase 3 Breakdown**:
+- 3.1 Tool Architecture & Registry: ✅ Complete (12h)
+- 3.2 Classification Tool: ✅ Complete (8h)
+  - ClassificationTool.ts, ClassificationPanel.tsx
+  - Class management (auto-ID, order, reorder UI)
+  - Export services sorted by order
+  - Task-filtered annotation counts
+  - Canvas click popup for class selection
 
 ---
 
@@ -839,68 +848,136 @@
 
 ---
 
-## Phase 3: Multi-Task Annotation Tools (Weeks 7-8) ⭐ NEW
+## Phase 3: Multi-Task Annotation Tools (Weeks 7-8) ⭐ IN PROGRESS
 
 **Goal**: Implement annotation tools for Classification, Segmentation, and extensible tool system
 **Target Completion**: 2025-12-06
-**Status**: ⏸️ Pending
+**Status**: 🔄 In Progress (3.1, 3.2 Complete)
 **Priority**: High - Core feature expansion
+
+**Progress**:
+- 3.1 Tool Architecture & Registry: ✅ Complete (12h actual)
+- 3.2 Classification Tool: ✅ Complete (8h actual)
+- 3.3 Polygon/Segmentation Tool: ⏸️ Pending
+- 3.4 Rotated BBox Tool: ⏸️ Pending
+- 3.5 Keypoints Tool: ⏸️ Pending
+- 3.6 Text/Caption Tool: ⏸️ Pending
 
 ### 3.1 Tool Architecture & Registry
 
-- [ ] **Abstract annotation tool interface**
+- [x] **Abstract annotation tool interface** ✅ COMPLETED
   - Define AnnotationTool interface
   - Methods: renderAnnotation, renderPreview, renderHandles
   - Event handlers: onMouseDown/Move/Up, onKeyDown
   - Validation: validate, getGeometry, fromGeometry
   - Serialization: toJSON, fromJSON
   - **Estimate**: 4 hours
+  - **Actual**: 3 hours
   - **File**: `frontend/lib/annotation/AnnotationTool.ts`
 
-- [ ] **Tool registry system**
+- [x] **Tool registry system** ✅ COMPLETED
   - Register tools by annotation type (bbox, polygon, classification, etc.)
   - Factory pattern for tool creation
   - Tool configuration from project.task_config
   - Hot-swap tools without page reload
   - **Estimate**: 3 hours
+  - **Actual**: 2 hours
   - **File**: `frontend/lib/annotation/ToolRegistry.ts`
 
-- [ ] **Refactor existing BBox tool**
+- [x] **Refactor existing BBox tool** ✅ COMPLETED
   - Extract to separate tool class implementing interface
-  - Move drawing/editing logic from Canvas.tsx
+  - Move rendering logic from Canvas.tsx to BBoxTool
   - Support tool-specific keyboard shortcuts
+  - Resize bbox helper method
   - **Estimate**: 3 hours
+  - **Actual**: 3 hours
   - **File**: `frontend/lib/annotation/tools/BBoxTool.ts`
+
+- [x] **Canvas integration with ToolRegistry** ✅ COMPLETED
+  - Use ToolRegistry.getTool() for rendering
+  - BBoxTool.renderAnnotation() and renderHandles()
+  - BBoxTool.renderPreview() for drawing preview
+  - **Estimate**: 2 hours
+  - **Actual**: 2 hours
+  - **File**: `frontend/components/annotation/Canvas.tsx`
+
+- [x] **Bug fixes for BBox editing** ✅ COMPLETED
+  - Added PUT method to APIClient (was missing)
+  - Fixed Confirm button not activating immediately after bbox edit
+  - Fixed cursor state management (React state instead of DOM)
+  - BBox selection only in Select mode (not in BBox mode)
+  - **Actual**: 2 hours
+  - **Files**:
+    - `frontend/lib/api/client.ts` (added put method)
+    - `frontend/components/annotation/Canvas.tsx` (cursor state, selection logic)
 
 ### 3.2 Classification Tool
 
-- [ ] **Classification annotation type**
+- [x] **Classification annotation type** ✅ COMPLETED
   - Image-level labels (no geometry)
   - Single-label mode: Radio buttons
   - Multi-label mode: Checkboxes
   - Store as annotation with type='classification'
   - **Estimate**: 4 hours
+  - **Actual**: 3 hours
   - **File**: `frontend/lib/annotation/tools/ClassificationTool.ts`
 
-- [ ] **Classification UI panel**
+- [x] **Classification UI panel** ✅ COMPLETED
   - Dedicated panel in RightPanel when classification task active
   - Display all available classes with colors
   - Show current selection state
   - Quick keyboard shortcuts (1-9)
   - **Estimate**: 3 hours
+  - **Actual**: 2 hours
   - **File**: `frontend/components/annotation/ClassificationPanel.tsx`
 
-- [ ] **Classification state management**
+- [x] **Classification state management** ✅ COMPLETED
   - Store classification annotations in annotationStore
   - Support multiple labels per image (multi-label mode)
   - Sync with backend API
   - **Estimate**: 2 hours
+  - **Actual**: 1 hour
 
-- [ ] **Classification keyboard shortcuts**
-  - '1-9': Quick select class
-  - 'C': Toggle classification mode
-  - 'Space': Confirm and next image
+- [x] **Classification keyboard shortcuts** ✅ COMPLETED
+  - '1-9': Quick select class (sorted by order field)
+  - Canvas click shows class selector popup
   - **Estimate**: 1 hour
+  - **Actual**: 1 hour
+
+- [x] **Class management improvements** ✅ COMPLETED (NEW)
+  - Auto-generate class ID (8-char UUID)
+  - Order field for class sorting
+  - Reorder UI (up/down arrows) in RightPanel
+  - Focus tracking during reorder
+  - **Actual**: 3 hours
+  - **Files**:
+    - `backend/app/api/v1/endpoints/projects_classes.py`
+    - `backend/app/schemas/class_schema.py`
+    - `frontend/components/annotation/RightPanel.tsx`
+    - `frontend/lib/api/classes.ts`
+
+- [x] **Export services use order field** ✅ COMPLETED (NEW)
+  - YOLO, COCO, DICE export sorted by class order
+  - DICE/COCO export as JSON (not zip)
+  - **Actual**: 1 hour
+  - **Files**:
+    - `backend/app/services/yolo_export_service.py`
+    - `backend/app/services/coco_export_service.py`
+    - `backend/app/services/dice_export_service.py`
+    - `backend/app/core/storage.py`
+
+- [x] **Task-filtered annotation counts** ✅ COMPLETED (NEW)
+  - ImageList Ann count filtered by current task
+  - Annotation page counts by task type
+  - Image status updates include annotation_count
+  - **Actual**: 1 hour
+  - **File**: `frontend/app/annotate/[projectId]/page.tsx`
+
+- [x] **Classification label rendering** ✅ COMPLETED (NEW)
+  - Label badge positioned on image (not canvas origin)
+  - Badge shows class name with class color
+  - **Actual**: 0.5 hours
+  - **File**: `frontend/lib/annotation/tools/ClassificationTool.ts`
 
 ### 3.3 Polygon/Segmentation Tool
 
@@ -1637,10 +1714,21 @@ POST /api/v1/storage/upload
 
 ---
 
-**Last Updated**: 2025-11-16
-**Next Review**: 2025-11-20
-**Progress**: Phase 1: 98% complete (44/45 tasks) ✅ | Phase 2.7: 85% complete (11/13 tasks) 🔄
-**Status**: Phase 1 complete. Phase 2.7 all core features complete!
+**Last Updated**: 2025-11-19
+**Next Review**: 2025-11-23
+**Progress**: Phase 1: ✅ | Phase 2: ✅ | Phase 3: 45% (13/29 tasks)
+**Status**: Phase 3.2 Classification Tool complete with all enhancements.
+
+**Session 2025-11-19** (Classification Tool Implementation):
+- ✅ ClassificationTool.ts - Annotation tool class with badge rendering
+- ✅ ClassificationPanel.tsx - UI panel with keyboard shortcuts
+- ✅ Class auto-ID generation (8-char UUID)
+- ✅ Class order field and reorder UI
+- ✅ Export services sorted by class order
+- ✅ DICE/COCO export as JSON (not zip)
+- ✅ Task-filtered annotation counts in ImageList
+- ✅ Canvas click popup for classification
+- ✅ Fixed dual selection state in class reorder UI
 
 **Phase 2.7 Status** (Updated 2025-11-16):
 ✅ **Completed Tasks (11/13)**:

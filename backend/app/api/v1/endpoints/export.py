@@ -132,6 +132,7 @@ def _export_dice(
     project_id: str,
     include_draft: bool,
     image_ids: Optional[list[str]],
+    task_type: Optional[str] = None,
 ) -> tuple[bytes, dict, str]:
     """Export to DICE format."""
     # Generate DICE JSON
@@ -141,6 +142,7 @@ def _export_dice(
         project_id=project_id,
         include_draft=include_draft,
         image_ids=image_ids,
+        task_type=task_type,
     )
 
     # Convert to JSON bytes
@@ -338,6 +340,7 @@ async def publish_version(
             project_id=project_id,
             include_draft=publish_request.include_draft,
             image_ids=None,
+            task_type=task_type,
         )
 
         # Upload DICE to S3 (Phase 2.9: include task_type in path)
