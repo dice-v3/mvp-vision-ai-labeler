@@ -109,11 +109,13 @@ export default function ImageList() {
       // Shift+Click: Range selection from current image
       selectImageRange(index);
     } else {
-      // Normal click: Navigate and set as selection anchor
+      // Normal click: Navigate and select this image as anchor
       setCurrentIndex(index);
-      clearImageSelection();
-      // Set this as the anchor point for future shift+click
-      useAnnotationStore.setState({ lastClickedImageIndex: index });
+      // Set this image as the only selected one (anchor for Ctrl+click additions)
+      useAnnotationStore.setState({
+        selectedImageIds: [imageId],
+        lastClickedImageIndex: index
+      });
     }
   };
 
