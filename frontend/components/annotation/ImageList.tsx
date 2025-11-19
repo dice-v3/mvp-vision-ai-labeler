@@ -209,8 +209,7 @@ export default function ImageList() {
                     {(img as any).has_no_object && (
                       <div className="bg-gray-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm" title="No Object">
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="8" strokeWidth={2} />
-                          <path strokeLinecap="round" strokeWidth={2} d="M7 17L17 7" />
+                          <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} strokeDasharray="4 2" />
                         </svg>
                       </div>
                     )}
@@ -271,8 +270,7 @@ export default function ImageList() {
                           {(img as any).has_no_object && (
                             <div className="bg-gray-600 rounded-full w-4 h-4 flex items-center justify-center" title="No Object">
                               <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="8" strokeWidth={2} />
-                                <path strokeLinecap="round" strokeWidth={2} d="M7 17L17 7" />
+                                <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} strokeDasharray="4 2" />
                               </svg>
                             </div>
                           )}

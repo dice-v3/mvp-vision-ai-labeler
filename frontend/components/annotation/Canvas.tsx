@@ -15,6 +15,7 @@ import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
 import type { CanvasRenderContext } from '@/lib/annotation';
 import { toast } from '@/lib/stores/toastStore';
+import { confirm } from '@/lib/stores/confirmStore';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -885,78 +886,117 @@ export default function Canvas() {
   const handleNoObject = useCallback(async () => {
     if (!currentImage || !project) return;
 
-    try {
-      // Create no_object annotation
-      const annotationData: AnnotationCreateRequest = {
-        project_id: project.id,
-        image_id: currentImage.id,
-        annotation_type: 'no_object',
-        geometry: { type: 'no_object' },
-        class_id: null,
-        class_name: '__background__',
-      };
+    const createNoObjectAnnotation = async () => {
+      try {
+        // Delete existing annotations first if any
+        if (annotations.length > 0) {
+          for (const ann of annotations) {
+            await deleteAnnotationAPI(ann.id);
+            deleteAnnotation(ann.id);
+          }
+        }
 
-      const savedAnnotation = await createAnnotation(annotationData);
+        // Create no_object annotation
+        const annotationData: AnnotationCreateRequest = {
+          project_id: project.id,
+          image_id: currentImage.id,
+          annotation_type: 'no_object',
+          geometry: { type: 'no_object' },
+          class_id: null,
+          class_name: '__background__',
+        };
 
-      // Add to store
-      addAnnotation({
-        id: savedAnnotation.id.toString(),
-        projectId: project.id,
-        imageId: currentImage.id,
-        annotationType: 'no_object',
-        classId: null,
-        className: '__background__',
-        geometry: { type: 'no_object' },
-        confidence: savedAnnotation.confidence,
-        attributes: savedAnnotation.attributes,
-        createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
-        updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+        const savedAnnotation = await createAnnotation(annotationData);
+
+        // Add to store
+        addAnnotation({
+          id: savedAnnotation.id.toString(),
+          projectId: project.id,
+          imageId: currentImage.id,
+          annotationType: 'no_object',
+          classId: null,
+          className: '__background__',
+          geometry: { type: 'no_object' },
+          confidence: savedAnnotation.confidence,
+          attributes: savedAnnotation.attributes,
+          createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+          updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+        });
+
+        // Update image status and has_no_object flag
+        useAnnotationStore.setState((state) => ({
+          images: state.images.map(img =>
+            img.id === currentImage.id
+              ? {
+                  ...img,
+                  annotation_count: 1,
+                  status: 'in-progress',
+                  has_no_object: true,
+                }
+              : img
+          )
+        }));
+
+        toast.info('No Object로 표시되었습니다.', 3000);
+      } catch (err) {
+        console.error('Failed to create no_object annotation:', err);
+        toast.error('No Object 저장에 실패했습니다.');
+      }
+    };
+
+    // If there are existing annotations, show confirm dialog
+    if (annotations.length > 0) {
+      confirm({
+        title: 'No Object 설정',
+        message: `기존 ${annotations.length}개의 레이블이 삭제됩니다. 계속하시겠습니까?`,
+        confirmText: '확인',
+        cancelText: '취소',
+        onConfirm: createNoObjectAnnotation,
       });
-
-      // Update image status and has_no_object flag
-      useAnnotationStore.setState((state) => ({
-        images: state.images.map(img =>
-          img.id === currentImage.id
-            ? {
-                ...img,
-                annotation_count: (img.annotation_count || 0) + 1,
-                status: 'in-progress',
-                has_no_object: true,
-              }
-            : img
-        )
-      }));
-
-      toast.info('No Object로 표시되었습니다.', 3000);
-    } catch (err) {
-      console.error('Failed to create no_object annotation:', err);
-      toast.error('No Object 저장에 실패했습니다.');
+    } else {
+      createNoObjectAnnotation();
     }
-  }, [currentImage, project, addAnnotation]);
+  }, [currentImage, project, addAnnotation, annotations, deleteAnnotation]);
 
-  // Handle delete selected annotation
-  const handleDeleteSelectedAnnotation = useCallback(async () => {
-    if (!selectedAnnotationId || !currentImage) return;
+  // Handle delete all annotations for current image
+  const handleDeleteAllAnnotations = useCallback(async () => {
+    if (!currentImage || annotations.length === 0) return;
 
-    try {
-      await deleteAnnotationAPI(selectedAnnotationId);
-      deleteAnnotation(selectedAnnotationId);
+    confirm({
+      title: '모든 레이블 삭제',
+      message: `현재 이미지의 ${annotations.length}개 레이블을 모두 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      onConfirm: async () => {
+        try {
+          // Delete all annotations
+          for (const ann of annotations) {
+            await deleteAnnotationAPI(ann.id);
+            deleteAnnotation(ann.id);
+          }
 
-      // Update image annotation count
-      useAnnotationStore.setState((state) => ({
-        images: state.images.map(img =>
-          img.id === currentImage.id
-            ? { ...img, annotation_count: Math.max(0, (img.annotation_count || 1) - 1) }
-            : img
-        )
-      }));
+          // Update image status
+          useAnnotationStore.setState((state) => ({
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? {
+                    ...img,
+                    annotation_count: 0,
+                    status: 'not-started',
+                    has_no_object: false,
+                  }
+                : img
+            )
+          }));
 
-      toast.success('Annotation이 삭제되었습니다.', 3000);
-    } catch (err) {
-      console.error('Failed to delete annotation:', err);
-      toast.error('삭제에 실패했습니다.');
-    }
-  }, [selectedAnnotationId, currentImage, deleteAnnotation]);
+          toast.success('모든 레이블이 삭제되었습니다.', 3000);
+        } catch (err) {
+          console.error('Failed to delete annotations:', err);
+          toast.error('삭제에 실패했습니다.');
+        }
+      },
+    });
+  }, [currentImage, annotations, deleteAnnotation]);
 
   const handleConfirmImage = useCallback(async () => {
     if (!currentImage || !project) return;
@@ -1224,7 +1264,7 @@ export default function Canvas() {
       )}
 
       {/* Utility buttons (top-right) */}
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
+      <div className="absolute top-4 right-4 flex flex-row gap-2">
         {/* No Object button */}
         <button
           onClick={handleNoObject}
@@ -1232,21 +1272,20 @@ export default function Canvas() {
           title="No Object (0)"
         >
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="9" strokeWidth={2} />
-            <path strokeLinecap="round" strokeWidth={2} d="M6 18L18 6" />
+            <rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} strokeDasharray="4 2" />
           </svg>
         </button>
 
-        {/* Delete annotation button */}
+        {/* Delete all annotations button */}
         <button
-          onClick={handleDeleteSelectedAnnotation}
-          disabled={!selectedAnnotationId}
+          onClick={handleDeleteAllAnnotations}
+          disabled={annotations.length === 0}
           className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105 ${
-            selectedAnnotationId
-              ? 'bg-red-600 hover:bg-red-700'
+            annotations.length > 0
+              ? 'bg-red-400 hover:bg-red-500'
               : 'bg-gray-400 cursor-not-allowed'
           }`}
-          title="Delete Selected (Del)"
+          title="Delete All Annotations (Del)"
         >
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
