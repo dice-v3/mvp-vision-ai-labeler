@@ -12,6 +12,8 @@ import ClassSelectorModal from './ClassSelectorModal';
 import { createAnnotation, updateAnnotation } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
+import { ToolRegistry, bboxTool } from '@/lib/annotation';
+import type { CanvasRenderContext } from '@/lib/annotation';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -227,97 +229,86 @@ export default function Canvas() {
     }
   };
 
-  // Draw annotations
+  // Draw annotations using Tool system
   const drawAnnotations = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
-    if (!project) return;
+    if (!project || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
 
     annotations.forEach((ann) => {
       // Skip if annotation is hidden
       if (!isAnnotationVisible(ann.id)) return;
 
-      if (ann.geometry.type === 'bbox') {
-        const [x, y, w, h] = ann.geometry.bbox;
-        const scaledX = x * zoom + offsetX;
-        const scaledY = y * zoom + offsetY;
-        const scaledW = w * zoom;
-        const scaledH = h * zoom;
+      const isSelected = ann.id === selectedAnnotationId;
+      // Support both camelCase and snake_case
+      const classId = (ann as any).classId || (ann as any).class_id;
+      const className = (ann as any).className || (ann as any).class_name;
+      const classInfo = classId ? project.classes[classId] : null;
+      const color = classInfo?.color || '#9333ea';
 
-        const isSelected = ann.id === selectedAnnotationId;
-        // Support both camelCase and snake_case
-        const classId = (ann as any).classId || (ann as any).class_id;
-        const className = (ann as any).className || (ann as any).class_name;
-        const classInfo = classId ? project.classes[classId] : null;
-        const color = classInfo?.color || '#9333ea';
+      // Get the appropriate tool for this annotation type
+      const tool = ToolRegistry.getTool(ann.geometry.type);
 
-        // Fill selected bbox with semi-transparent color
+      if (tool) {
+        // Use tool to render annotation
+        tool.renderAnnotation(renderCtx, ann, isSelected, color, className);
+
+        // Render handles if selected
         if (isSelected) {
-          // Parse hex color and add alpha
-          const r = parseInt(color.slice(1, 3), 16);
-          const g = parseInt(color.slice(3, 5), 16);
-          const b = parseInt(color.slice(5, 7), 16);
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
-          ctx.fillRect(scaledX, scaledY, scaledW, scaledH);
+          tool.renderHandles(renderCtx, ann, color);
         }
-
-        // Draw bbox
-        ctx.strokeStyle = color;
-        ctx.lineWidth = isSelected ? 3 : 2;
-        ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
-
-        // Draw label
-        if (preferences.showLabels && className) {
-          ctx.fillStyle = color;
-          ctx.fillRect(scaledX, scaledY - 20, ctx.measureText(className).width + 8, 20);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '12px sans-serif';
-          ctx.fillText(className, scaledX + 4, scaledY - 6);
-        }
-
-        // Draw handles if selected
-        if (isSelected) {
-          const handleSize = 8;
-          ctx.fillStyle = color;
-
-          // Corner handles
-          ctx.fillRect(scaledX - handleSize / 2, scaledY - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX + scaledW - handleSize / 2, scaledY - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX - handleSize / 2, scaledY + scaledH - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX + scaledW - handleSize / 2, scaledY + scaledH - handleSize / 2, handleSize, handleSize);
-
-          // Edge handles
-          ctx.fillRect(scaledX + scaledW / 2 - handleSize / 2, scaledY - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX + scaledW / 2 - handleSize / 2, scaledY + scaledH - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX - handleSize / 2, scaledY + scaledH / 2 - handleSize / 2, handleSize, handleSize);
-          ctx.fillRect(scaledX + scaledW - handleSize / 2, scaledY + scaledH / 2 - handleSize / 2, handleSize, handleSize);
+      } else {
+        // Fallback for unknown types - use bbox tool for bbox type
+        if (ann.geometry.type === 'bbox') {
+          bboxTool.renderAnnotation(renderCtx, ann, isSelected, color, className);
+          if (isSelected) {
+            bboxTool.renderHandles(renderCtx, ann, color);
+          }
         }
       }
     });
   };
 
-  // Draw bbox preview while drawing
+  // Draw bbox preview while drawing using Tool system
   const drawBboxPreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
-    if (!drawingStart) return;
+    if (!drawingStart || !canvasRef.current) return;
 
+    const canvas = canvasRef.current;
     const currentPos = canvasState.cursor;
-    const x1 = Math.min(drawingStart.x, currentPos.x);
-    const y1 = Math.min(drawingStart.y, currentPos.y);
-    const w = Math.abs(currentPos.x - drawingStart.x);
-    const h = Math.abs(currentPos.y - drawingStart.y);
 
-    ctx.strokeStyle = '#ef4444'; // red-500
-    ctx.setLineDash([5, 5]);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x1, y1, w, h);
-    ctx.setLineDash([]);
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
 
-    // Draw dimensions tooltip
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    const text = `W: ${Math.round(w / zoom)} x H: ${Math.round(h / zoom)}`;
-    const textWidth = ctx.measureText(text).width;
-    ctx.fillRect(currentPos.x + 10, currentPos.y - 25, textWidth + 10, 20);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(text, currentPos.x + 15, currentPos.y - 10);
+    // Create tool state
+    const toolState = {
+      isDrawing: true,
+      drawingStart,
+      currentCursor: currentPos,
+    };
+
+    // Use bbox tool to render preview
+    bboxTool.renderPreview(renderCtx, toolState);
   };
 
   // Draw crosshair
