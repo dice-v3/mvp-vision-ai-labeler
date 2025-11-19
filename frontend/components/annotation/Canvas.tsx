@@ -590,12 +590,25 @@ export default function Canvas() {
 
       // Save updated bbox to backend
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'bbox') {
+      if (updatedAnn && updatedAnn.geometry.type === 'bbox' && project && currentImage) {
         try {
           const updateData: AnnotationUpdateRequest = {
             geometry: updatedAnn.geometry,
           };
           await updateAnnotation(selectedAnnotationId, updateData);
+
+          // Update image status to in_progress and unconfirm
+          useAnnotationStore.setState((state) => ({
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? {
+                    ...img,
+                    is_confirmed: false,
+                    status: 'in-progress',
+                  }
+                : img
+            )
+          }));
         } catch (err) {
           console.error('Failed to update annotation:', err);
           // TODO: Show error toast
@@ -690,24 +703,19 @@ export default function Canvas() {
         updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
       });
 
-      // Update image status and annotation count
-      const imageStatusesResponse = await getProjectImageStatuses(project.id);
-      const imageStatusMap = new Map(
-        imageStatusesResponse.statuses.map(s => [s.image_id, s])
-      );
-
-      // Update images with latest status and annotation count
+      // Update current image status only (not all images)
+      // This prevents resetting other images' status
       useAnnotationStore.setState((state) => ({
-        images: state.images.map(img => {
-          const status = imageStatusMap.get(img.id);
-          return status ? {
-            ...img,
-            annotation_count: status.total_annotations,
-            is_confirmed: status.is_image_confirmed,
-            status: status.status,
-            confirmed_at: status.confirmed_at,
-          } : img;
-        })
+        images: state.images.map(img =>
+          img.id === currentImage.id
+            ? {
+                ...img,
+                annotation_count: (img.annotation_count || 0) + 1,
+                is_confirmed: false,
+                status: 'in-progress',
+              }
+            : img
+        )
       }));
 
       setPendingBbox(null);
