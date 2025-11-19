@@ -171,9 +171,13 @@ export default function AnnotationPage() {
           const imageId = ann.image_id || ann.imageId;
           const annType = ann.annotation_type;
 
-          // Track no_object images
+          // Track no_object images (filtered by task_type in attributes)
           if (annType === 'no_object') {
-            noObjectImageIds.add(imageId);
+            // Only track if it matches the current task
+            const noObjectTaskType = ann.attributes?.task_type;
+            if (noObjectTaskType === initialTask) {
+              noObjectImageIds.add(imageId);
+            }
           }
 
           // Phase 2.9: Only count annotations for the current task
