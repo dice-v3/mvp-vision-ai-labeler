@@ -174,7 +174,37 @@ async def confirm_image_status(
     Returns:
         Updated ImageAnnotationStatus record
     """
-    # First ensure the status record is up to date
+    from sqlalchemy import or_, and_
+
+    # First, update all annotations for this image to 'confirmed' state
+    # This ensures they are included in exports
+    ann_query = db.query(Annotation).filter(
+        Annotation.project_id == project_id,
+        Annotation.image_id == image_id,
+        Annotation.annotation_state == 'draft'  # Only update draft annotations
+    )
+
+    # Phase 2.9: Filter by task_type
+    if task_type:
+        annotation_types = [ann_type for ann_type, task in ANNOTATION_TYPE_TO_TASK.items() if task == task_type]
+        if annotation_types:
+            ann_query = ann_query.filter(
+                or_(
+                    Annotation.annotation_type.in_(annotation_types),
+                    and_(
+                        Annotation.annotation_type == 'no_object',
+                        Annotation.attributes['task_type'].astext == task_type
+                    )
+                )
+            )
+
+    # Update all matching annotations to confirmed
+    ann_query.update(
+        {Annotation.annotation_state: 'confirmed'},
+        synchronize_session='fetch'
+    )
+
+    # Then ensure the status record is up to date
     await update_image_status(db, project_id, image_id, task_type)
 
     # Get the status record (should exist after update_image_status)
