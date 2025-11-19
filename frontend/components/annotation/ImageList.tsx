@@ -306,14 +306,7 @@ export default function ImageList() {
                       title={`${img.file_name}${isSelected ? ' (Selected)' : ''}`}
                     >
                       <td className="py-1.5 px-2 text-gray-600 dark:text-gray-400 font-medium">
-                        <div className="flex items-center gap-1">
-                          {isSelected && (
-                            <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                            </svg>
-                          )}
-                          {actualIndex + 1}
-                        </div>
+                        {actualIndex + 1}
                       </td>
                       <td className="py-1.5 px-2 text-gray-900 dark:text-gray-300 truncate max-w-0">
                         {img.file_name}
