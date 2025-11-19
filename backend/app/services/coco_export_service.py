@@ -67,14 +67,25 @@ def export_to_coco(
     annotations = query.all()
 
     # Extract unique image IDs from annotations
-    unique_image_ids = list(set([ann.image_id for ann in annotations]))
+    # Sort to ensure consistent order (image_id is now file_path)
+    unique_image_ids = sorted(list(set([ann.image_id for ann in annotations])))
+
+    # Build class_id to COCO category ID mapping (1-based)
+    class_id_to_category = {}
+    if isinstance(project.classes, dict):
+        sorted_classes = sorted(
+            project.classes.items(),
+            key=lambda x: (x[1].get("order", 0), x[0])
+        )
+        for idx, (class_id, class_info) in enumerate(sorted_classes, start=1):
+            class_id_to_category[class_id] = idx
 
     # Build COCO structure
     coco_data = {
         "info": _build_info(project, dataset),
         "licenses": _build_licenses(),
         "images": _build_images(unique_image_ids),
-        "annotations": _build_annotations(annotations),
+        "annotations": _build_annotations(annotations, class_id_to_category),
         "categories": _build_categories(project),
     }
 
@@ -128,12 +139,21 @@ def _build_images(image_ids: List[str]) -> List[Dict[str, Any]]:
     return images
 
 
-def _build_annotations(annotations: List[Annotation]) -> List[Dict[str, Any]]:
-    """Build COCO annotations section."""
+def _build_annotations(
+    annotations: List[Annotation],
+    class_id_to_category: Dict[str, int] = None
+) -> List[Dict[str, Any]]:
+    """Build COCO annotations section.
+
+    Args:
+        annotations: List of annotation objects
+        class_id_to_category: Mapping from DB class_id to COCO category ID (1-based)
+    """
     coco_annotations = []
 
     # Create image_id to COCO image_id mapping
-    unique_image_ids = list(set([ann.image_id for ann in annotations]))
+    # Sort to ensure consistent order (image_id is now file_path)
+    unique_image_ids = sorted(list(set([ann.image_id for ann in annotations])))
     image_id_to_coco_id = {img_id: idx + 1 for idx, img_id in enumerate(unique_image_ids)}
 
     for annotation in annotations:
@@ -143,13 +163,23 @@ def _build_annotations(annotations: List[Annotation]) -> List[Dict[str, Any]]:
 
         # Extract bbox from geometry
         geometry = annotation.geometry
-        if "x" not in geometry or "y" not in geometry or "width" not in geometry or "height" not in geometry:
-            continue
 
-        x = float(geometry["x"])
-        y = float(geometry["y"])
-        width = float(geometry["width"])
-        height = float(geometry["height"])
+        # Handle both formats:
+        # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
+        # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
+        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+            bbox_arr = geometry['bbox']
+            x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
+            y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
+            width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
+            height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
+        elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
+            x = float(geometry["x"])
+            y = float(geometry["y"])
+            width = float(geometry["width"])
+            height = float(geometry["height"])
+        else:
+            continue
 
         # COCO bbox format: [x, y, width, height]
         bbox = [x, y, width, height]
@@ -160,10 +190,21 @@ def _build_annotations(annotations: List[Annotation]) -> List[Dict[str, Any]]:
         # Get COCO image ID
         coco_image_id = image_id_to_coco_id.get(annotation.image_id)
 
+        # Get category ID from mapping
+        category_id = 1  # Default
+        if class_id_to_category and annotation.class_id in class_id_to_category:
+            category_id = class_id_to_category[annotation.class_id]
+        elif annotation.class_id:
+            # Fallback: try to parse as integer
+            try:
+                category_id = int(annotation.class_id)
+            except (ValueError, TypeError):
+                category_id = 1
+
         coco_annotation = {
             "id": annotation.id,
             "image_id": coco_image_id,
-            "category_id": _get_category_id(annotation.class_id),
+            "category_id": category_id,
             "bbox": bbox,
             "area": area,
             "segmentation": [],  # Empty for bbox annotations
@@ -203,25 +244,6 @@ def _build_categories(project: AnnotationProject) -> List[Dict[str, Any]]:
             categories.append(category)
 
     return categories
-
-
-def _get_category_id(class_id: Optional[str]) -> int:
-    """
-    Convert class_id to COCO category ID.
-
-    This is a simplified version. In production, you should maintain
-    a mapping of class_id to category_id.
-    """
-    # For now, use a hash-based approach (not ideal, but works for demo)
-    # In production, you should:
-    # 1. Build a class_id -> category_id mapping from project.classes
-    # 2. Store this mapping when exporting
-    if not class_id:
-        return 1  # Default category
-
-    # Simple hash to get a consistent ID
-    # This is NOT production-ready - use proper mapping instead
-    return hash(class_id) % 1000 + 1
 
 
 def get_export_stats(coco_data: Dict[str, Any]) -> Dict[str, int]:

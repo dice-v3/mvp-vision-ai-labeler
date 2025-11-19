@@ -1345,7 +1345,9 @@ export default function Canvas() {
       }
 
       // Space: Confirm Image (supports batch)
-      if (e.key === ' ' && (selectedImageIds.length > 0 || (!isImageConfirmed && (annotations.length > 0 || (currentImage as any)?.has_no_object)))) {
+      // Must have annotations or no_object to confirm (same condition as button)
+      const canConfirm = (annotations.length > 0 || (currentImage as any)?.has_no_object) && !isImageConfirmed;
+      if (e.key === ' ' && canConfirm) {
         e.preventDefault();
         handleConfirmImage();
       }

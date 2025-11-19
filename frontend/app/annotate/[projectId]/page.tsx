@@ -163,27 +163,24 @@ export default function AnnotationPage() {
         const allAnnotations = await getProjectAnnotations(projectId);
 
         // Count annotations per image (filtered by initial task)
-        // Also track which images have no_object annotation
         const annotationCountMap = new Map<string, number>();
-        const noObjectImageIds = new Set<string>();
 
         allAnnotations.forEach((ann: any) => {
           const imageId = ann.image_id || ann.imageId;
           const annType = ann.annotation_type;
 
-          // Track no_object images (filtered by task_type in attributes)
+          // Phase 2.9: Only count annotations for the current task
+          // no_object is filtered by its task_type attribute
           if (annType === 'no_object') {
-            // Only track if it matches the current task
             const noObjectTaskType = ann.attributes?.task_type;
             if (noObjectTaskType === initialTask) {
-              noObjectImageIds.add(imageId);
+              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
             }
-          }
-
-          // Phase 2.9: Only count annotations for the current task
-          const annTaskType = getTaskTypeForAnnotation(annType);
-          if (!initialTask || annTaskType === initialTask) {
-            annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
+          } else {
+            const annTaskType = getTaskTypeForAnnotation(annType);
+            if (!initialTask || annTaskType === initialTask) {
+              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
+            }
           }
         });
 
@@ -205,8 +202,8 @@ export default function AnnotationPage() {
             is_confirmed: status?.is_image_confirmed || false,
             status: status?.status || 'not-started',
             confirmed_at: status?.confirmed_at,
-            // Track no_object status
-            has_no_object: noObjectImageIds.has(imgId),
+            // Track no_object status from backend (task-specific)
+            has_no_object: status?.has_no_object || false,
           };
         });
 
@@ -300,6 +297,7 @@ export default function AnnotationPage() {
                 is_confirmed: status.is_image_confirmed,
                 status: status.status,
                 confirmed_at: status.confirmed_at,
+                has_no_object: status.has_no_object || false, // Task-specific no_object
               };
             }
             // If no status for this task, set default
@@ -309,6 +307,7 @@ export default function AnnotationPage() {
               is_confirmed: false,
               status: 'not-started',
               confirmed_at: undefined,
+              has_no_object: false, // Reset for new task
             };
           })
         }));

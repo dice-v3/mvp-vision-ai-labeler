@@ -466,14 +466,49 @@ async def get_project_image_statuses(
 
     statuses = query.all()
 
+    # Query for no_object annotations to determine has_no_object per image
+    from sqlalchemy import and_
+    no_object_query = labeler_db.query(Annotation.image_id).filter(
+        Annotation.project_id == project_id,
+        Annotation.annotation_type == 'no_object'
+    )
+
+    if task_type:
+        # Filter no_object by task_type in attributes
+        no_object_query = no_object_query.filter(
+            Annotation.attributes['task_type'].astext == task_type
+        )
+
+    no_object_image_ids = set(row[0] for row in no_object_query.all())
+
+    # Build response with has_no_object
+    status_responses = []
+    for s in statuses:
+        status_dict = {
+            'id': s.id,
+            'project_id': s.project_id,
+            'image_id': s.image_id,
+            'task_type': s.task_type,
+            'status': s.status,
+            'first_modified_at': s.first_modified_at,
+            'last_modified_at': s.last_modified_at,
+            'confirmed_at': s.confirmed_at,
+            'total_annotations': s.total_annotations,
+            'confirmed_annotations': s.confirmed_annotations,
+            'draft_annotations': s.draft_annotations,
+            'is_image_confirmed': s.is_image_confirmed,
+            'has_no_object': s.image_id in no_object_image_ids,
+        }
+        status_responses.append(ImageStatusResponse.model_validate(status_dict))
+
     return ImageStatusListResponse(
-        statuses=[ImageStatusResponse.model_validate(s) for s in statuses],
-        total=len(statuses),
+        statuses=status_responses,
+        total=len(status_responses),
         project_id=project_id,
     )
 
 
-@router.post("/{project_id}/images/{image_id}/confirm", response_model=ImageConfirmResponse, tags=["Image Status"])
+@router.post("/{project_id}/images/{image_id:path}/confirm", response_model=ImageConfirmResponse, tags=["Image Status"])
 async def confirm_image(
     project_id: str,
     image_id: str,
@@ -509,6 +544,37 @@ async def confirm_image(
             detail="Not authorized to modify this project",
         )
 
+    # Check if image has any annotations for this task (prevent confirming empty images)
+    from app.services.image_status_service import ANNOTATION_TYPE_TO_TASK
+    from sqlalchemy import or_, and_
+
+    all_annotations_query = labeler_db.query(Annotation).filter(
+        Annotation.project_id == project_id,
+        Annotation.image_id == image_id,
+    )
+
+    if task_type:
+        annotation_types = [ann_type for ann_type, task in ANNOTATION_TYPE_TO_TASK.items() if task == task_type]
+        if annotation_types:
+            # Include regular annotations and no_object with matching task_type
+            all_annotations_query = all_annotations_query.filter(
+                or_(
+                    Annotation.annotation_type.in_(annotation_types),
+                    and_(
+                        Annotation.annotation_type == 'no_object',
+                        Annotation.attributes['task_type'].astext == task_type
+                    )
+                )
+            )
+
+    total_annotations = all_annotations_query.count()
+
+    if total_annotations == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot confirm image: no annotations found for task '{task_type or 'all'}'. Add annotations or mark as 'No Object' first.",
+        )
+
     # Phase 2.9: Confirm all draft annotations for this image (filtered by task if provided)
     annotation_query = labeler_db.query(Annotation).filter(
         Annotation.project_id == project_id,
@@ -518,10 +584,17 @@ async def confirm_image(
 
     # Phase 2.9: Filter by annotation_type based on task_type
     if task_type:
-        from app.services.image_status_service import ANNOTATION_TYPE_TO_TASK
         annotation_types = [ann_type for ann_type, task in ANNOTATION_TYPE_TO_TASK.items() if task == task_type]
         if annotation_types:
-            annotation_query = annotation_query.filter(Annotation.annotation_type.in_(annotation_types))
+            annotation_query = annotation_query.filter(
+                or_(
+                    Annotation.annotation_type.in_(annotation_types),
+                    and_(
+                        Annotation.annotation_type == 'no_object',
+                        Annotation.attributes['task_type'].astext == task_type
+                    )
+                )
+            )
 
     draft_annotations = annotation_query.all()
 
@@ -554,7 +627,7 @@ async def confirm_image(
     )
 
 
-@router.post("/{project_id}/images/{image_id}/unconfirm", response_model=ImageConfirmResponse, tags=["Image Status"])
+@router.post("/{project_id}/images/{image_id:path}/unconfirm", response_model=ImageConfirmResponse, tags=["Image Status"])
 async def unconfirm_image(
     project_id: str,
     image_id: str,

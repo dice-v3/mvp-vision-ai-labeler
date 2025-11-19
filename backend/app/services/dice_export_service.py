@@ -130,33 +130,41 @@ def export_to_dice(
             images_dict[ann.image_id] = []
         images_dict[ann.image_id].append(ann)
 
-    # Load image_id → file_name mapping from Platform annotations file
+    # Load image dimensions from Platform annotations file
     # Use provided task_type or fallback to first task type
     effective_task_type = task_type or (project.task_types[0] if project.task_types else 'detection')
-    image_filename_map = _load_image_filename_mapping(dataset, effective_task_type)
+    image_dimensions_map = _load_image_dimensions(dataset)
 
-    # Build DICE images array
-    dice_images = []
-    image_id_mapping = {}  # Map image_id to DICE numeric ID
+    # Sort by image_id (now file_path, so string sort)
+    sorted_images = sorted(images_dict.items(), key=lambda x: x[0])
+    image_id_mapping = {}  # Map image_id (file_path) to DICE numeric ID
 
-    # Sort by original image_id numerically
-    # IMPORTANT: Preserve original image_id to maintain consistency with DB
-    def sort_key(item):
-        image_id = item[0]
-        try:
-            return (0, int(image_id))  # Numeric sort
-        except ValueError:
-            return (1, image_id)  # String sort as fallback
+    # Get task-specific classes
+    # Use task_classes if available, otherwise fall back to project.classes
+    if task_type and project.task_classes and task_type in project.task_classes:
+        task_classes = project.task_classes[task_type]
+    else:
+        task_classes = project.classes
 
-    sorted_images = sorted(images_dict.items(), key=sort_key)
+    # Build class_id to DICE index mapping
+    # This maps the database class_id (dict key) to sequential DICE index (0, 1, 2...)
+    class_id_to_dice_index = {}
+    class_id_to_name = {}
+    if isinstance(task_classes, dict):
+        sorted_classes = sorted(
+            task_classes.items(),
+            key=lambda x: (x[1].get("order", 0), x[0])
+        )
+        for idx, (class_id, class_info) in enumerate(sorted_classes):
+            class_id_to_dice_index[class_id] = idx
+            class_id_to_name[class_id] = class_info.get('name', class_id)
 
-    for image_id, image_annotations in sorted_images:
-        # Use original image_id as DICE ID (not new sequential number)
-        try:
-            dice_id = int(image_id)
-        except ValueError:
-            # If image_id is not numeric, use hash-based ID
-            dice_id = abs(hash(image_id)) % 1000000
+    # Rebuild DICE images with correct class mapping
+    dice_images_with_mapping = []
+    for idx, (image_id, image_annotations) in enumerate(sorted_images):
+        # Use sequential integer as DICE ID (for COCO/DICE format compatibility)
+        # image_id is now file_path, so we generate sequential IDs
+        dice_id = idx + 1
 
         image_id_mapping[image_id] = dice_id
 
@@ -177,8 +185,6 @@ def export_to_dice(
             ).first()
 
         if status and status.is_image_confirmed:
-            # Get reviewer info - check if confirmed_by exists in image status
-            # If not, use the confirmed_by from the first confirmed annotation
             confirmed_by_id = None
             for ann in image_annotations:
                 if ann.confirmed_by:
@@ -190,11 +196,11 @@ def export_to_dice(
                     User.id == confirmed_by_id
                 ).first()
 
-        # Get actual file_name from mapping (fallback to image_id if not found)
-        file_name = image_filename_map.get(image_id, image_id)
+        # image_id is now file_path, so use it directly as file_name
+        file_name = image_id
 
         # Get image dimensions from mapping if available
-        image_info = image_filename_map.get(f"{image_id}_info", {})
+        image_info = image_dimensions_map.get(image_id, {})
         width = image_info.get('width', 0)
         height = image_info.get('height', 0)
 
@@ -206,7 +212,7 @@ def export_to_dice(
             "depth": 3,  # Assume RGB images
             "split": "train",  # TODO: Implement train/val/test split logic
             "annotations": [
-                _convert_annotation_to_dice(ann, dice_id)
+                _convert_annotation_to_dice(ann, dice_id, class_id_to_dice_index, class_id_to_name)
                 for ann in image_annotations
             ],
             "metadata": {
@@ -217,14 +223,7 @@ def export_to_dice(
                 "source": "platform_labeler_v1.0"
             }
         }
-        dice_images.append(dice_image)
-
-    # Get task-specific classes
-    # Use task_classes if available, otherwise fall back to project.classes
-    if task_type and project.task_classes and task_type in project.task_classes:
-        task_classes = project.task_classes[task_type]
-    else:
-        task_classes = project.classes
+        dice_images_with_mapping.append(dice_image)
 
     # Map task_type to DICE task_type format
     dice_task_type_mapping = {
@@ -246,15 +245,43 @@ def export_to_dice(
         "last_modified_at": to_kst_isoformat(datetime.utcnow()),
         "version": 1,  # TODO: Get actual version number
         "classes": _convert_classes_to_dice(task_classes),
-        "images": dice_images,
-        "statistics": _calculate_statistics(dice_images, task_classes)
+        "images": dice_images_with_mapping,
+        "statistics": _calculate_statistics(dice_images_with_mapping, task_classes)
     }
 
     return dice_data
 
 
-def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str, Any]:
-    """Convert DB annotation to DICE annotation format."""
+def _convert_annotation_to_dice(
+    ann: Annotation,
+    image_dice_id: int,
+    class_id_to_dice_index: Dict[str, int] = None,
+    class_id_to_name: Dict[str, str] = None
+) -> Dict[str, Any]:
+    """Convert DB annotation to DICE annotation format.
+
+    Args:
+        ann: Database annotation object
+        image_dice_id: DICE format image ID
+        class_id_to_dice_index: Mapping from DB class_id to DICE sequential index
+        class_id_to_name: Mapping from DB class_id to class name
+    """
+    # Get the correct DICE class_id and class_name using mappings
+    dice_class_id = 0
+    dice_class_name = ann.class_name or "unknown"
+
+    if class_id_to_dice_index and ann.class_id in class_id_to_dice_index:
+        dice_class_id = class_id_to_dice_index[ann.class_id]
+    elif ann.class_id:
+        # Fallback: try to parse as integer
+        try:
+            dice_class_id = int(ann.class_id)
+        except (ValueError, TypeError):
+            dice_class_id = 0
+
+    if class_id_to_name and ann.class_id in class_id_to_name:
+        dice_class_name = class_id_to_name[ann.class_id]
+
     if ann.annotation_type == 'bbox':
         geometry = ann.geometry
 
@@ -276,8 +303,8 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
         return {
             "id": ann.id,
             "image_id": image_dice_id,  # Use DICE image ID
-            "class_id": _parse_class_id(ann.class_id),
-            "class_name": ann.class_name,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
             "bbox": [x, y, width, height],
             "bbox_format": "xywh",
             "area": width * height,
@@ -290,8 +317,8 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
         return {
             "id": ann.id,
             "image_id": image_dice_id,
-            "class_id": _parse_class_id(ann.class_id),
-            "class_name": ann.class_name,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
             "segmentation": geometry.get('points', []),
             "area": 0,  # TODO: Calculate polygon area
             "iscrowd": 0,
@@ -302,8 +329,8 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
         return {
             "id": ann.id,
             "image_id": image_dice_id,
-            "class_id": _parse_class_id(ann.class_id),
-            "class_name": ann.class_name,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
             "attributes": ann.attributes or {}
         }
     elif ann.annotation_type == 'no_object':
@@ -321,8 +348,8 @@ def _convert_annotation_to_dice(ann: Annotation, image_dice_id: int) -> Dict[str
         return {
             "id": ann.id,
             "image_id": image_dice_id,
-            "class_id": _parse_class_id(ann.class_id),
-            "class_name": ann.class_name,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
             "type": ann.annotation_type,
             "geometry": ann.geometry,
             "attributes": ann.attributes or {}
@@ -460,17 +487,15 @@ def get_export_stats(dice_data: Dict[str, Any]) -> Dict[str, int]:
     }
 
 
-def _load_image_filename_mapping(dataset: Dataset, task_type: str) -> Dict[str, Any]:
+def _load_image_dimensions(dataset: Dataset) -> Dict[str, Any]:
     """
-    Load image_id → file_name mapping from Platform annotations file.
+    Load image dimensions from Platform annotations file.
 
     Args:
         dataset: Platform Dataset object
-        task_type: Task type (detection, classification, segmentation)
 
     Returns:
-        Dictionary mapping image_id to file_name
-        Also includes {image_id}_info → {width, height} for dimensions
+        Dictionary mapping file_path to {width, height}
     """
     mapping = {}
 
@@ -490,16 +515,13 @@ def _load_image_filename_mapping(dataset: Dataset, task_type: str) -> Dict[str, 
         annotations_json = json.loads(content)
 
         # Build mapping from images array
+        # Now image_id is file_path, so map file_name to dimensions
         images = annotations_json.get('images', [])
         for img in images:
-            image_id = str(img.get('id'))  # Convert to string to match DB
             file_name = img.get('file_name')
 
-            if image_id and file_name:
-                mapping[image_id] = file_name
-
-                # Also store dimensions if available
-                mapping[f"{image_id}_info"] = {
+            if file_name:
+                mapping[file_name] = {
                     'width': img.get('width', 0),
                     'height': img.get('height', 0)
                 }
@@ -508,6 +530,5 @@ def _load_image_filename_mapping(dataset: Dataset, task_type: str) -> Dict[str, 
 
     except Exception as e:
         # If loading fails, log error and return empty mapping
-        # This allows export to continue with fallback (image_id as file_name)
-        print(f"Warning: Failed to load image filename mapping: {e}")
+        print(f"Warning: Failed to load image dimensions: {e}")
         return mapping
