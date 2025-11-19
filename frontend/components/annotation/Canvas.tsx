@@ -1038,6 +1038,7 @@ export default function Canvas() {
                     annotation_count: 1,
                     status: 'in-progress',
                     has_no_object: true,
+                    is_confirmed: false,  // Not confirmed yet, just assigned
                   }
                 : img
             )
@@ -1045,7 +1046,7 @@ export default function Canvas() {
         }
 
         setBatchProgress(null);
-        clearImageSelection();
+        // Keep multi-selection after batch operation
         toast.success(`${targetImageIds.length}개 이미지를 No Object로 처리했습니다.`, 3000);
       } catch (err) {
         console.error('Failed to create no_object annotation:', err);
@@ -1068,7 +1069,7 @@ export default function Canvas() {
       cancelText: '취소',
       onConfirm: processNoObject,
     });
-  }, [currentImage, project, addAnnotation, annotations, deleteAnnotation, selectedImageIds, clearImageSelection]);
+  }, [currentImage, project, addAnnotation, annotations, deleteAnnotation, selectedImageIds]);
 
   // Handle delete all annotations (supports batch operation)
   const handleDeleteAllAnnotations = useCallback(async () => {
@@ -1116,6 +1117,7 @@ export default function Canvas() {
                     annotation_count: 0,
                     status: 'not-started',
                     has_no_object: false,
+                    is_confirmed: false,  // Reset confirmation on delete
                   }
                 : img
             )
@@ -1123,7 +1125,7 @@ export default function Canvas() {
         }
 
         setBatchProgress(null);
-        clearImageSelection();
+        // Keep multi-selection after batch operation
         toast.success(`${targetImageIds.length}개 이미지에서 ${totalDeleted}개 레이블을 삭제했습니다.`, 3000);
       } catch (err) {
         console.error('Failed to delete annotations:', err);
@@ -1144,7 +1146,7 @@ export default function Canvas() {
       cancelText: '취소',
       onConfirm: processDelete,
     });
-  }, [project, currentImage, annotations, deleteAnnotation, selectedImageIds, clearImageSelection]);
+  }, [project, currentImage, annotations, deleteAnnotation, selectedImageIds]);
 
   const handleConfirmImage = useCallback(async () => {
     if (!project) return;
