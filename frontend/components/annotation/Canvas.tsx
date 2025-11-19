@@ -1277,7 +1277,7 @@ export default function Canvas() {
       }
 
       // Space: Confirm Image (supports batch)
-      if (e.key === ' ' && (selectedImageIds.length > 0 || (!isImageConfirmed && annotations.length > 0))) {
+      if (e.key === ' ' && (selectedImageIds.length > 0 || (!isImageConfirmed && (annotations.length > 0 || (currentImage as any)?.has_no_object)))) {
         e.preventDefault();
         handleConfirmImage();
       }
@@ -1297,7 +1297,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -1429,7 +1429,7 @@ export default function Canvas() {
       )}
 
       {/* Phase 2.7: Confirm Image button */}
-      {annotations.length > 0 && !isImageConfirmed && (
+      {(annotations.length > 0 || (currentImage as any)?.has_no_object) && !isImageConfirmed && (
         <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
           <button
             onClick={handleConfirmImage}
