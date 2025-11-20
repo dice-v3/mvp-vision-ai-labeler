@@ -189,7 +189,6 @@ export class Circle3pTool extends BaseAnnotationTool {
     if (!state.circlePoints || state.circlePoints.length === 0) return;
 
     const points = state.circlePoints;
-    const { r, g, b } = this.parseColor('#ef4444');
 
     // Draw points already placed
     for (const [px, py] of points) {
@@ -199,42 +198,42 @@ export class Circle3pTool extends BaseAnnotationTool {
       ctx.ctx.fill();
     }
 
-    // If we have 2 points, show potential circle with cursor as 3rd point
-    if (points.length === 2) {
-      const result = Circle3pTool.calculateCircleFrom3Points(
-        points[0],
-        points[1],
-        [state.currentCursor.x, state.currentCursor.y]
-      );
-
-      if (result) {
-        ctx.ctx.beginPath();
-        ctx.ctx.arc(result.center[0], result.center[1], result.radius, 0, Math.PI * 2);
-        ctx.ctx.strokeStyle = '#ef4444';
-        ctx.ctx.setLineDash([5, 5]);
-        ctx.ctx.lineWidth = 2;
-        ctx.ctx.stroke();
-        ctx.ctx.setLineDash([]);
-
-        ctx.ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
-        ctx.ctx.fill();
-
-        // Show center
-        ctx.ctx.fillStyle = '#ef4444';
-        ctx.ctx.beginPath();
-        ctx.ctx.arc(result.center[0], result.center[1], 3, 0, Math.PI * 2);
-        ctx.ctx.fill();
-      }
-    } else if (points.length === 1) {
-      // Draw line from first point to cursor
+    // Draw lines between points
+    if (points.length === 1) {
+      // Draw dashed line from first point to cursor
       ctx.ctx.beginPath();
       ctx.ctx.moveTo(points[0][0], points[0][1]);
       ctx.ctx.lineTo(state.currentCursor.x, state.currentCursor.y);
       ctx.ctx.strokeStyle = '#ef4444';
-      ctx.ctx.setLineDash([3, 3]);
+      ctx.ctx.setLineDash([5, 5]);
+      ctx.ctx.lineWidth = 2;
+      ctx.ctx.stroke();
+      ctx.ctx.setLineDash([]);
+    } else if (points.length === 2) {
+      // Draw solid line from p1 to p2
+      ctx.ctx.beginPath();
+      ctx.ctx.moveTo(points[0][0], points[0][1]);
+      ctx.ctx.lineTo(points[1][0], points[1][1]);
+      ctx.ctx.strokeStyle = '#ef4444';
+      ctx.ctx.lineWidth = 2;
+      ctx.ctx.stroke();
+
+      // Draw dashed line from p2 to cursor
+      ctx.ctx.beginPath();
+      ctx.ctx.moveTo(points[1][0], points[1][1]);
+      ctx.ctx.lineTo(state.currentCursor.x, state.currentCursor.y);
+      ctx.ctx.strokeStyle = '#ef4444';
+      ctx.ctx.setLineDash([5, 5]);
+      ctx.ctx.lineWidth = 2;
       ctx.ctx.stroke();
       ctx.ctx.setLineDash([]);
     }
+
+    // Draw cursor point
+    ctx.ctx.fillStyle = '#ef4444';
+    ctx.ctx.beginPath();
+    ctx.ctx.arc(state.currentCursor.x, state.currentCursor.y, 5, 0, Math.PI * 2);
+    ctx.ctx.fill();
 
     // Draw tooltip
     ctx.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';

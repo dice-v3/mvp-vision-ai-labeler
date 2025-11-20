@@ -139,40 +139,33 @@ export class CircleTool extends BaseAnnotationTool {
     if (!state.circleCenter) return;
 
     const center = state.circleCenter;
-    const { r, g, b } = this.parseColor('#ef4444');
 
     // Calculate radius from center to cursor
     const dx = state.currentCursor.x - center[0];
     const dy = state.currentCursor.y - center[1];
     const radius = Math.sqrt(dx * dx + dy * dy);
 
-    // Draw preview circle
+    // Draw center point
+    ctx.ctx.fillStyle = '#ef4444';
     ctx.ctx.beginPath();
-    ctx.ctx.arc(center[0], center[1], radius, 0, Math.PI * 2);
+    ctx.ctx.arc(center[0], center[1], 5, 0, Math.PI * 2);
+    ctx.ctx.fill();
+
+    // Draw dashed line from center to cursor
+    ctx.ctx.beginPath();
+    ctx.ctx.moveTo(center[0], center[1]);
+    ctx.ctx.lineTo(state.currentCursor.x, state.currentCursor.y);
     ctx.ctx.strokeStyle = '#ef4444';
     ctx.ctx.setLineDash([5, 5]);
     ctx.ctx.lineWidth = 2;
     ctx.ctx.stroke();
     ctx.ctx.setLineDash([]);
 
-    // Fill preview
-    ctx.ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
-    ctx.ctx.fill();
-
-    // Draw center point
+    // Draw cursor point
     ctx.ctx.fillStyle = '#ef4444';
     ctx.ctx.beginPath();
-    ctx.ctx.arc(center[0], center[1], 4, 0, Math.PI * 2);
+    ctx.ctx.arc(state.currentCursor.x, state.currentCursor.y, 5, 0, Math.PI * 2);
     ctx.ctx.fill();
-
-    // Draw radius line
-    ctx.ctx.beginPath();
-    ctx.ctx.moveTo(center[0], center[1]);
-    ctx.ctx.lineTo(state.currentCursor.x, state.currentCursor.y);
-    ctx.ctx.strokeStyle = '#ef4444';
-    ctx.ctx.setLineDash([3, 3]);
-    ctx.ctx.stroke();
-    ctx.ctx.setLineDash([]);
 
     // Draw tooltip
     ctx.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';

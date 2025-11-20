@@ -50,19 +50,34 @@ export interface PolygonGeometry {
   bbox?: [number, number, number, number];
 }
 
+export interface PolylineGeometry {
+  type: 'polyline';
+  points: [number, number][];
+  image_width?: number;
+  image_height?: number;
+}
+
+export interface CircleGeometry {
+  type: 'circle';
+  center: [number, number];
+  radius: number;
+  image_width?: number;
+  image_height?: number;
+}
+
 export interface ClassificationGeometry {
   type: 'classification';
-  labels: string[];
+  labels?: string[];
   confidence?: number;
 }
 
-export type AnnotationGeometry = BboxGeometry | PolygonGeometry | ClassificationGeometry;
+export type AnnotationGeometry = BboxGeometry | PolygonGeometry | PolylineGeometry | CircleGeometry | ClassificationGeometry;
 
 export interface Annotation {
   id: string;
   projectId: string;
   imageId: string;
-  annotationType: 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line';
+  annotationType: 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line' | 'polyline' | 'circle';
   geometry: AnnotationGeometry;
   classId?: string;
   className?: string;
