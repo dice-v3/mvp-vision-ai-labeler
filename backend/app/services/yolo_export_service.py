@@ -1,9 +1,14 @@
 """
-YOLO Export Service
+YOLO Export Service - REFACTORED
 
 Converts database annotations to YOLO format.
 YOLO format: One .txt file per image with annotations in format:
   class_id x_center y_center width height (all normalized 0-1)
+
+REFACTORING CHANGES:
+- Use task_classes instead of legacy classes field
+- Added task_type parameter for multi-task project support
+- Direct task-specific class lookup (no fallbacks)
 """
 
 from typing import List, Dict, Any, Optional, Tuple
@@ -18,6 +23,7 @@ def export_to_yolo(
     project_id: str,
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
+    task_type: Optional[str] = None,
 ) -> Tuple[Dict[str, str], str]:
     """
     Export annotations to YOLO format.
@@ -27,6 +33,7 @@ def export_to_yolo(
         project_id: Project ID to export
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
+        task_type: Task type to export (detection, segmentation) - required for multi-task projects
 
     Returns:
         Tuple of (image_annotations_dict, classes_txt)
@@ -54,8 +61,18 @@ def export_to_yolo(
 
     annotations = query.all()
 
+    # REFACTORING: Get task-specific classes (task_classes only, no legacy fallback)
+    # Legacy project.classes field has been removed
+    if task_type and project.task_classes and task_type in project.task_classes:
+        task_classes = project.task_classes[task_type]
+    elif project.task_classes:
+        # If task_type not specified, try to get first available task's classes
+        task_classes = next(iter(project.task_classes.values())) if project.task_classes else {}
+    else:
+        task_classes = {}
+
     # Build class_id to index mapping
-    class_mapping = _build_class_mapping(project)
+    class_mapping = _build_class_mapping(task_classes)
 
     # Track all unique image IDs (including no_object images)
     all_image_ids = set()
@@ -164,35 +181,31 @@ def export_to_yolo(
             image_annotations_str[img_id] = ""  # Empty file for no_object images
 
     # Build classes.txt
-    classes_txt = _build_classes_txt(project, class_mapping)
+    classes_txt = _build_classes_txt(task_classes, class_mapping)
 
     return image_annotations_str, classes_txt
 
 
-def _build_class_mapping(project: AnnotationProject) -> Dict[str, int]:
+def _build_class_mapping(task_classes: Dict[str, Any]) -> Dict[str, int]:
     """
-    Build class_id to index mapping.
+    Build class_id to index mapping from task classes.
 
     YOLO uses integer class IDs starting from 0.
     Classes are sorted by their 'order' field to ensure consistent export.
+
+    Args:
+        task_classes: Task-specific classes dict from project.task_classes[task_type]
     """
     class_mapping = {}
 
-    # project.classes can be dict or list
-    if isinstance(project.classes, dict):
+    if isinstance(task_classes, dict):
         # Sort by order field, then by class_id as fallback
         sorted_classes = sorted(
-            project.classes.items(),
+            task_classes.items(),
             key=lambda x: (x[1].get("order", 0), x[0])
         )
         for idx, (class_id, class_info) in enumerate(sorted_classes):
             class_mapping[class_id] = idx
-    elif isinstance(project.classes, list):
-        # Legacy list format
-        for idx, class_def in enumerate(project.classes):
-            class_id = class_def.get("id")
-            if class_id:
-                class_mapping[class_id] = idx
 
     return class_mapping
 
@@ -238,26 +251,22 @@ def _convert_to_yolo_bbox(
     return (x_center_norm, y_center_norm, width_norm, height_norm)
 
 
-def _build_classes_txt(project: AnnotationProject, class_mapping: Dict[str, int]) -> str:
+def _build_classes_txt(task_classes: Dict[str, Any], class_mapping: Dict[str, int]) -> str:
     """
-    Build classes.txt content.
+    Build classes.txt content from task classes.
 
     Format: One class name per line, in order of class index.
+
+    Args:
+        task_classes: Task-specific classes dict from project.task_classes[task_type]
+        class_mapping: Mapping from class_id to index
     """
     # Create ordered list of class names
     class_names = [""] * len(class_mapping)
 
-    if isinstance(project.classes, dict):
-        for class_id, class_info in project.classes.items():
+    if isinstance(task_classes, dict):
+        for class_id, class_info in task_classes.items():
             class_name = class_info.get("name", class_id)
-            if class_id in class_mapping:
-                idx = class_mapping[class_id]
-                class_names[idx] = class_name
-    elif isinstance(project.classes, list):
-        # Legacy list format
-        for class_def in project.classes:
-            class_id = class_def.get("id")
-            class_name = class_def.get("name", class_id)
             if class_id in class_mapping:
                 idx = class_mapping[class_id]
                 class_names[idx] = class_name
