@@ -15,6 +15,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
@@ -28,6 +29,9 @@ export function useKeyboardShortcuts() {
     toggleLeftPanel,
     toggleRightPanel,
     currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   } = useAnnotationStore();
 
   useEffect(() => {
@@ -80,6 +84,21 @@ export function useKeyboardShortcuts() {
             e.preventDefault();
             fitToScreen();
             break;
+          case 'c':
+            // Copy selected annotation
+            if (selectedAnnotationId) {
+              e.preventDefault();
+              const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+              if (selectedAnn) {
+                copyAnnotation(selectedAnn);
+              }
+            }
+            break;
+          case 'v':
+            // Paste annotation
+            e.preventDefault();
+            pasteAnnotation();
+            break;
         }
         return;
       }
@@ -87,22 +106,26 @@ export function useKeyboardShortcuts() {
       // Regular shortcuts (no modifiers)
       switch (e.key.toLowerCase()) {
         case 'arrowup':
-          // Previous image (when in list view or general navigation)
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowdown':
-          // Next image (when in list view or general navigation)
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
         case 'arrowleft':
-          // Previous image
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowright':
-          // Next image
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
@@ -126,9 +149,49 @@ export function useKeyboardShortcuts() {
           e.preventDefault();
           if (currentTask === 'classification') {
             setTool('classification');
+          } else if (currentTask === 'segmentation') {
+            setTool('polygon');
+          } else if (currentTask === 'geometry') {
+            setTool('polyline');
           } else {
             setTool('bbox');
           }
+          break;
+        case 'l':
+          // Polyline tool
+          e.preventDefault();
+          setTool('polyline');
+          break;
+        case 'c':
+          // Circle tool (without Ctrl)
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              setTool('circle3p');
+            } else {
+              setTool('circle');
+            }
+          }
+          break;
+        case 'e':
+          // Circle tool (alternative shortcut)
+          e.preventDefault();
+          setTool('circle');
+          break;
+        case 'r':
+          // Circle 3-point tool (alternative shortcut)
+          e.preventDefault();
+          setTool('circle3p');
+          break;
+        case 'b':
+          // BBox tool (detection shortcut)
+          e.preventDefault();
+          setTool('bbox');
+          break;
+        case 'p':
+          // Polygon tool (segmentation shortcut)
+          e.preventDefault();
+          setTool('polygon');
           break;
         case 'delete':
         case 'backspace':
@@ -174,6 +237,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
@@ -187,5 +251,8 @@ export function useKeyboardShortcuts() {
     toggleLeftPanel,
     toggleRightPanel,
     currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   ]);
 }

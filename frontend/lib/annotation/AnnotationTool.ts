@@ -84,10 +84,14 @@ export interface ToolState {
   isDrawing: boolean;
   drawingStart: { x: number; y: number } | null;
   currentCursor: { x: number; y: number };
-  // For polygon, track vertices being drawn
+  // For polygon/polyline, track vertices being drawn
   vertices?: [number, number][];
   // For keypoints, track current keypoint index
   currentKeypoint?: number;
+  // For circle (center-edge mode), track center
+  circleCenter?: [number, number];
+  // For circle (3-point mode), track points on circumference
+  circlePoints?: [number, number][];
 }
 
 // Result of tool operations

@@ -22,6 +22,8 @@ ANNOTATION_TYPE_TO_TASK = {
     'classification': 'classification',
     'keypoint': 'keypoint',
     'line': 'line',
+    'polyline': 'geometry',
+    'circle': 'geometry',
 }
 
 

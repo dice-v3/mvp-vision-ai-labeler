@@ -183,7 +183,7 @@ export default function TopBar() {
                     <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 px-2">Select task type:</p>
                       <div className="space-y-1">
-                        {['classification', 'detection', 'segmentation'].map((taskType) => {
+                        {['classification', 'detection', 'segmentation', 'geometry'].map((taskType) => {
                           const isDisabled = project.taskTypes?.includes(taskType);
                           return (
                             <button

@@ -107,6 +107,7 @@ def export_to_dice(
             'segmentation': ['polygon'],
             'keypoints': ['keypoints'],
             'line': ['line'],
+            'geometry': ['polyline', 'circle'],
         }
         annotation_types = task_to_annotation_types.get(task_type, [task_type])
 
@@ -204,6 +205,17 @@ def export_to_dice(
         width = image_info.get('width', 0)
         height = image_info.get('height', 0)
 
+        # Fallback: get dimensions from annotation geometry if not in mapping
+        if (width == 0 or height == 0) and image_annotations:
+            for ann in image_annotations:
+                if ann.geometry:
+                    geom_width = ann.geometry.get('image_width', 0)
+                    geom_height = ann.geometry.get('image_height', 0)
+                    if geom_width > 0 and geom_height > 0:
+                        width = geom_width
+                        height = geom_height
+                        break
+
         dice_image = {
             "id": dice_id,
             "file_name": file_name,
@@ -232,6 +244,7 @@ def export_to_dice(
         "segmentation": "instance_segmentation",
         "keypoints": "keypoint_detection",
         "line": "line_detection",
+        "geometry": "geometry_detection",
     }
     dice_task_type = dice_task_type_mapping.get(effective_task_type, effective_task_type)
 
@@ -312,16 +325,114 @@ def _convert_annotation_to_dice(
             "attributes": ann.attributes or {}
         }
     elif ann.annotation_type == 'polygon':
-        # TODO: Implement polygon support
         geometry = ann.geometry
+        points = geometry.get('points', [])
+
+        # Calculate polygon area using shoelace formula
+        area = 0.0
+        n = len(points)
+        if n >= 3:
+            for i in range(n):
+                j = (i + 1) % n
+                area += points[i][0] * points[j][1]
+                area -= points[j][0] * points[i][1]
+            area = abs(area) / 2.0
+
+        # Calculate bounding box from polygon points
+        if points:
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+        else:
+            bbox = [0, 0, 0, 0]
+
+        # Flatten points for COCO-style segmentation format
+        # COCO expects [x1, y1, x2, y2, ...]
+        segmentation_flat = []
+        for point in points:
+            segmentation_flat.extend(point)
+
         return {
             "id": ann.id,
             "image_id": image_dice_id,
             "class_id": dice_class_id,
             "class_name": dice_class_name,
-            "segmentation": geometry.get('points', []),
-            "area": 0,  # TODO: Calculate polygon area
+            "segmentation": [segmentation_flat],  # COCO format: list of polygons
+            "bbox": bbox,
+            "bbox_format": "xywh",
+            "area": area,
             "iscrowd": 0,
+            "attributes": ann.attributes or {}
+        }
+    elif ann.annotation_type == 'polyline':
+        # Polyline annotation (open path)
+        geometry = ann.geometry
+        points = geometry.get('points', [])
+
+        if not points or len(points) < 2:
+            return {
+                "id": ann.id,
+                "image_id": image_dice_id,
+                "class_id": dice_class_id,
+                "class_name": dice_class_name,
+                "polyline": [],
+                "attributes": ann.attributes or {}
+            }
+
+        # Calculate bounding box from polyline points
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+
+        # Flatten points for export
+        polyline_flat = []
+        for point in points:
+            polyline_flat.extend([float(point[0]), float(point[1])])
+
+        return {
+            "id": ann.id,
+            "image_id": image_dice_id,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
+            "polyline": polyline_flat,
+            "bbox": bbox,
+            "bbox_format": "xywh",
+            "attributes": ann.attributes or {}
+        }
+    elif ann.annotation_type == 'circle':
+        # Circle annotation
+        geometry = ann.geometry
+        center = geometry.get('center', [0, 0])
+        radius = geometry.get('radius', 0)
+
+        # Calculate bounding box from circle
+        bbox = [
+            center[0] - radius,
+            center[1] - radius,
+            radius * 2,
+            radius * 2
+        ]
+
+        # Calculate area
+        import math
+        area = math.pi * radius * radius
+
+        return {
+            "id": ann.id,
+            "image_id": image_dice_id,
+            "class_id": dice_class_id,
+            "class_name": dice_class_name,
+            "circle": {
+                "center": center,
+                "radius": radius
+            },
+            "bbox": bbox,
+            "bbox_format": "xywh",
+            "area": area,
             "attributes": ann.attributes or {}
         }
     elif ann.annotation_type == 'classification':

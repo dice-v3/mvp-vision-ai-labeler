@@ -67,9 +67,9 @@ def export_to_yolo(
         # Track all images including no_object
         all_image_ids.add(annotation.image_id)
 
-        # Skip non-bbox annotations (YOLO is for object detection)
+        # Skip non-bbox/polygon annotations
         # no_object images will be included with empty annotation file
-        if annotation.annotation_type != "bbox":
+        if annotation.annotation_type not in ("bbox", "polygon"):
             continue
 
         # Get class index
@@ -79,38 +79,71 @@ def export_to_yolo(
 
         class_idx = class_mapping[class_id]
 
-        # Extract bbox from geometry
+        # Extract geometry
         geometry = annotation.geometry
 
-        # Handle both formats:
-        # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
-        # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
-        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
-            bbox_arr = geometry['bbox']
-            x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
-            y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
-            width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
-            height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
-        elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
-            x = float(geometry["x"])
-            y = float(geometry["y"])
-            width = float(geometry["width"])
-            height = float(geometry["height"])
-        else:
-            continue
+        if annotation.annotation_type == "bbox":
+            # Handle both formats:
+            # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
+            # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
+            if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+                bbox_arr = geometry['bbox']
+                x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
+                y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
+                width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
+                height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
+            elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
+                x = float(geometry["x"])
+                y = float(geometry["y"])
+                width = float(geometry["width"])
+                height = float(geometry["height"])
+            else:
+                continue
 
-        # Convert to YOLO format (normalized center coordinates)
-        yolo_bbox = _convert_to_yolo_bbox(
-            x=x,
-            y=y,
-            width=width,
-            height=height,
-            image_width=float(geometry.get("image_width", 1920)),  # Default or from geometry
-            image_height=float(geometry.get("image_height", 1080)),  # Default or from geometry
-        )
+            # Get image dimensions from geometry (required for normalization)
+            img_width = float(geometry.get("image_width", 0))
+            img_height = float(geometry.get("image_height", 0))
 
-        # Format: class_id x_center y_center width height
-        yolo_line = f"{class_idx} {yolo_bbox[0]:.6f} {yolo_bbox[1]:.6f} {yolo_bbox[2]:.6f} {yolo_bbox[3]:.6f}"
+            # Skip if no valid dimensions
+            if img_width <= 0 or img_height <= 0:
+                continue
+
+            # Convert to YOLO format (normalized center coordinates)
+            yolo_bbox = _convert_to_yolo_bbox(
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                image_width=img_width,
+                image_height=img_height,
+            )
+
+            # Format: class_id x_center y_center width height
+            yolo_line = f"{class_idx} {yolo_bbox[0]:.6f} {yolo_bbox[1]:.6f} {yolo_bbox[2]:.6f} {yolo_bbox[3]:.6f}"
+
+        elif annotation.annotation_type == "polygon":
+            # Handle polygon for YOLO-seg format
+            points = geometry.get('points', [])
+
+            if not points or len(points) < 3:
+                continue
+
+            # Get image dimensions from geometry (required for normalization)
+            image_width = float(geometry.get("image_width", 0))
+            image_height = float(geometry.get("image_height", 0))
+
+            # Skip if no valid dimensions
+            if image_width <= 0 or image_height <= 0:
+                continue
+
+            # Convert to YOLO-seg format: class_id x1 y1 x2 y2 x3 y3 ... (normalized)
+            normalized_points = []
+            for point in points:
+                x_norm = max(0.0, min(1.0, float(point[0]) / image_width))
+                y_norm = max(0.0, min(1.0, float(point[1]) / image_height))
+                normalized_points.extend([f"{x_norm:.6f}", f"{y_norm:.6f}"])
+
+            yolo_line = f"{class_idx} " + " ".join(normalized_points)
 
         # Add to image annotations
         image_id = annotation.image_id

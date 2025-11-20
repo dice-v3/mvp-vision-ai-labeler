@@ -31,6 +31,8 @@ function getTaskTypeForAnnotation(annotationType: string): string {
     'classification': 'classification',
     'keypoint': 'keypoint',
     'line': 'line',
+    'polyline': 'geometry',
+    'circle': 'geometry',
   };
   return mapping[annotationType] || annotationType;
 }

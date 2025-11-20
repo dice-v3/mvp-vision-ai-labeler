@@ -50,19 +50,34 @@ export interface PolygonGeometry {
   bbox?: [number, number, number, number];
 }
 
+export interface PolylineGeometry {
+  type: 'polyline';
+  points: [number, number][];
+  image_width?: number;
+  image_height?: number;
+}
+
+export interface CircleGeometry {
+  type: 'circle';
+  center: [number, number];
+  radius: number;
+  image_width?: number;
+  image_height?: number;
+}
+
 export interface ClassificationGeometry {
   type: 'classification';
-  labels: string[];
+  labels?: string[];
   confidence?: number;
 }
 
-export type AnnotationGeometry = BboxGeometry | PolygonGeometry | ClassificationGeometry;
+export type AnnotationGeometry = BboxGeometry | PolygonGeometry | PolylineGeometry | CircleGeometry | ClassificationGeometry;
 
 export interface Annotation {
   id: string;
   projectId: string;
   imageId: string;
-  annotationType: 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line';
+  annotationType: 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line' | 'polyline' | 'circle';
   geometry: AnnotationGeometry;
   classId?: string;
   className?: string;
@@ -94,7 +109,7 @@ export interface ClassInfo {
   bbox_count?: number;
 }
 
-export type Tool = 'select' | 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line';
+export type Tool = 'select' | 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line' | 'polyline' | 'circle' | 'circle3p';
 
 export interface CanvasState {
   zoom: number; // 0.1 to 4.0
@@ -143,6 +158,8 @@ interface AnnotationState {
   // Annotations
   annotations: Annotation[];
   selectedAnnotationId: string | null;
+  selectedVertexIndex: number | null;  // For polygon vertex editing
+  selectedBboxHandle: string | null;  // For bbox handle editing ('nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w')
   clipboard: Annotation | null;
 
   // UI State
@@ -292,6 +309,8 @@ const initialState = {
   currentTask: null,  // Phase 2.9: Current task context
   annotations: [],
   selectedAnnotationId: null,
+  selectedVertexIndex: null,
+  selectedBboxHandle: null,
   clipboard: null,
   tool: 'select' as Tool,
   canvas: {
@@ -355,6 +374,8 @@ export const useAnnotationStore = create<AnnotationState>()(
             currentImage: images[index],
             annotations: [], // Clear annotations for new image
             selectedAnnotationId: null,
+            selectedVertexIndex: null,
+            selectedBboxHandle: null,
           });
         }
       },
@@ -408,6 +429,8 @@ export const useAnnotationStore = create<AnnotationState>()(
           currentTask: taskType,
           annotations: [],
           selectedAnnotationId: null,
+          selectedVertexIndex: null,
+          selectedBboxHandle: null,
           tool: 'select',
           canvas: {
             zoom: 1.0,
@@ -438,11 +461,13 @@ export const useAnnotationStore = create<AnnotationState>()(
         }
 
         // Phase 2.9: Use task_classes structure
-        if (project.taskClasses && project.taskClasses[currentTask]) {
-          return project.taskClasses[currentTask];
+        // If taskClasses exists and has any tasks configured, use strict mode
+        if (project.taskClasses && Object.keys(project.taskClasses).length > 0) {
+          // Return current task's classes or empty object if not configured
+          return project.taskClasses[currentTask] || {};
         }
 
-        // Fallback to legacy classes field
+        // Fallback to legacy classes field (only if taskClasses not configured at all)
         return project.classes || {};
       },
 
@@ -731,25 +756,60 @@ export const useAnnotationStore = create<AnnotationState>()(
         set({ clipboard: JSON.parse(JSON.stringify(annotation)) });
       },
 
-      pasteAnnotation: () => {
-        const { clipboard, currentImage } = get();
-        if (!clipboard || !currentImage) return;
+      pasteAnnotation: async () => {
+        const { clipboard, currentImage, project } = get();
+        if (!clipboard || !currentImage || !project) return;
 
         // Create new annotation with offset
-        const newAnnotation: Annotation = {
-          ...clipboard,
-          id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          imageId: currentImage.id,
-          createdAt: new Date(),
-        };
+        const newGeometry = JSON.parse(JSON.stringify(clipboard.geometry));
+        const offset = 20;
 
-        // Offset bbox if it's a bbox annotation
-        if (newAnnotation.geometry.type === 'bbox') {
-          const [x, y, w, h] = newAnnotation.geometry.bbox;
-          newAnnotation.geometry.bbox = [x + 20, y + 20, w, h];
+        // Offset based on annotation type
+        if (newGeometry.type === 'bbox') {
+          const [x, y, w, h] = newGeometry.bbox;
+          newGeometry.bbox = [x + offset, y + offset, w, h];
+        } else if (newGeometry.type === 'polygon') {
+          newGeometry.points = newGeometry.points.map(([px, py]: [number, number]) => [
+            px + offset,
+            py + offset,
+          ]);
         }
 
-        get().addAnnotation(newAnnotation);
+        // Create annotation via API
+        try {
+          const { createAnnotation } = await import('@/lib/api/annotations');
+          const response = await createAnnotation({
+            project_id: project.id,
+            image_id: currentImage.id,
+            annotation_type: clipboard.annotationType,
+            class_id: clipboard.classId,
+            class_name: clipboard.className,
+            geometry: newGeometry,
+          });
+
+          // Add to local store with the ID from backend
+          const newAnnotation: Annotation = {
+            id: response.id,
+            imageId: currentImage.id,
+            annotationType: clipboard.annotationType,
+            classId: clipboard.classId,
+            className: clipboard.className,
+            geometry: newGeometry,
+            createdAt: new Date(),
+          };
+
+          const { annotations } = get();
+          set({
+            annotations: [...annotations, newAnnotation],
+            selectedAnnotationId: newAnnotation.id,
+          });
+
+          // Record for undo
+          get().recordSnapshot('create', [newAnnotation.id]);
+
+        } catch (error) {
+          console.error('Failed to paste annotation:', error);
+        }
       },
 
       // ======================================================================
