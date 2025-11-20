@@ -920,9 +920,9 @@ export default function Canvas() {
       const imageX = (x - imgX) / zoom;
       const imageY = (y - imgY) / zoom;
 
-      // Clip to image bounds
-      const clippedX = Math.max(0, Math.min(image.width, imageX));
-      const clippedY = Math.max(0, Math.min(image.height, imageY));
+      // Clip to image bounds and round to 2 decimal places
+      const clippedX = Math.round(Math.max(0, Math.min(image.width, imageX)) * 100) / 100;
+      const clippedY = Math.round(Math.max(0, Math.min(image.height, imageY)) * 100) / 100;
 
       // Update annotation geometry
       const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
@@ -961,9 +961,9 @@ export default function Canvas() {
 
       // Move all vertices
       const newPoints = polygonDragStart.points.map(([px, py]): [number, number] => {
-        // Clip to image bounds
-        const newX = Math.max(0, Math.min(image.width, px + deltaX));
-        const newY = Math.max(0, Math.min(image.height, py + deltaY));
+        // Clip to image bounds and round to 2 decimal places
+        const newX = Math.round(Math.max(0, Math.min(image.width, px + deltaX)) * 100) / 100;
+        const newY = Math.round(Math.max(0, Math.min(image.height, py + deltaY)) * 100) / 100;
         return [newX, newY];
       });
 
@@ -1011,10 +1011,14 @@ export default function Canvas() {
 
       // Save updated polygon to backend
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage) {
+      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage && image) {
         try {
           const updateData: AnnotationUpdateRequest = {
-            geometry: updatedAnn.geometry,
+            geometry: {
+              ...updatedAnn.geometry,
+              image_width: image.width,
+              image_height: image.height,
+            },
           };
           await updateAnnotation(updatedAnn.id, updateData);
 
@@ -1051,10 +1055,14 @@ export default function Canvas() {
 
       // Save updated polygon to backend
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage) {
+      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage && image) {
         try {
           const updateData: AnnotationUpdateRequest = {
-            geometry: updatedAnn.geometry,
+            geometry: {
+              ...updatedAnn.geometry,
+              image_width: image.width,
+              image_height: image.height,
+            },
           };
           await updateAnnotation(updatedAnn.id, updateData);
 
@@ -1131,6 +1139,12 @@ export default function Canvas() {
           bw = Math.max(0, bw);
           bh = Math.max(0, bh);
 
+          // Round to 2 decimal places
+          bx = Math.round(bx * 100) / 100;
+          by = Math.round(by * 100) / 100;
+          bw = Math.round(bw * 100) / 100;
+          bh = Math.round(bh * 100) / 100;
+
           // Show warning if clipped
           if (wasClipped) {
             toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
@@ -1140,6 +1154,8 @@ export default function Canvas() {
           const clippedGeometry = {
             type: 'bbox',
             bbox: [bx, by, bw, bh],
+            image_width: imgWidth,
+            image_height: imgHeight,
           };
 
           // Update local store with clipped geometry
@@ -1329,18 +1345,20 @@ export default function Canvas() {
         // Polygon annotation
         annotationType = 'polygon';
 
-        // Clip polygon points to image bounds
+        // Clip polygon points to image bounds and round to 2 decimal places
         const imgWidth = image?.width || currentImage.width || 0;
         const imgHeight = image?.height || currentImage.height || 0;
 
         const clippedPoints = pendingPolygon.map(([px, py]): [number, number] => [
-          Math.max(0, Math.min(imgWidth, px)),
-          Math.max(0, Math.min(imgHeight, py)),
+          Math.round(Math.max(0, Math.min(imgWidth, px)) * 100) / 100,
+          Math.round(Math.max(0, Math.min(imgHeight, py)) * 100) / 100,
         ]);
 
         geometry = {
           type: 'polygon',
           points: clippedPoints,
+          image_width: imgWidth,
+          image_height: imgHeight,
         };
 
         // Clear pending polygon
@@ -1383,6 +1401,12 @@ export default function Canvas() {
         w = Math.max(0, w);
         h = Math.max(0, h);
 
+        // Round to 2 decimal places
+        x = Math.round(x * 100) / 100;
+        y = Math.round(y * 100) / 100;
+        w = Math.round(w * 100) / 100;
+        h = Math.round(h * 100) / 100;
+
         // Show warning if clipped
         if (wasClipped) {
           toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
@@ -1391,6 +1415,8 @@ export default function Canvas() {
         geometry = {
           type: 'bbox',
           bbox: [x, y, w, h],
+          image_width: imgWidth,
+          image_height: imgHeight,
         };
       } else {
         // Classification annotation
@@ -1898,9 +1924,11 @@ export default function Canvas() {
             }
           }
 
-          // Clip to image bounds
-          newX = Math.max(0, Math.min(image.width - newW, newX));
-          newY = Math.max(0, Math.min(image.height - newH, newY));
+          // Clip to image bounds and round to 2 decimal places
+          newX = Math.round(Math.max(0, Math.min(image.width - newW, newX)) * 100) / 100;
+          newY = Math.round(Math.max(0, Math.min(image.height - newH, newY)) * 100) / 100;
+          newW = Math.round(newW * 100) / 100;
+          newH = Math.round(newH * 100) / 100;
 
           // Update annotation in store
           useAnnotationStore.setState({
@@ -1922,6 +1950,8 @@ export default function Canvas() {
             geometry: {
               type: 'bbox',
               bbox: [newX, newY, newW, newH],
+              image_width: image.width,
+              image_height: image.height,
             },
           };
           updateAnnotation(selectedAnnotationId, updateData)
@@ -1972,16 +2002,16 @@ export default function Canvas() {
 
           switch (e.key) {
             case 'ArrowUp':
-              newY = Math.max(0, py - step);
+              newY = Math.round(Math.max(0, py - step) * 100) / 100;
               break;
             case 'ArrowDown':
-              newY = Math.min(image.height, py + step);
+              newY = Math.round(Math.min(image.height, py + step) * 100) / 100;
               break;
             case 'ArrowLeft':
-              newX = Math.max(0, px - step);
+              newX = Math.round(Math.max(0, px - step) * 100) / 100;
               break;
             case 'ArrowRight':
-              newX = Math.min(image.width, px + step);
+              newX = Math.round(Math.min(image.width, px + step) * 100) / 100;
               break;
           }
 
@@ -2008,6 +2038,8 @@ export default function Canvas() {
             geometry: {
               type: 'polygon',
               points: newPoints,
+              image_width: image.width,
+              image_height: image.height,
             },
           };
           updateAnnotation(selectedAnnotationId, updateData)
@@ -2077,6 +2109,8 @@ export default function Canvas() {
             geometry: {
               type: 'polygon',
               points: newPoints,
+              image_width: image.width,
+              image_height: image.height,
             },
           };
           updateAnnotation(selectedAnnotationId, updateData)

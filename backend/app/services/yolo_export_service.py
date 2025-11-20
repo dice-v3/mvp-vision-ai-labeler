@@ -100,14 +100,22 @@ def export_to_yolo(
             else:
                 continue
 
+            # Get image dimensions from geometry (required for normalization)
+            img_width = float(geometry.get("image_width", 0))
+            img_height = float(geometry.get("image_height", 0))
+
+            # Skip if no valid dimensions
+            if img_width <= 0 or img_height <= 0:
+                continue
+
             # Convert to YOLO format (normalized center coordinates)
             yolo_bbox = _convert_to_yolo_bbox(
                 x=x,
                 y=y,
                 width=width,
                 height=height,
-                image_width=float(geometry.get("image_width", 1920)),  # Default or from geometry
-                image_height=float(geometry.get("image_height", 1080)),  # Default or from geometry
+                image_width=img_width,
+                image_height=img_height,
             )
 
             # Format: class_id x_center y_center width height
@@ -120,9 +128,13 @@ def export_to_yolo(
             if not points or len(points) < 3:
                 continue
 
-            # Get image dimensions (default or from geometry)
-            image_width = float(geometry.get("image_width", 1920))
-            image_height = float(geometry.get("image_height", 1080))
+            # Get image dimensions from geometry (required for normalization)
+            image_width = float(geometry.get("image_width", 0))
+            image_height = float(geometry.get("image_height", 0))
+
+            # Skip if no valid dimensions
+            if image_width <= 0 or image_height <= 0:
+                continue
 
             # Convert to YOLO-seg format: class_id x1 y1 x2 y2 x3 y3 ... (normalized)
             normalized_points = []

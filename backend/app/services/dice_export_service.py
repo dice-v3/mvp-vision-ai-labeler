@@ -204,6 +204,17 @@ def export_to_dice(
         width = image_info.get('width', 0)
         height = image_info.get('height', 0)
 
+        # Fallback: get dimensions from annotation geometry if not in mapping
+        if (width == 0 or height == 0) and image_annotations:
+            for ann in image_annotations:
+                if ann.geometry:
+                    geom_width = ann.geometry.get('image_width', 0)
+                    geom_height = ann.geometry.get('image_height', 0)
+                    if geom_width > 0 and geom_height > 0:
+                        width = geom_width
+                        height = geom_height
+                        break
+
         dice_image = {
             "id": dice_id,
             "file_name": file_name,
