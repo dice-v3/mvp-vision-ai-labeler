@@ -333,7 +333,8 @@ export default function DashboardPage() {
                           {stat.taskType === 'classification' && '분류'}
                           {stat.taskType === 'detection' && '객체 탐지'}
                           {stat.taskType === 'segmentation' && '세그멘테이션'}
-                          {!['classification', 'detection', 'segmentation'].includes(stat.taskType) && stat.taskType}
+                          {stat.taskType === 'geometry' && '기하'}
+                          {!['classification', 'detection', 'segmentation', 'geometry'].includes(stat.taskType) && stat.taskType}
                           <span className="ml-2 text-xs opacity-75">({stat.progressPercent}%)</span>
                         </button>
                       ))}

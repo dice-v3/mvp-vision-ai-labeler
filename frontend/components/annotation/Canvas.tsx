@@ -82,6 +82,11 @@ export default function Canvas() {
   const [circleCenter, setCircleCenter] = useState<[number, number] | null>(null);
   // Circle 3-point drawing state (canvas coordinates)
   const [circle3pPoints, setCircle3pPoints] = useState<[number, number][]>([]);
+  // Circle editing state
+  const [isDraggingCircle, setIsDraggingCircle] = useState(false);
+  const [circleDragStart, setCircleDragStart] = useState<{ x: number; y: number; center: [number, number] } | null>(null);
+  const [isResizingCircle, setIsResizingCircle] = useState(false);
+  const [circleResizeStart, setCircleResizeStart] = useState<{ x: number; y: number; radius: number } | null>(null);
 
   // Helper to set selectedVertexIndex in store
   const setSelectedVertexIndex = (index: number | null) => {
@@ -808,6 +813,94 @@ export default function Canvas() {
             return;
           }
         }
+
+        // Handle polyline vertex drag or polyline move
+        if (selectedAnn && selectedAnn.geometry.type === 'polyline') {
+          const points = selectedAnn.geometry.points;
+
+          // Check if clicking on a vertex
+          const vertexThreshold = 8;
+          for (let i = 0; i < points.length; i++) {
+            const [px, py] = points[i];
+            const scaledPx = px * zoom + imgX;
+            const scaledPy = py * zoom + imgY;
+            const dx = x - scaledPx;
+            const dy = y - scaledPy;
+            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
+              // Select and start vertex drag
+              setSelectedVertexIndex(i);
+              setIsDraggingVertex(true);
+              setDraggedVertexIndex(i);
+              setCanvasCursor('move');
+              return;
+            }
+          }
+
+          // Check if clicking on polyline (for moving)
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (polylineTool.isPointInside(imageX, imageY, selectedAnn)) {
+            // Start polyline drag (clear vertex selection)
+            setSelectedVertexIndex(null);
+            setIsDraggingPolygon(true); // Reuse polygon drag state for polyline
+            setPolygonDragStart({ x, y, points: points.map(p => [...p] as [number, number]) });
+            setCanvasCursor('move');
+            return;
+          }
+        }
+
+        // Handle circle move or resize
+        if (selectedAnn && selectedAnn.geometry.type === 'circle') {
+          const center = selectedAnn.geometry.center;
+          const radius = selectedAnn.geometry.radius;
+
+          // Convert to canvas coordinates
+          const scaledCenterX = center[0] * zoom + imgX;
+          const scaledCenterY = center[1] * zoom + imgY;
+          const scaledRadius = radius * zoom;
+
+          // Check if clicking on radius handles (N, S, E, W)
+          const handleThreshold = 8;
+          const handles = [
+            { x: scaledCenterX, y: scaledCenterY - scaledRadius }, // N
+            { x: scaledCenterX, y: scaledCenterY + scaledRadius }, // S
+            { x: scaledCenterX + scaledRadius, y: scaledCenterY }, // E
+            { x: scaledCenterX - scaledRadius, y: scaledCenterY }, // W
+          ];
+
+          for (const handle of handles) {
+            const dx = x - handle.x;
+            const dy = y - handle.y;
+            if (Math.sqrt(dx * dx + dy * dy) < handleThreshold) {
+              // Start circle resize
+              setIsResizingCircle(true);
+              setCircleResizeStart({ x, y, radius });
+              setCanvasCursor('pointer');
+              return;
+            }
+          }
+
+          // Check if clicking on center (for moving)
+          const dxCenter = x - scaledCenterX;
+          const dyCenter = y - scaledCenterY;
+          if (Math.sqrt(dxCenter * dxCenter + dyCenter * dyCenter) < handleThreshold) {
+            // Start circle move
+            setIsDraggingCircle(true);
+            setCircleDragStart({ x, y, center: [...center] as [number, number] });
+            setCanvasCursor('move');
+            return;
+          }
+
+          // Check if clicking inside circle (for moving)
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (circleTool.isPointInside(imageX, imageY, selectedAnn)) {
+            setIsDraggingCircle(true);
+            setCircleDragStart({ x, y, center: [...center] as [number, number] });
+            setCanvasCursor('move');
+            return;
+          }
+        }
       }
 
       // Clear vertex/handle selection when clicking elsewhere
@@ -1031,7 +1124,7 @@ export default function Canvas() {
     const y = e.clientY - rect.top;
 
     // Update cursor style based on position (before setCursor to avoid render race)
-    if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon) {
+    if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
       const { zoom, pan } = canvasState;
       const scaledWidth = image.width * zoom;
       const scaledHeight = image.height * zoom;
@@ -1247,9 +1340,9 @@ export default function Canvas() {
       const clippedX = Math.round(Math.max(0, Math.min(image.width, imageX)) * 100) / 100;
       const clippedY = Math.round(Math.max(0, Math.min(image.height, imageY)) * 100) / 100;
 
-      // Update annotation geometry
+      // Update annotation geometry (polygon or polyline)
       const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnnotation && updatedAnnotation.geometry.type === 'polygon') {
+      if (updatedAnnotation && (updatedAnnotation.geometry.type === 'polygon' || updatedAnnotation.geometry.type === 'polyline')) {
         const newPoints = [...updatedAnnotation.geometry.points];
         newPoints[draggedVertexIndex] = [clippedX, clippedY];
 
@@ -1306,6 +1399,66 @@ export default function Canvas() {
       return;
     }
 
+    // Handle circle dragging
+    if (isDraggingCircle && circleDragStart && selectedAnnotationId) {
+      const { zoom, pan } = canvasState;
+      const scaledWidth = image.width * zoom;
+      const scaledHeight = image.height * zoom;
+      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+      // Calculate delta in image coordinates
+      const deltaX = (x - circleDragStart.x) / zoom;
+      const deltaY = (y - circleDragStart.y) / zoom;
+
+      // Move center
+      const newCenterX = Math.round(Math.max(0, Math.min(image.width, circleDragStart.center[0] + deltaX)) * 100) / 100;
+      const newCenterY = Math.round(Math.max(0, Math.min(image.height, circleDragStart.center[1] + deltaY)) * 100) / 100;
+
+      useAnnotationStore.setState({
+        annotations: annotations.map(ann =>
+          ann.id === selectedAnnotationId
+            ? {
+                ...ann,
+                geometry: {
+                  ...ann.geometry,
+                  center: [newCenterX, newCenterY],
+                },
+              }
+            : ann
+        ),
+      });
+      return;
+    }
+
+    // Handle circle resizing
+    if (isResizingCircle && circleResizeStart && selectedAnnotationId) {
+      const { zoom } = canvasState;
+
+      // Calculate distance from start to current position
+      const deltaX = (x - circleResizeStart.x) / zoom;
+      const deltaY = (y - circleResizeStart.y) / zoom;
+      const delta = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * Math.sign(deltaX + deltaY);
+
+      // New radius
+      const newRadius = Math.round(Math.max(5, circleResizeStart.radius + delta) * 100) / 100;
+
+      useAnnotationStore.setState({
+        annotations: annotations.map(ann =>
+          ann.id === selectedAnnotationId
+            ? {
+                ...ann,
+                geometry: {
+                  ...ann.geometry,
+                  radius: newRadius,
+                },
+              }
+            : ann
+        ),
+      });
+      return;
+    }
+
     // Handle panning
     if (isPanning && panStart) {
       const deltaX = e.clientX - panStart.x;
@@ -1332,9 +1485,9 @@ export default function Canvas() {
       setDraggedVertexIndex(null);
       setCanvasCursor('move');
 
-      // Save updated polygon to backend
+      // Save updated polygon/polyline to backend
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage && image) {
+      if (updatedAnn && (updatedAnn.geometry.type === 'polygon' || updatedAnn.geometry.type === 'polyline') && project && currentImage && image) {
         try {
           const updateData: AnnotationUpdateRequest = {
             geometry: {
@@ -1363,22 +1516,22 @@ export default function Canvas() {
             ),
           }));
         } catch (error) {
-          console.error('Failed to save polygon vertex change:', error);
+          console.error('Failed to save vertex change:', error);
           toast.error('Failed to save changes');
         }
       }
       return;
     }
 
-    // Stop polygon dragging and save to backend
+    // Stop polygon/polyline dragging and save to backend
     if (isDraggingPolygon && selectedAnnotationId) {
       setIsDraggingPolygon(false);
       setPolygonDragStart(null);
       setCanvasCursor('move');
 
-      // Save updated polygon to backend
+      // Save updated polygon/polyline to backend
       const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage && image) {
+      if (updatedAnn && (updatedAnn.geometry.type === 'polygon' || updatedAnn.geometry.type === 'polyline') && project && currentImage && image) {
         try {
           const updateData: AnnotationUpdateRequest = {
             geometry: {
@@ -1407,7 +1560,95 @@ export default function Canvas() {
             ),
           }));
         } catch (error) {
-          console.error('Failed to save polygon move:', error);
+          console.error('Failed to save polygon/polyline move:', error);
+          toast.error('Failed to save changes');
+        }
+      }
+      return;
+    }
+
+    // Stop circle dragging and save to backend
+    if (isDraggingCircle && selectedAnnotationId) {
+      setIsDraggingCircle(false);
+      setCircleDragStart(null);
+      setCanvasCursor('move');
+
+      // Save updated circle to backend
+      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnn && updatedAnn.geometry.type === 'circle' && project && currentImage && image) {
+        try {
+          const updateData: AnnotationUpdateRequest = {
+            geometry: {
+              ...updatedAnn.geometry,
+              image_width: image.width,
+              image_height: image.height,
+            },
+          };
+          await updateAnnotation(updatedAnn.id, updateData);
+
+          // Update image status to in-progress and unconfirm
+          const updatedCurrentImage = {
+            ...currentImage,
+            is_confirmed: false,
+            status: 'in-progress',
+          };
+
+          useAnnotationStore.setState((state) => ({
+            currentImage: state.currentImage?.id === currentImage.id
+              ? updatedCurrentImage
+              : state.currentImage,
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? updatedCurrentImage
+                : img
+            ),
+          }));
+        } catch (error) {
+          console.error('Failed to save circle move:', error);
+          toast.error('Failed to save changes');
+        }
+      }
+      return;
+    }
+
+    // Stop circle resizing and save to backend
+    if (isResizingCircle && selectedAnnotationId) {
+      setIsResizingCircle(false);
+      setCircleResizeStart(null);
+      setCanvasCursor('move');
+
+      // Save updated circle to backend
+      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnn && updatedAnn.geometry.type === 'circle' && project && currentImage && image) {
+        try {
+          const updateData: AnnotationUpdateRequest = {
+            geometry: {
+              ...updatedAnn.geometry,
+              image_width: image.width,
+              image_height: image.height,
+            },
+          };
+          await updateAnnotation(updatedAnn.id, updateData);
+
+          // Update image status to in-progress and unconfirm
+          const updatedCurrentImage = {
+            ...currentImage,
+            is_confirmed: false,
+            status: 'in-progress',
+          };
+
+          useAnnotationStore.setState((state) => ({
+            currentImage: state.currentImage?.id === currentImage.id
+              ? updatedCurrentImage
+              : state.currentImage,
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? updatedCurrentImage
+                : img
+            ),
+          }));
+        } catch (error) {
+          console.error('Failed to save circle resize:', error);
           toast.error('Failed to save changes');
         }
       }
