@@ -318,7 +318,7 @@ async def add_task_type(
     - **task_type**: Task type to add (classification, detection, segmentation, etc.)
     """
     # Validate task type
-    valid_task_types = ["classification", "detection", "segmentation", "bbox", "polygon", "keypoint", "line"]
+    valid_task_types = ["classification", "detection", "segmentation", "geometry", "bbox", "polygon", "keypoint", "line"]
     if request.task_type not in valid_task_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
