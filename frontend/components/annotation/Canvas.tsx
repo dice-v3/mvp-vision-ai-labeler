@@ -12,8 +12,9 @@ import ClassSelectorModal from './ClassSelectorModal';
 import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI, getProjectAnnotations } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
-import { ToolRegistry, bboxTool, polygonTool } from '@/lib/annotation';
+import { ToolRegistry, bboxTool, polygonTool, polylineTool, circleTool, circle3pTool } from '@/lib/annotation';
 import type { CanvasRenderContext } from '@/lib/annotation';
+import { Circle3pTool } from '@/lib/annotation/tools/Circle3pTool';
 import { toast } from '@/lib/stores/toastStore';
 import { confirm } from '@/lib/stores/confirmStore';
 
@@ -75,6 +76,12 @@ export default function Canvas() {
   const [draggedVertexIndex, setDraggedVertexIndex] = useState<number | null>(null);
   const [isDraggingPolygon, setIsDraggingPolygon] = useState(false);
   const [polygonDragStart, setPolygonDragStart] = useState<{ x: number; y: number; points: [number, number][] } | null>(null);
+  // Polyline drawing state (canvas coordinates)
+  const [polylineVertices, setPolylineVertices] = useState<[number, number][]>([]);
+  // Circle drawing state (canvas coordinates)
+  const [circleCenter, setCircleCenter] = useState<[number, number] | null>(null);
+  // Circle 3-point drawing state (canvas coordinates)
+  const [circle3pPoints, setCircle3pPoints] = useState<[number, number][]>([]);
 
   // Helper to set selectedVertexIndex in store
   const setSelectedVertexIndex = (index: number | null) => {
@@ -198,7 +205,7 @@ export default function Canvas() {
 
   // Update cursor when tool changes
   useEffect(() => {
-    if (tool === 'bbox' || tool === 'polygon') {
+    if (tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') {
       setCanvasCursor('crosshair');
     } else {
       setCanvasCursor('default');
@@ -273,8 +280,23 @@ export default function Canvas() {
       drawPolygonPreview(ctx, x, y, zoom);
     }
 
+    // Draw polyline preview
+    if (tool === 'polyline' && polylineVertices.length > 0) {
+      drawPolylinePreview(ctx, x, y, zoom);
+    }
+
+    // Draw circle preview (center-edge)
+    if (tool === 'circle' && circleCenter) {
+      drawCirclePreview(ctx, x, y, zoom);
+    }
+
+    // Draw circle 3-point preview
+    if (tool === 'circle3p' && circle3pPoints.length > 0) {
+      drawCircle3pPreview(ctx, x, y, zoom);
+    }
+
     // Draw crosshair if drawing tool is active
-    if ((tool === 'bbox' || tool === 'polygon') && !isDrawing && preferences.showLabels) {
+    if ((tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') && !isDrawing && preferences.showLabels) {
       drawCrosshair(ctx, canvas.width, canvas.height);
     }
 
@@ -341,7 +363,7 @@ export default function Canvas() {
         ctx.fill();
       }
     }
-  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices, selectedVertexIndex, selectedBboxHandle]);
+  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices, selectedVertexIndex, selectedBboxHandle, polylineVertices, circleCenter, circle3pPoints]);
 
   // Draw grid
   const drawGrid = (
@@ -535,6 +557,99 @@ export default function Canvas() {
     polygonTool.renderPreview(renderCtx, toolState);
   };
 
+  // Draw polyline preview while drawing
+  const drawPolylinePreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (polylineVertices.length === 0 || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const currentPos = canvasState.cursor;
+
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
+
+    // Create tool state
+    const toolState = {
+      isDrawing: true,
+      drawingStart: null,
+      currentCursor: currentPos,
+      vertices: polylineVertices,
+    };
+
+    // Use polyline tool to render preview
+    polylineTool.renderPreview(renderCtx, toolState);
+  };
+
+  // Draw circle preview (center-edge mode)
+  const drawCirclePreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (!circleCenter || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const currentPos = canvasState.cursor;
+
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
+
+    // Create tool state
+    const toolState = {
+      isDrawing: true,
+      drawingStart: null,
+      currentCursor: currentPos,
+      circleCenter: circleCenter,
+    };
+
+    // Use circle tool to render preview
+    circleTool.renderPreview(renderCtx, toolState);
+  };
+
+  // Draw circle 3-point preview
+  const drawCircle3pPreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (circle3pPoints.length === 0 || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const currentPos = canvasState.cursor;
+
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
+
+    // Create tool state
+    const toolState = {
+      isDrawing: true,
+      drawingStart: null,
+      currentCursor: currentPos,
+      circlePoints: circle3pPoints,
+    };
+
+    // Use circle3p tool to render preview
+    circle3pTool.renderPreview(renderCtx, toolState);
+  };
+
   // Draw crosshair
   const drawCrosshair = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const { cursor } = canvasState;
@@ -723,6 +838,22 @@ export default function Canvas() {
             clickedAnnotation = ann;
             break;
           }
+        } else if (ann.geometry.type === 'polyline') {
+          // Convert canvas coords to image coords
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (polylineTool.isPointInside(imageX, imageY, ann)) {
+            clickedAnnotation = ann;
+            break;
+          }
+        } else if (ann.geometry.type === 'circle') {
+          // Convert canvas coords to image coords
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (circleTool.isPointInside(imageX, imageY, ann)) {
+            clickedAnnotation = ann;
+            break;
+          }
         }
       }
 
@@ -814,6 +945,81 @@ export default function Canvas() {
       }
       setShowClassSelector(true);
     }
+
+    // If polyline tool is active, add vertex (only within image)
+    if (tool === 'polyline' && isInImage) {
+      if (!hasClasses && polylineVertices.length === 0) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
+      // Add vertex
+      setPolylineVertices([...polylineVertices, [x, y]]);
+    }
+
+    // If circle tool is active (center-edge mode)
+    if (tool === 'circle' && isInImage) {
+      if (!hasClasses) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
+
+      if (!circleCenter) {
+        // First click: set center
+        setCircleCenter([x, y]);
+      } else {
+        // Second click: complete circle
+        const dx = x - circleCenter[0];
+        const dy = y - circleCenter[1];
+        const radius = Math.sqrt(dx * dx + dy * dy);
+
+        if (radius > 5) {
+          // Convert canvas coords to image coords
+          const centerImageX = (circleCenter[0] - imgX) / zoom;
+          const centerImageY = (circleCenter[1] - imgY) / zoom;
+          const radiusImage = radius / zoom;
+
+          // Store pending circle and show class selector
+          (window as any).__pendingCircle = {
+            center: [
+              Math.round(centerImageX * 100) / 100,
+              Math.round(centerImageY * 100) / 100,
+            ],
+            radius: Math.round(radiusImage * 100) / 100,
+          };
+          setShowClassSelector(true);
+        }
+        setCircleCenter(null);
+      }
+    }
+
+    // If circle3p tool is active (3-point mode)
+    if (tool === 'circle3p' && isInImage) {
+      if (!hasClasses && circle3pPoints.length === 0) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
+
+      if (circle3pPoints.length < 2) {
+        // Add point
+        setCircle3pPoints([...circle3pPoints, [x, y]]);
+      } else {
+        // Third click: complete circle
+        const p1: [number, number] = [(circle3pPoints[0][0] - imgX) / zoom, (circle3pPoints[0][1] - imgY) / zoom];
+        const p2: [number, number] = [(circle3pPoints[1][0] - imgX) / zoom, (circle3pPoints[1][1] - imgY) / zoom];
+        const p3: [number, number] = [(x - imgX) / zoom, (y - imgY) / zoom];
+
+        const result = Circle3pTool.calculateCircleFrom3Points(p1, p2, p3);
+
+        if (result) {
+          // Store pending circle and show class selector
+          (window as any).__pendingCircle = result;
+          setShowClassSelector(true);
+        } else {
+          toast.warning('세 점이 일직선상에 있어 원을 만들 수 없습니다.', 3000);
+        }
+        setCircle3pPoints([]);
+      }
+    }
   };
 
   // Mouse move handler
@@ -838,7 +1044,7 @@ export default function Canvas() {
       // Default cursor based on tool and image position
       let newCursor = 'default';
       if (isInImage) {
-        newCursor = (tool === 'bbox' || tool === 'polygon') ? 'crosshair' : 'default';
+        newCursor = (tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') ? 'crosshair' : 'default';
       }
 
       // Check if near first vertex for polygon closing
@@ -921,6 +1127,20 @@ export default function Canvas() {
             const imageX = (x - imgX) / zoom;
             const imageY = (y - imgY) / zoom;
             if (polygonTool.isPointInside(imageX, imageY, ann)) {
+              newCursor = 'pointer';
+              break;
+            }
+          } else if (ann.geometry.type === 'polyline') {
+            const imageX = (x - imgX) / zoom;
+            const imageY = (y - imgY) / zoom;
+            if (polylineTool.isPointInside(imageX, imageY, ann)) {
+              newCursor = 'pointer';
+              break;
+            }
+          } else if (ann.geometry.type === 'circle') {
+            const imageX = (x - imgX) / zoom;
+            const imageY = (y - imgY) / zoom;
+            if (circleTool.isPointInside(imageX, imageY, ann)) {
               newCursor = 'pointer';
               break;
             }
@@ -1437,14 +1657,55 @@ export default function Canvas() {
 
     try {
       let annotationData: AnnotationCreateRequest;
-      let annotationType: 'bbox' | 'polygon' | 'classification';
+      let annotationType: 'bbox' | 'polygon' | 'classification' | 'polyline' | 'circle';
       let geometry: any;
 
-      // Check for pending polygon
+      // Check for pending geometry shapes
       const pendingPolygon = (window as any).__pendingPolygon as [number, number][] | undefined;
+      const pendingPolyline = (window as any).__pendingPolyline as [number, number][] | undefined;
+      const pendingCircle = (window as any).__pendingCircle as { center: [number, number]; radius: number } | undefined;
 
-      // Check if this is for bbox, polygon, or classification
-      if (pendingPolygon) {
+      // Check if this is for bbox, polygon, polyline, circle, or classification
+      if (pendingPolyline) {
+        // Polyline annotation
+        annotationType = 'polyline';
+
+        // Clip polyline points to image bounds
+        const imgWidth = image?.width || currentImage.width || 0;
+        const imgHeight = image?.height || currentImage.height || 0;
+
+        const clippedPoints = pendingPolyline.map(([px, py]): [number, number] => [
+          Math.round(Math.max(0, Math.min(imgWidth, px)) * 100) / 100,
+          Math.round(Math.max(0, Math.min(imgHeight, py)) * 100) / 100,
+        ]);
+
+        geometry = {
+          type: 'polyline',
+          points: clippedPoints,
+          image_width: imgWidth,
+          image_height: imgHeight,
+        };
+
+        // Clear pending polyline
+        delete (window as any).__pendingPolyline;
+      } else if (pendingCircle) {
+        // Circle annotation
+        annotationType = 'circle';
+
+        const imgWidth = image?.width || currentImage.width || 0;
+        const imgHeight = image?.height || currentImage.height || 0;
+
+        geometry = {
+          type: 'circle',
+          center: pendingCircle.center,
+          radius: pendingCircle.radius,
+          image_width: imgWidth,
+          image_height: imgHeight,
+        };
+
+        // Clear pending circle
+        delete (window as any).__pendingCircle;
+      } else if (pendingPolygon) {
         // Polygon annotation
         annotationType = 'polygon';
 
@@ -1952,6 +2213,52 @@ export default function Canvas() {
         return;
       }
 
+      // Enter: Complete polyline (if drawing)
+      if (e.key === 'Enter' && tool === 'polyline' && polylineVertices.length >= 2 && image) {
+        e.preventDefault();
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const { zoom, pan } = canvasState;
+        const scaledWidth = image.width * zoom;
+        const scaledHeight = image.height * zoom;
+        const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+        const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+        // Convert canvas coords to image coords
+        const imagePoints = polylineVertices.map(([vx, vy]): [number, number] => [
+          Math.round(((vx - imgX) / zoom) * 100) / 100,
+          Math.round(((vy - imgY) / zoom) * 100) / 100,
+        ]);
+
+        // Store pending polyline and show class selector
+        (window as any).__pendingPolyline = imagePoints;
+        setShowClassSelector(true);
+        setPolylineVertices([]);
+        return;
+      }
+
+      // Escape: Cancel polyline drawing
+      if (e.key === 'Escape' && tool === 'polyline' && polylineVertices.length > 0) {
+        e.preventDefault();
+        setPolylineVertices([]);
+        return;
+      }
+
+      // Escape: Cancel circle drawing
+      if (e.key === 'Escape' && tool === 'circle' && circleCenter) {
+        e.preventDefault();
+        setCircleCenter(null);
+        return;
+      }
+
+      // Escape: Cancel circle3p drawing
+      if (e.key === 'Escape' && tool === 'circle3p' && circle3pPoints.length > 0) {
+        e.preventDefault();
+        setCircle3pPoints([]);
+        return;
+      }
+
       // Arrow keys: Move selected bbox handle or entire bbox
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedVertexIndex === null && selectedAnnotationId) {
         const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
@@ -2273,7 +2580,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, polylineVertices, circleCenter, circle3pPoints]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -2361,6 +2668,57 @@ export default function Canvas() {
             </svg>
             <span>Classify</span>
           </button>
+        )}
+
+        {/* Geometry tools for geometry tasks */}
+        {currentTask === 'geometry' && (
+          <>
+            <button
+              onClick={() => setTool('polyline')}
+              className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
+                tool === 'polyline'
+                  ? 'bg-violet-500 text-white'
+                  : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+              title="Polyline (L)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 17l6-6 4 4 8-8" />
+              </svg>
+              <span>Polyline</span>
+            </button>
+            <button
+              onClick={() => setTool('circle')}
+              className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
+                tool === 'circle'
+                  ? 'bg-violet-500 text-white'
+                  : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+              title="Circle - Center Edge (C)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+              </svg>
+              <span>Circle</span>
+            </button>
+            <button
+              onClick={() => setTool('circle3p')}
+              className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
+                tool === 'circle3p'
+                  ? 'bg-violet-500 text-white'
+                  : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+              title="Circle - 3 Points (Shift+C)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                <circle cx="12" cy="2" r="1.5" fill="currentColor" />
+                <circle cx="4" cy="16" r="1.5" fill="currentColor" />
+                <circle cx="20" cy="16" r="1.5" fill="currentColor" />
+              </svg>
+              <span>3-Point</span>
+            </button>
+          </>
         )}
       </div>
 
