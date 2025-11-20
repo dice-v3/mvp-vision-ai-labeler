@@ -151,8 +151,26 @@ export function useKeyboardShortcuts() {
             setTool('classification');
           } else if (currentTask === 'segmentation') {
             setTool('polygon');
+          } else if (currentTask === 'geometry') {
+            setTool('polyline');
           } else {
             setTool('bbox');
+          }
+          break;
+        case 'l':
+          // Polyline tool
+          e.preventDefault();
+          setTool('polyline');
+          break;
+        case 'c':
+          // Circle tool (without Ctrl)
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              setTool('circle3p');
+            } else {
+              setTool('circle');
+            }
           }
           break;
         case 'b':

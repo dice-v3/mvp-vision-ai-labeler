@@ -94,7 +94,7 @@ export interface ClassInfo {
   bbox_count?: number;
 }
 
-export type Tool = 'select' | 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line';
+export type Tool = 'select' | 'bbox' | 'polygon' | 'classification' | 'keypoints' | 'line' | 'polyline' | 'circle' | 'circle3p';
 
 export interface CanvasState {
   zoom: number; // 0.1 to 4.0
