@@ -29,6 +29,9 @@ export function useKeyboardShortcuts() {
     toggleLeftPanel,
     toggleRightPanel,
     currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   } = useAnnotationStore();
 
   useEffect(() => {
@@ -80,6 +83,21 @@ export function useKeyboardShortcuts() {
             // Fit to screen
             e.preventDefault();
             fitToScreen();
+            break;
+          case 'c':
+            // Copy selected annotation
+            if (selectedAnnotationId) {
+              e.preventDefault();
+              const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+              if (selectedAnn) {
+                copyAnnotation(selectedAnn);
+              }
+            }
+            break;
+          case 'v':
+            // Paste annotation
+            e.preventDefault();
+            pasteAnnotation();
             break;
         }
         return;
@@ -205,5 +223,8 @@ export function useKeyboardShortcuts() {
     toggleLeftPanel,
     toggleRightPanel,
     currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   ]);
 }

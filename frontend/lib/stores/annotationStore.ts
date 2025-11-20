@@ -741,25 +741,60 @@ export const useAnnotationStore = create<AnnotationState>()(
         set({ clipboard: JSON.parse(JSON.stringify(annotation)) });
       },
 
-      pasteAnnotation: () => {
-        const { clipboard, currentImage } = get();
-        if (!clipboard || !currentImage) return;
+      pasteAnnotation: async () => {
+        const { clipboard, currentImage, project } = get();
+        if (!clipboard || !currentImage || !project) return;
 
         // Create new annotation with offset
-        const newAnnotation: Annotation = {
-          ...clipboard,
-          id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          imageId: currentImage.id,
-          createdAt: new Date(),
-        };
+        const newGeometry = JSON.parse(JSON.stringify(clipboard.geometry));
+        const offset = 20;
 
-        // Offset bbox if it's a bbox annotation
-        if (newAnnotation.geometry.type === 'bbox') {
-          const [x, y, w, h] = newAnnotation.geometry.bbox;
-          newAnnotation.geometry.bbox = [x + 20, y + 20, w, h];
+        // Offset based on annotation type
+        if (newGeometry.type === 'bbox') {
+          const [x, y, w, h] = newGeometry.bbox;
+          newGeometry.bbox = [x + offset, y + offset, w, h];
+        } else if (newGeometry.type === 'polygon') {
+          newGeometry.points = newGeometry.points.map(([px, py]: [number, number]) => [
+            px + offset,
+            py + offset,
+          ]);
         }
 
-        get().addAnnotation(newAnnotation);
+        // Create annotation via API
+        try {
+          const { createAnnotation } = await import('@/lib/api/annotations');
+          const response = await createAnnotation({
+            project_id: project.id,
+            image_id: currentImage.id,
+            annotation_type: clipboard.annotationType,
+            class_id: clipboard.classId,
+            class_name: clipboard.className,
+            geometry: newGeometry,
+          });
+
+          // Add to local store with the ID from backend
+          const newAnnotation: Annotation = {
+            id: response.id,
+            imageId: currentImage.id,
+            annotationType: clipboard.annotationType,
+            classId: clipboard.classId,
+            className: clipboard.className,
+            geometry: newGeometry,
+            createdAt: new Date(),
+          };
+
+          const { annotations } = get();
+          set({
+            annotations: [...annotations, newAnnotation],
+            selectedAnnotationId: newAnnotation.id,
+          });
+
+          // Record for undo
+          get().recordSnapshot('create', [newAnnotation.id]);
+
+        } catch (error) {
+          console.error('Failed to paste annotation:', error);
+        }
       },
 
       // ======================================================================

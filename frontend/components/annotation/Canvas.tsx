@@ -155,6 +155,47 @@ export default function Canvas() {
     }
   };
 
+  // Helper function to find closest point on polygon edge
+  const getPointOnEdge = (
+    x: number,
+    y: number,
+    points: [number, number][],
+    threshold: number = 8
+  ): { edgeIndex: number; point: [number, number] } | null => {
+    for (let i = 0; i < points.length; i++) {
+      const [x1, y1] = points[i];
+      const [x2, y2] = points[(i + 1) % points.length];
+
+      // Calculate closest point on line segment
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lengthSq = dx * dx + dy * dy;
+
+      if (lengthSq === 0) continue;
+
+      // Parameter t for closest point on line
+      let t = ((x - x1) * dx + (y - y1) * dy) / lengthSq;
+      t = Math.max(0, Math.min(1, t));
+
+      // Closest point on edge
+      const closestX = x1 + t * dx;
+      const closestY = y1 + t * dy;
+
+      // Distance from click to closest point
+      const distX = x - closestX;
+      const distY = y - closestY;
+      const distance = Math.sqrt(distX * distX + distY * distY);
+
+      if (distance < threshold) {
+        // Round to 2 decimal places
+        const roundedX = Math.round(closestX * 100) / 100;
+        const roundedY = Math.round(closestY * 100) / 100;
+        return { edgeIndex: i, point: [roundedX, roundedY] };
+      }
+    }
+    return null;
+  };
+
   // Update cursor when tool changes
   useEffect(() => {
     if (tool === 'bbox' || tool === 'polygon') {
@@ -577,10 +618,72 @@ export default function Canvas() {
             }
           }
 
-          // Check if clicking inside polygon (for moving)
-          // Convert canvas coords to image coords for point-in-polygon test
+          // Check if clicking on an edge (to add vertex)
           const imageX = (x - imgX) / zoom;
           const imageY = (y - imgY) / zoom;
+          const edgeResult = getPointOnEdge(imageX, imageY, points, vertexThreshold / zoom);
+          if (edgeResult && image) {
+            // Insert new vertex after the edge's first vertex
+            const newPoints = [...points];
+            newPoints.splice(edgeResult.edgeIndex + 1, 0, edgeResult.point);
+
+            // Update store
+            useAnnotationStore.setState({
+              annotations: annotations.map(ann =>
+                ann.id === selectedAnnotationId
+                  ? {
+                      ...ann,
+                      geometry: {
+                        ...ann.geometry,
+                        points: newPoints,
+                      },
+                    }
+                  : ann
+              ),
+            });
+
+            // Select the new vertex
+            setSelectedVertexIndex(edgeResult.edgeIndex + 1);
+
+            // Save to backend
+            const updateData: AnnotationUpdateRequest = {
+              geometry: {
+                type: 'polygon',
+                points: newPoints,
+                image_width: image.width,
+                image_height: image.height,
+              },
+            };
+            updateAnnotation(selectedAnnotationId, updateData)
+              .then(() => {
+                if (currentImage) {
+                  const updatedCurrentImage = {
+                    ...currentImage,
+                    is_confirmed: false,
+                    status: 'in-progress',
+                  };
+                  useAnnotationStore.setState((state) => ({
+                    currentImage: state.currentImage?.id === currentImage.id
+                      ? updatedCurrentImage
+                      : state.currentImage,
+                    images: state.images.map(img =>
+                      img.id === currentImage.id
+                        ? updatedCurrentImage
+                        : img
+                    ),
+                  }));
+                }
+              })
+              .catch((error) => {
+                console.error('Failed to add vertex:', error);
+                toast.error('Vertex 추가에 실패했습니다.');
+              });
+
+            return;
+          }
+
+          // Check if clicking inside polygon (for moving)
+          // imageX, imageY already calculated above for edge detection
           if (polygonTool.isPointInside(imageX, imageY, selectedAnn)) {
             // Start polygon drag (clear vertex selection)
             setSelectedVertexIndex(null);
