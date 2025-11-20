@@ -173,6 +173,16 @@ export function useKeyboardShortcuts() {
             }
           }
           break;
+        case 'e':
+          // Circle tool (alternative shortcut)
+          e.preventDefault();
+          setTool('circle');
+          break;
+        case 'r':
+          // Circle 3-point tool (alternative shortcut)
+          e.preventDefault();
+          setTool('circle3p');
+          break;
         case 'b':
           // BBox tool (detection shortcut)
           e.preventDefault();

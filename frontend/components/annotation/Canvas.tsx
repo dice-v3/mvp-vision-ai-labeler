@@ -2935,7 +2935,7 @@ export default function Canvas() {
                   ? 'bg-violet-500 text-white'
                   : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
-              title="Circle - Center Edge (C)"
+              title="Circle - Center Edge (E)"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" strokeWidth={2} />
@@ -2949,7 +2949,7 @@ export default function Canvas() {
                   ? 'bg-violet-500 text-white'
                   : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
-              title="Circle - 3 Points (Shift+C)"
+              title="Circle - 3 Points (R)"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" strokeWidth={2} />
