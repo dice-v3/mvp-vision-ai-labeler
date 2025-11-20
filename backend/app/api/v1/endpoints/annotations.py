@@ -25,9 +25,19 @@ from app.schemas.annotation import (
     ConfirmResponse,
     BulkConfirmResponse,
 )
-from app.services.image_status_service import update_image_status
+from app.services.image_status_service import update_image_status, ANNOTATION_TYPE_TO_TASK
 
 router = APIRouter()
+
+
+def get_task_type_from_annotation(annotation) -> Optional[str]:
+    """Get task_type from annotation based on annotation_type or attributes."""
+    if annotation.annotation_type == 'no_object':
+        # For no_object, get task_type from attributes
+        if annotation.attributes and 'task_type' in annotation.attributes:
+            return annotation.attributes['task_type']
+        return None
+    return ANNOTATION_TYPE_TO_TASK.get(annotation.annotation_type)
 
 
 async def create_history_entry(
@@ -118,6 +128,10 @@ async def create_annotation(
         )
 
     # Create annotation
+    # no_object annotations are automatically confirmed since they represent
+    # an explicit decision that the image has no objects
+    annotation_state = "confirmed" if annotation.annotation_type == "no_object" else "draft"
+
     new_annotation = Annotation(
         project_id=annotation.project_id,
         image_id=annotation.image_id,
@@ -130,6 +144,7 @@ async def create_annotation(
         notes=annotation.notes,
         created_by=current_user.id,
         is_verified=False,
+        annotation_state=annotation_state,
     )
 
     labeler_db.add(new_annotation)
@@ -158,10 +173,12 @@ async def create_annotation(
     )
 
     # Phase 2.7: Update image annotation status
+    task_type = get_task_type_from_annotation(new_annotation)
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
         image_id=annotation.image_id,
+        task_type=task_type,
     )
 
     labeler_db.commit()
@@ -293,10 +310,12 @@ async def update_annotation(
     )
 
     # Phase 2.7: Update image annotation status
+    task_type = get_task_type_from_annotation(annotation)
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
         image_id=annotation.image_id,
+        task_type=task_type,
     )
 
     labeler_db.commit()
@@ -346,6 +365,7 @@ async def delete_annotation(
 
     project_id = annotation.project_id
     image_id = annotation.image_id  # Phase 2.7: Store image_id before deletion
+    task_type = get_task_type_from_annotation(annotation)  # Store task_type before deletion
 
     # Store state before deletion
     previous_state = {
@@ -381,6 +401,7 @@ async def delete_annotation(
         db=labeler_db,
         project_id=project_id,
         image_id=image_id,
+        task_type=task_type,
     )
 
     labeler_db.commit()
@@ -468,6 +489,9 @@ async def batch_create_annotations(
                 continue
 
             # Create annotation
+            # no_object annotations are automatically confirmed
+            ann_state = "confirmed" if annotation_data.annotation_type == "no_object" else "draft"
+
             new_annotation = Annotation(
                 project_id=annotation_data.project_id,
                 image_id=annotation_data.image_id,
@@ -480,6 +504,7 @@ async def batch_create_annotations(
                 notes=annotation_data.notes,
                 created_by=current_user.id,
                 is_verified=False,
+                annotation_state=ann_state,
             )
 
             labeler_db.add(new_annotation)
@@ -656,10 +681,12 @@ async def confirm_annotation(
     )
 
     # Phase 2.7: Update image annotation status
+    task_type = get_task_type_from_annotation(annotation)
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
         image_id=annotation.image_id,
+        task_type=task_type,
     )
 
     labeler_db.commit()
@@ -716,10 +743,12 @@ async def unconfirm_annotation(
     )
 
     # Phase 2.7: Update image annotation status
+    task_type = get_task_type_from_annotation(annotation)
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
         image_id=annotation.image_id,
+        task_type=task_type,
     )
 
     labeler_db.commit()
@@ -783,7 +812,8 @@ async def bulk_confirm_annotations(
             )
 
             # Phase 2.7: Track affected image for status update
-            affected_images.add((annotation.project_id, annotation.image_id))
+            task_type = get_task_type_from_annotation(annotation)
+            affected_images.add((annotation.project_id, annotation.image_id, task_type))
 
             confirmed_count += 1
             results.append(ConfirmResponse(
@@ -799,11 +829,12 @@ async def bulk_confirm_annotations(
             failed_count += 1
 
     # Phase 2.7: Update image annotation status for all affected images
-    for project_id, image_id in affected_images:
+    for project_id, image_id, task_type in affected_images:
         await update_image_status(
             db=labeler_db,
             project_id=project_id,
             image_id=image_id,
+            task_type=task_type,
         )
 
     labeler_db.commit()

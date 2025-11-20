@@ -7,7 +7,7 @@ from botocore.client import Config
 from typing import List, Optional, Dict, Set
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 
 from app.core.database import get_platform_db, get_labeler_db
@@ -32,7 +32,7 @@ router = APIRouter()
 
 class ImageResponse(BaseModel):
     """Image response with presigned URL."""
-    id: int
+    id: str  # file_path as unique identifier (source of truth = storage)
     file_name: str
     width: Optional[int] = None
     height: Optional[int] = None
@@ -114,9 +114,11 @@ def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str
 
     for ann in annotations:
         class_id = ann.class_id
-        if class_id:
-            class_stats[class_id]['image_ids'].add(ann.image_id)
-            class_stats[class_id]['bbox_count'] += 1
+        # Handle class_id=0 (don't skip it) and convert to string for consistency
+        if class_id is not None:
+            class_id_str = str(class_id)
+            class_stats[class_id_str]['image_ids'].add(ann.image_id)
+            class_stats[class_id_str]['bbox_count'] += 1
 
     # Convert to final format
     result = {}
@@ -334,6 +336,27 @@ async def get_or_create_project_for_dataset(
         class_info['image_count'] = stats['image_count']
         class_info['bbox_count'] = stats['bbox_count']
 
+    # Update project.task_classes with live statistics
+    updated_task_classes = {}
+    if project.task_classes:
+        for task_type, task_classes_dict in project.task_classes.items():
+            updated_task_classes[task_type] = {}
+            for class_id, class_info in task_classes_dict.items():
+                updated_class_info = dict(class_info)
+                stats = live_class_stats.get(class_id, {'image_count': 0, 'bbox_count': 0})
+                updated_class_info['image_count'] = stats['image_count']
+                updated_class_info['bbox_count'] = stats['bbox_count']
+                updated_task_classes[task_type][class_id] = updated_class_info
+
+    # Calculate real-time annotated_images and total_annotations from Labeler DB
+    live_total_annotations = labeler_db.query(func.count(Annotation.id)).filter(
+        Annotation.project_id == project.id
+    ).scalar() or 0
+
+    live_annotated_images = labeler_db.query(func.count(func.distinct(Annotation.image_id))).filter(
+        Annotation.project_id == project.id
+    ).scalar() or 0
+
     # Get dataset name from Platform DB
     dataset_name = dataset.name
 
@@ -355,12 +378,12 @@ async def get_or_create_project_for_dataset(
         owner_id=project.owner_id,
         task_types=project.task_types,
         task_config=project.task_config,
-        task_classes=project.task_classes or {},  # Phase 2.9: Task-based classes
+        task_classes=updated_task_classes,  # Phase 2.9: Task-based classes with live stats
         classes=updated_classes,  # Legacy field for backward compatibility
         settings=project.settings,
         total_images=project.total_images,
-        annotated_images=project.annotated_images,
-        total_annotations=project.total_annotations,
+        annotated_images=live_annotated_images,  # Use live data
+        total_annotations=live_total_annotations,  # Use live data
         status=project.status,
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -409,7 +432,7 @@ async def list_dataset_images(
                         'height': img.get('height'),
                     }
 
-    # Always list images from S3 to get complete list
+    # List images from S3 - use file_path as image_id (source of truth)
     try:
         s3_client = boto3.client(
             's3',
@@ -420,7 +443,7 @@ async def list_dataset_images(
             config=Config(signature_version='s3v4')
         )
 
-        # List ALL objects in the images/ directory (no MaxKeys limit here)
+        # List ALL objects in the images/ directory
         images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
         paginator = s3_client.get_paginator('list_objects_v2')
 
@@ -430,7 +453,7 @@ async def list_dataset_images(
                 all_objects.extend(page['Contents'])
 
         # Convert S3 objects to image format
-        for idx, obj in enumerate(all_objects):
+        for obj in all_objects:
             # Get the full key
             full_key = obj['Key']
             # Skip if it's a directory marker
@@ -450,9 +473,11 @@ async def list_dataset_images(
             # Get metadata from annotations.json if available
             metadata = image_metadata.get(relative_path, {})
 
+            # IMPORTANT: Use file_path as image_id (source of truth = storage)
+            # This ensures consistency regardless of upload order or annotations.json
             images.append({
-                'id': idx + 1,
-                'file_name': relative_path,  # Store relative path from images/
+                'id': relative_path,  # file_path as unique identifier
+                'file_name': relative_path,
                 'width': metadata.get('width'),
                 'height': metadata.get('height'),
             })

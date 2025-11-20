@@ -57,11 +57,18 @@ def export_to_yolo(
     # Build class_id to index mapping
     class_mapping = _build_class_mapping(project)
 
+    # Track all unique image IDs (including no_object images)
+    all_image_ids = set()
+
     # Group annotations by image
     image_annotations: Dict[str, List[str]] = {}
 
     for annotation in annotations:
+        # Track all images including no_object
+        all_image_ids.add(annotation.image_id)
+
         # Skip non-bbox annotations (YOLO is for object detection)
+        # no_object images will be included with empty annotation file
         if annotation.annotation_type != "bbox":
             continue
 
@@ -74,15 +81,30 @@ def export_to_yolo(
 
         # Extract bbox from geometry
         geometry = annotation.geometry
-        if "x" not in geometry or "y" not in geometry or "width" not in geometry or "height" not in geometry:
+
+        # Handle both formats:
+        # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
+        # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
+        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+            bbox_arr = geometry['bbox']
+            x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
+            y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
+            width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
+            height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
+        elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
+            x = float(geometry["x"])
+            y = float(geometry["y"])
+            width = float(geometry["width"])
+            height = float(geometry["height"])
+        else:
             continue
 
         # Convert to YOLO format (normalized center coordinates)
         yolo_bbox = _convert_to_yolo_bbox(
-            x=float(geometry["x"]),
-            y=float(geometry["y"]),
-            width=float(geometry["width"]),
-            height=float(geometry["height"]),
+            x=x,
+            y=y,
+            width=width,
+            height=height,
             image_width=float(geometry.get("image_width", 1920)),  # Default or from geometry
             image_height=float(geometry.get("image_height", 1080)),  # Default or from geometry
         )
@@ -101,6 +123,12 @@ def export_to_yolo(
         img_id: "\n".join(lines)
         for img_id, lines in image_annotations.items()
     }
+
+    # Include images with no_object (empty annotation file)
+    # This ensures images marked as "no object" are included in export
+    for img_id in all_image_ids:
+        if img_id not in image_annotations_str:
+            image_annotations_str[img_id] = ""  # Empty file for no_object images
 
     # Build classes.txt
     classes_txt = _build_classes_txt(project, class_mapping)

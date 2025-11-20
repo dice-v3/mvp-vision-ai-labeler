@@ -306,12 +306,13 @@ async def publish_version(
             )
 
         # Phase 2.9: Map task_type to annotation_types
-        # classification -> classification
-        # detection -> bbox, no_object
-        # segmentation -> polygon
+        # no_object is filtered by attributes.task_type for all task types
+        from sqlalchemy import or_, and_
+
         task_to_annotation_types_map = {
             'classification': ['classification'],
-            'detection': ['bbox', 'no_object'],  # Include no_object
+            'detection': ['bbox'],
+            'object_detection': ['bbox'],  # Alternative name
             'segmentation': ['polygon'],
             'keypoints': ['keypoints'],
             'line': ['line'],
@@ -320,9 +321,16 @@ async def publish_version(
         annotation_types = task_to_annotation_types_map.get(task_type, [task_type])
 
         # Get all annotations for this task type
+        # Include no_object filtered by attributes.task_type
         query = labeler_db.query(Annotation).filter(
             Annotation.project_id == project_id,
-            Annotation.annotation_type.in_(annotation_types)
+            or_(
+                Annotation.annotation_type.in_(annotation_types),
+                and_(
+                    Annotation.annotation_type == 'no_object',
+                    Annotation.attributes['task_type'].astext == task_type
+                )
+            )
         )
 
         if not publish_request.include_draft:

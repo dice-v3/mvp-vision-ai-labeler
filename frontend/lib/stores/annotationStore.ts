@@ -178,6 +178,10 @@ interface AnnotationState {
   hiddenAnnotationIds: Set<string>;
   showAllAnnotations: boolean;
 
+  // Multi-image selection
+  selectedImageIds: string[];
+  lastClickedImageIndex: number | null;
+
   // ========================================================================
   // Actions
   // ========================================================================
@@ -255,6 +259,13 @@ interface AnnotationState {
   toggleAllAnnotationsVisibility: () => void;
   isAnnotationVisible: (id: string) => boolean;
 
+  // Multi-image selection
+  selectImages: (ids: string[]) => void;
+  toggleImageSelection: (id: string, index: number) => void;
+  selectImageRange: (toIndex: number) => void;
+  clearImageSelection: () => void;
+  isImageSelected: (id: string) => boolean;
+
   // Reset
   reset: () => void;
 }
@@ -308,6 +319,8 @@ const initialState = {
   lastSelectedClassId: null,
   hiddenAnnotationIds: new Set<string>(),
   showAllAnnotations: true,
+  selectedImageIds: [],
+  lastClickedImageIndex: null,
 };
 
 // ============================================================================
@@ -763,6 +776,59 @@ export const useAnnotationStore = create<AnnotationState>()(
         const { hiddenAnnotationIds, showAllAnnotations } = get();
         if (!showAllAnnotations) return false;
         return !hiddenAnnotationIds.has(id);
+      },
+
+      // ======================================================================
+      // Multi-image Selection
+      // ======================================================================
+
+      selectImages: (ids) => {
+        set({ selectedImageIds: ids });
+      },
+
+      toggleImageSelection: (id, index) => {
+        const { selectedImageIds } = get();
+        const isSelected = selectedImageIds.includes(id);
+
+        if (isSelected) {
+          set({
+            selectedImageIds: selectedImageIds.filter(i => i !== id),
+            lastClickedImageIndex: index,
+          });
+        } else {
+          set({
+            selectedImageIds: [...selectedImageIds, id],
+            lastClickedImageIndex: index,
+          });
+        }
+      },
+
+      selectImageRange: (toIndex) => {
+        const { images, lastClickedImageIndex, currentIndex } = get();
+        // Use lastClickedImageIndex if set, otherwise use currentIndex
+        const fromIndex = lastClickedImageIndex ?? currentIndex;
+
+        const start = Math.min(fromIndex, toIndex);
+        const end = Math.max(fromIndex, toIndex);
+
+        const rangeIds = images
+          .slice(start, end + 1)
+          .map(img => img.id);
+
+        // Replace selection with range (not merge)
+        set({
+          selectedImageIds: rangeIds,
+          lastClickedImageIndex: toIndex,
+        });
+      },
+
+      clearImageSelection: () => {
+        set({ selectedImageIds: [], lastClickedImageIndex: null });
+      },
+
+      isImageSelected: (id) => {
+        const { selectedImageIds } = get();
+        return selectedImageIds.includes(id);
       },
 
       // ======================================================================

@@ -99,6 +99,7 @@ export interface ImageStatus {
   confirmed_annotations: number;
   draft_annotations: number;
   is_image_confirmed: boolean;
+  has_no_object: boolean;  // Whether image has no_object annotation for this task
 }
 
 export interface ImageStatusListResponse {

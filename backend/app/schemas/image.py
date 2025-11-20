@@ -49,6 +49,7 @@ class ImageStatusResponse(BaseModel):
     confirmed_annotations: int = 0
     draft_annotations: int = 0
     is_image_confirmed: bool = False
+    has_no_object: bool = False  # Whether image has no_object annotation for this task
 
     class Config:
         from_attributes = True

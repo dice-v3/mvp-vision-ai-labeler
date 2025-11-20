@@ -20,6 +20,12 @@ export default function ImageList() {
     preferences,
     setPreference,
     currentTask, // Phase 2.9: Task context
+    // Multi-image selection
+    selectedImageIds,
+    toggleImageSelection,
+    selectImageRange,
+    clearImageSelection,
+    isImageSelected,
   } = useAnnotationStore();
 
   const [filter, setFilter] = useState<FilterType>('all');
@@ -90,8 +96,27 @@ export default function ImageList() {
     return true;
   });
 
-  const handleImageClick = (index: number) => {
-    setCurrentIndex(index);
+  const handleImageClick = (e: React.MouseEvent, index: number, imageId: string) => {
+    // Prevent text selection on shift+click
+    if (e.shiftKey) {
+      e.preventDefault();
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl+Click: Toggle individual selection
+      toggleImageSelection(imageId, index);
+    } else if (e.shiftKey) {
+      // Shift+Click: Range selection from current image
+      selectImageRange(index);
+    } else {
+      // Normal click: Navigate and select this image as anchor
+      setCurrentIndex(index);
+      // Set this image as the only selected one (anchor for Ctrl+click additions)
+      useAnnotationStore.setState({
+        selectedImageIds: [imageId],
+        lastClickedImageIndex: index
+      });
+    }
   };
 
   // Auto-scroll to current image
@@ -126,9 +151,19 @@ export default function ImageList() {
                 </svg>
               )}
             </button>
-            <span className="text-xs text-gray-600 dark:text-gray-500">
-              {filteredImages.length} / {images.length}
-            </span>
+            {selectedImageIds.length > 0 ? (
+              <button
+                onClick={() => clearImageSelection()}
+                className="text-xs text-blue-500 hover:text-blue-600 font-medium"
+                title="Clear selection"
+              >
+                {selectedImageIds.length} selected
+              </button>
+            ) : (
+              <span className="text-xs text-gray-600 dark:text-gray-500">
+                {filteredImages.length} / {images.length}
+              </span>
+            )}
           </div>
         </div>
 
@@ -164,7 +199,7 @@ export default function ImageList() {
       </div>
 
       {/* Image grid/list */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 select-none">
         {filteredImages.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-xs">
             No images match filter
@@ -174,6 +209,7 @@ export default function ImageList() {
             {filteredImages.map((img, idx) => {
               const actualIndex = images.indexOf(img);
               const isCurrent = actualIndex === currentIndex;
+              const isSelected = isImageSelected(img.id);
               const status = getImageStatus(img);
 
               return (
@@ -182,13 +218,15 @@ export default function ImageList() {
                   ref={isCurrent ? currentImageRef as any : null}
                 >
                   <button
-                    onClick={() => handleImageClick(actualIndex)}
+                    onClick={(e) => handleImageClick(e, actualIndex, img.id)}
                     className={`relative aspect-[3/2] rounded overflow-hidden transition-all w-full ${
                       isCurrent
                         ? 'ring-2 ring-violet-500 scale-[1.02]'
+                        : isSelected
+                        ? 'ring-2 ring-blue-500'
                         : 'ring-1 ring-gray-600 hover:ring-gray-500'
                     }`}
-                    title={img.file_name}
+                    title={`${img.file_name}${isSelected ? ' (Selected)' : ''}`}
                   >
                   {/* Thumbnail image */}
                   <img
@@ -202,6 +240,15 @@ export default function ImageList() {
                   <div className="absolute bottom-1 left-1 bg-black/70 px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
                     {actualIndex + 1}
                   </div>
+
+                  {/* Selection checkbox indicator */}
+                  {isSelected && (
+                    <div className="absolute top-1 left-1 bg-blue-500 rounded w-5 h-5 flex items-center justify-center shadow-sm">
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                    </div>
+                  )}
 
                   {/* Status indicator */}
                   <div className="absolute top-1 right-1 flex items-center gap-1">
@@ -240,6 +287,7 @@ export default function ImageList() {
                 {filteredImages.map((img, idx) => {
                   const actualIndex = images.indexOf(img);
                   const isCurrent = actualIndex === currentIndex;
+                  const isSelected = isImageSelected(img.id);
                   const annCount = img.annotation_count || 0;
                   const status = getImageStatus(img);
 
@@ -247,13 +295,15 @@ export default function ImageList() {
                     <tr
                       key={img.id}
                       ref={isCurrent ? currentImageRef as any : null}
-                      onClick={() => handleImageClick(actualIndex)}
+                      onClick={(e) => handleImageClick(e, actualIndex, img.id)}
                       className={`cursor-pointer transition-all border-b border-gray-300 dark:border-gray-700/50 ${
                         isCurrent
                           ? 'bg-violet-500/20'
+                          : isSelected
+                          ? 'bg-blue-500/20'
                           : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                       }`}
-                      title={img.file_name}
+                      title={`${img.file_name}${isSelected ? ' (Selected)' : ''}`}
                     >
                       <td className="py-1.5 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {actualIndex + 1}
