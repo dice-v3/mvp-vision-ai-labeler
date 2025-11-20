@@ -52,6 +52,8 @@ export default function Canvas() {
     selectedImageIds,
     clearImageSelection,
     getCurrentClasses, // Phase 2.9: Get task-specific classes
+    selectedVertexIndex, // Polygon vertex editing
+    selectedBboxHandle, // Bbox handle editing
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -68,6 +70,21 @@ export default function Canvas() {
   const [canvasCursor, setCanvasCursor] = useState('default');
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([]);
+  // Polygon editing state
+  const [isDraggingVertex, setIsDraggingVertex] = useState(false);
+  const [draggedVertexIndex, setDraggedVertexIndex] = useState<number | null>(null);
+  const [isDraggingPolygon, setIsDraggingPolygon] = useState(false);
+  const [polygonDragStart, setPolygonDragStart] = useState<{ x: number; y: number; points: [number, number][] } | null>(null);
+
+  // Helper to set selectedVertexIndex in store
+  const setSelectedVertexIndex = (index: number | null) => {
+    useAnnotationStore.setState({ selectedVertexIndex: index });
+  };
+
+  // Helper to set selectedBboxHandle in store
+  const setSelectedBboxHandle = (handle: string | null) => {
+    useAnnotationStore.setState({ selectedBboxHandle: handle });
+  };
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -219,7 +236,71 @@ export default function Canvas() {
     if ((tool === 'bbox' || tool === 'polygon') && !isDrawing && preferences.showLabels) {
       drawCrosshair(ctx, canvas.width, canvas.height);
     }
-  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices]);
+
+    // Draw selected vertex highlight
+    if (selectedVertexIndex !== null && selectedAnnotationId) {
+      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
+        const points = selectedAnn.geometry.points;
+        if (selectedVertexIndex < points.length) {
+          const [px, py] = points[selectedVertexIndex];
+          const scaledPx = px * zoom + x;
+          const scaledPy = py * zoom + y;
+
+          // Draw highlight ring around selected vertex
+          ctx.strokeStyle = '#f59e0b'; // amber-500
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(scaledPx, scaledPy, 10, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Draw inner fill
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(scaledPx, scaledPy, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Draw selected bbox handle highlight
+    if (selectedBboxHandle && selectedAnnotationId) {
+      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
+        const [bx, by, bw, bh] = selectedAnn.geometry.bbox;
+        const scaledX = bx * zoom + x;
+        const scaledY = by * zoom + y;
+        const scaledW = bw * zoom;
+        const scaledH = bh * zoom;
+
+        // Get handle position
+        let hx = 0, hy = 0;
+        switch (selectedBboxHandle) {
+          case 'nw': hx = scaledX; hy = scaledY; break;
+          case 'ne': hx = scaledX + scaledW; hy = scaledY; break;
+          case 'sw': hx = scaledX; hy = scaledY + scaledH; break;
+          case 'se': hx = scaledX + scaledW; hy = scaledY + scaledH; break;
+          case 'n': hx = scaledX + scaledW / 2; hy = scaledY; break;
+          case 's': hx = scaledX + scaledW / 2; hy = scaledY + scaledH; break;
+          case 'w': hx = scaledX; hy = scaledY + scaledH / 2; break;
+          case 'e': hx = scaledX + scaledW; hy = scaledY + scaledH / 2; break;
+        }
+
+        // Draw highlight ring around selected handle
+        ctx.strokeStyle = '#f59e0b'; // amber-500
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Draw inner fill
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices, selectedVertexIndex, selectedBboxHandle]);
 
   // Draw grid
   const drawGrid = (
@@ -452,6 +533,8 @@ export default function Canvas() {
       // Check if clicking on a handle of the selected annotation
       if (selectedAnnotationId) {
         const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+
+        // Handle bbox resize
         if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
           const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
 
@@ -462,7 +545,8 @@ export default function Canvas() {
 
           const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
           if (handle) {
-            // Start resizing
+            // Select handle and start resizing
+            setSelectedBboxHandle(handle);
             setIsResizing(true);
             setResizeHandle(handle);
             setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
@@ -470,12 +554,53 @@ export default function Canvas() {
             return;
           }
         }
+
+        // Handle polygon vertex drag or polygon move
+        if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
+          const points = selectedAnn.geometry.points;
+
+          // Check if clicking on a vertex
+          const vertexThreshold = 8;
+          for (let i = 0; i < points.length; i++) {
+            const [px, py] = points[i];
+            const scaledPx = px * zoom + imgX;
+            const scaledPy = py * zoom + imgY;
+            const dx = x - scaledPx;
+            const dy = y - scaledPy;
+            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
+              // Select and start vertex drag
+              setSelectedVertexIndex(i);
+              setIsDraggingVertex(true);
+              setDraggedVertexIndex(i);
+              setCanvasCursor('move');
+              return;
+            }
+          }
+
+          // Check if clicking inside polygon (for moving)
+          // Convert canvas coords to image coords for point-in-polygon test
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (polygonTool.isPointInside(imageX, imageY, selectedAnn)) {
+            // Start polygon drag (clear vertex selection)
+            setSelectedVertexIndex(null);
+            setIsDraggingPolygon(true);
+            setPolygonDragStart({ x, y, points: points.map(p => [...p] as [number, number]) });
+            setCanvasCursor('move');
+            return;
+          }
+        }
       }
 
-      // Check if clicking on any bbox to select it
+      // Clear vertex/handle selection when clicking elsewhere
+      setSelectedVertexIndex(null);
+      setSelectedBboxHandle(null);
+
+      // Check if clicking on any annotation to select it
       let clickedAnnotation: typeof annotations[0] | null = null;
       for (const ann of annotations) {
         if (!isAnnotationVisible(ann.id)) continue;
+
         if (ann.geometry.type === 'bbox') {
           const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
           const scaledX = bboxX * zoom + imgX;
@@ -485,7 +610,15 @@ export default function Canvas() {
 
           if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
             clickedAnnotation = ann;
-            break; // Take the first one (topmost)
+            break;
+          }
+        } else if (ann.geometry.type === 'polygon') {
+          // Convert canvas coords to image coords
+          const imageX = (x - imgX) / zoom;
+          const imageY = (y - imgY) / zoom;
+          if (polygonTool.isPointInside(imageX, imageY, ann)) {
+            clickedAnnotation = ann;
+            break;
           }
         }
       }
@@ -493,7 +626,7 @@ export default function Canvas() {
       if (clickedAnnotation) {
         // Select the clicked annotation
         selectAnnotation(clickedAnnotation.id);
-        // Set cursor to move since we're inside the bbox
+        // Set cursor to move since we're inside the annotation
         setCanvasCursor('move');
         return;
       }
@@ -589,7 +722,7 @@ export default function Canvas() {
     const y = e.clientY - rect.top;
 
     // Update cursor style based on position (before setCursor to avoid render race)
-    if (!isResizing && !isDrawing && !isPanning) {
+    if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon) {
       const { zoom, pan } = canvasState;
       const scaledWidth = image.width * zoom;
       const scaledHeight = image.height * zoom;
@@ -619,6 +752,7 @@ export default function Canvas() {
       // Check if hovering over selected annotation's handle (only in select mode)
       if (tool === 'select' && selectedAnnotationId) {
         const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+
         if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
           const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
           const scaledX = bboxX * zoom + imgX;
@@ -633,12 +767,42 @@ export default function Canvas() {
             newCursor = 'move';
           }
         }
+
+        // Check polygon vertices and inside
+        if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
+          const points = selectedAnn.geometry.points;
+          const vertexThreshold = 8;
+
+          // Check vertices first
+          let onVertex = false;
+          for (const [px, py] of points) {
+            const scaledPx = px * zoom + imgX;
+            const scaledPy = py * zoom + imgY;
+            const dx = x - scaledPx;
+            const dy = y - scaledPy;
+            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
+              newCursor = 'move';
+              onVertex = true;
+              break;
+            }
+          }
+
+          // Check inside polygon
+          if (!onVertex) {
+            const imageX = (x - imgX) / zoom;
+            const imageY = (y - imgY) / zoom;
+            if (polygonTool.isPointInside(imageX, imageY, selectedAnn)) {
+              newCursor = 'move';
+            }
+          }
+        }
       }
 
-      // Check if hovering over any bbox (for click to select) - only in select mode
+      // Check if hovering over any annotation (for click to select) - only in select mode
       if (tool === 'select' && isInImage && newCursor === 'default') {
         for (const ann of annotations) {
           if (!isAnnotationVisible(ann.id)) continue;
+
           if (ann.geometry.type === 'bbox') {
             const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
             const scaledX = bboxX * zoom + imgX;
@@ -647,6 +811,13 @@ export default function Canvas() {
             const scaledH = bboxH * zoom;
 
             if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+              newCursor = 'pointer';
+              break;
+            }
+          } else if (ann.geometry.type === 'polygon') {
+            const imageX = (x - imgX) / zoom;
+            const imageY = (y - imgY) / zoom;
+            if (polygonTool.isPointInside(imageX, imageY, ann)) {
               newCursor = 'pointer';
               break;
             }
@@ -737,6 +908,81 @@ export default function Canvas() {
       return;
     }
 
+    // Handle vertex dragging
+    if (isDraggingVertex && draggedVertexIndex !== null && selectedAnnotationId) {
+      const { zoom, pan } = canvasState;
+      const scaledWidth = image.width * zoom;
+      const scaledHeight = image.height * zoom;
+      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+      // Convert to image coordinates
+      const imageX = (x - imgX) / zoom;
+      const imageY = (y - imgY) / zoom;
+
+      // Clip to image bounds
+      const clippedX = Math.max(0, Math.min(image.width, imageX));
+      const clippedY = Math.max(0, Math.min(image.height, imageY));
+
+      // Update annotation geometry
+      const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnnotation && updatedAnnotation.geometry.type === 'polygon') {
+        const newPoints = [...updatedAnnotation.geometry.points];
+        newPoints[draggedVertexIndex] = [clippedX, clippedY];
+
+        useAnnotationStore.setState({
+          annotations: annotations.map(ann =>
+            ann.id === selectedAnnotationId
+              ? {
+                  ...ann,
+                  geometry: {
+                    ...ann.geometry,
+                    points: newPoints,
+                  },
+                }
+              : ann
+          ),
+        });
+      }
+      return;
+    }
+
+    // Handle polygon dragging
+    if (isDraggingPolygon && polygonDragStart && selectedAnnotationId) {
+      const { zoom, pan } = canvasState;
+      const scaledWidth = image.width * zoom;
+      const scaledHeight = image.height * zoom;
+      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+      // Calculate delta in image coordinates
+      const deltaX = (x - polygonDragStart.x) / zoom;
+      const deltaY = (y - polygonDragStart.y) / zoom;
+
+      // Move all vertices
+      const newPoints = polygonDragStart.points.map(([px, py]): [number, number] => {
+        // Clip to image bounds
+        const newX = Math.max(0, Math.min(image.width, px + deltaX));
+        const newY = Math.max(0, Math.min(image.height, py + deltaY));
+        return [newX, newY];
+      });
+
+      useAnnotationStore.setState({
+        annotations: annotations.map(ann =>
+          ann.id === selectedAnnotationId
+            ? {
+                ...ann,
+                geometry: {
+                  ...ann.geometry,
+                  points: newPoints,
+                },
+              }
+            : ann
+        ),
+      });
+      return;
+    }
+
     // Handle panning
     if (isPanning && panStart) {
       const deltaX = e.clientX - panStart.x;
@@ -757,6 +1003,86 @@ export default function Canvas() {
 
   // Mouse up handler
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Stop vertex dragging and save to backend
+    if (isDraggingVertex && selectedAnnotationId) {
+      setIsDraggingVertex(false);
+      setDraggedVertexIndex(null);
+      setCanvasCursor('move');
+
+      // Save updated polygon to backend
+      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage) {
+        try {
+          const updateData: AnnotationUpdateRequest = {
+            geometry: updatedAnn.geometry,
+          };
+          await updateAnnotation(updatedAnn.id, updateData);
+
+          // Update image status to in-progress and unconfirm
+          const updatedCurrentImage = {
+            ...currentImage,
+            is_confirmed: false,
+            status: 'in-progress',
+          };
+
+          useAnnotationStore.setState((state) => ({
+            currentImage: state.currentImage?.id === currentImage.id
+              ? updatedCurrentImage
+              : state.currentImage,
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? updatedCurrentImage
+                : img
+            ),
+          }));
+        } catch (error) {
+          console.error('Failed to save polygon vertex change:', error);
+          toast.error('Failed to save changes');
+        }
+      }
+      return;
+    }
+
+    // Stop polygon dragging and save to backend
+    if (isDraggingPolygon && selectedAnnotationId) {
+      setIsDraggingPolygon(false);
+      setPolygonDragStart(null);
+      setCanvasCursor('move');
+
+      // Save updated polygon to backend
+      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+      if (updatedAnn && updatedAnn.geometry.type === 'polygon' && project && currentImage) {
+        try {
+          const updateData: AnnotationUpdateRequest = {
+            geometry: updatedAnn.geometry,
+          };
+          await updateAnnotation(updatedAnn.id, updateData);
+
+          // Update image status to in-progress and unconfirm
+          const updatedCurrentImage = {
+            ...currentImage,
+            is_confirmed: false,
+            status: 'in-progress',
+          };
+
+          useAnnotationStore.setState((state) => ({
+            currentImage: state.currentImage?.id === currentImage.id
+              ? updatedCurrentImage
+              : state.currentImage,
+            images: state.images.map(img =>
+              img.id === currentImage.id
+                ? updatedCurrentImage
+                : img
+            ),
+          }));
+        } catch (error) {
+          console.error('Failed to save polygon move:', error);
+          toast.error('Failed to save changes');
+        }
+      }
+      return;
+    }
+
     // Stop resizing and save to backend
     if (isResizing && selectedAnnotationId) {
       setIsResizing(false);
@@ -1497,6 +1823,295 @@ export default function Canvas() {
         return;
       }
 
+      // Arrow keys: Move selected bbox handle or entire bbox
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedVertexIndex === null && selectedAnnotationId) {
+        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+        if (selectedAnn && selectedAnn.geometry.type === 'bbox' && image) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          let [newX, newY, newW, newH] = selectedAnn.geometry.bbox;
+
+          // Move amount (hold Shift for larger steps)
+          const step = e.shiftKey ? 10 : 1;
+
+          if (selectedBboxHandle) {
+            // Move only the selected handle
+            const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
+            const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
+
+            switch (selectedBboxHandle) {
+              case 'nw': // Top-left corner
+                newX += dx;
+                newY += dy;
+                newW -= dx;
+                newH -= dy;
+                break;
+              case 'ne': // Top-right corner
+                newY += dy;
+                newW += dx;
+                newH -= dy;
+                break;
+              case 'sw': // Bottom-left corner
+                newX += dx;
+                newW -= dx;
+                newH += dy;
+                break;
+              case 'se': // Bottom-right corner
+                newW += dx;
+                newH += dy;
+                break;
+              case 'n': // Top edge
+                newY += dy;
+                newH -= dy;
+                break;
+              case 's': // Bottom edge
+                newH += dy;
+                break;
+              case 'w': // Left edge
+                newX += dx;
+                newW -= dx;
+                break;
+              case 'e': // Right edge
+                newW += dx;
+                break;
+            }
+
+            // Ensure minimum size
+            if (newW < 10) newW = 10;
+            if (newH < 10) newH = 10;
+          } else {
+            // Move entire bbox
+            switch (e.key) {
+              case 'ArrowUp':
+                newY = Math.max(0, newY - step);
+                break;
+              case 'ArrowDown':
+                newY = Math.min(image.height - newH, newY + step);
+                break;
+              case 'ArrowLeft':
+                newX = Math.max(0, newX - step);
+                break;
+              case 'ArrowRight':
+                newX = Math.min(image.width - newW, newX + step);
+                break;
+            }
+          }
+
+          // Clip to image bounds
+          newX = Math.max(0, Math.min(image.width - newW, newX));
+          newY = Math.max(0, Math.min(image.height - newH, newY));
+
+          // Update annotation in store
+          useAnnotationStore.setState({
+            annotations: annotations.map(ann =>
+              ann.id === selectedAnnotationId
+                ? {
+                    ...ann,
+                    geometry: {
+                      ...ann.geometry,
+                      bbox: [newX, newY, newW, newH],
+                    },
+                  }
+                : ann
+            ),
+          });
+
+          // Save to backend
+          const updateData: AnnotationUpdateRequest = {
+            geometry: {
+              type: 'bbox',
+              bbox: [newX, newY, newW, newH],
+            },
+          };
+          updateAnnotation(selectedAnnotationId, updateData)
+            .then(() => {
+              // Update image status to in-progress
+              if (currentImage) {
+                const updatedCurrentImage = {
+                  ...currentImage,
+                  is_confirmed: false,
+                  status: 'in-progress',
+                };
+
+                useAnnotationStore.setState((state) => ({
+                  currentImage: state.currentImage?.id === currentImage.id
+                    ? updatedCurrentImage
+                    : state.currentImage,
+                  images: state.images.map(img =>
+                    img.id === currentImage.id
+                      ? updatedCurrentImage
+                      : img
+                  ),
+                }));
+              }
+            })
+            .catch((error) => {
+              console.error('Failed to move bbox:', error);
+            });
+
+          return;
+        }
+      }
+
+      // Arrow keys: Move selected vertex (override image navigation)
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedVertexIndex !== null && selectedAnnotationId) {
+        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+        if (selectedAnn && selectedAnn.geometry.type === 'polygon' && image) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const points = selectedAnn.geometry.points;
+          const [px, py] = points[selectedVertexIndex];
+
+          // Move amount (hold Shift for larger steps)
+          const step = e.shiftKey ? 10 : 1;
+
+          let newX = px;
+          let newY = py;
+
+          switch (e.key) {
+            case 'ArrowUp':
+              newY = Math.max(0, py - step);
+              break;
+            case 'ArrowDown':
+              newY = Math.min(image.height, py + step);
+              break;
+            case 'ArrowLeft':
+              newX = Math.max(0, px - step);
+              break;
+            case 'ArrowRight':
+              newX = Math.min(image.width, px + step);
+              break;
+          }
+
+          // Update annotation in store
+          const newPoints = [...points];
+          newPoints[selectedVertexIndex] = [newX, newY];
+
+          useAnnotationStore.setState({
+            annotations: annotations.map(ann =>
+              ann.id === selectedAnnotationId
+                ? {
+                    ...ann,
+                    geometry: {
+                      ...ann.geometry,
+                      points: newPoints,
+                    },
+                  }
+                : ann
+            ),
+          });
+
+          // Save to backend (debounced would be better, but for now immediate)
+          const updateData: AnnotationUpdateRequest = {
+            geometry: {
+              type: 'polygon',
+              points: newPoints,
+            },
+          };
+          updateAnnotation(selectedAnnotationId, updateData)
+            .then(() => {
+              // Update image status to in-progress
+              if (currentImage) {
+                const updatedCurrentImage = {
+                  ...currentImage,
+                  is_confirmed: false,
+                  status: 'in-progress',
+                };
+
+                useAnnotationStore.setState((state) => ({
+                  currentImage: state.currentImage?.id === currentImage.id
+                    ? updatedCurrentImage
+                    : state.currentImage,
+                  images: state.images.map(img =>
+                    img.id === currentImage.id
+                      ? updatedCurrentImage
+                      : img
+                  ),
+                }));
+              }
+            })
+            .catch((error) => {
+              console.error('Failed to move vertex:', error);
+            });
+
+          return;
+        }
+      }
+
+      // Delete/Backspace: Delete selected vertex (minimum 3 vertices)
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedVertexIndex !== null && selectedAnnotationId) {
+        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+        if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
+          const points = selectedAnn.geometry.points;
+
+          // Must keep at least 3 vertices
+          if (points.length <= 3) {
+            toast.warning('Polygon은 최소 3개의 vertex가 필요합니다.', 3000);
+            return;
+          }
+
+          e.preventDefault();
+
+          // Remove the selected vertex
+          const newPoints = points.filter((_, i) => i !== selectedVertexIndex);
+
+          // Update annotation in store
+          useAnnotationStore.setState({
+            annotations: annotations.map(ann =>
+              ann.id === selectedAnnotationId
+                ? {
+                    ...ann,
+                    geometry: {
+                      ...ann.geometry,
+                      points: newPoints,
+                    },
+                  }
+                : ann
+            ),
+          });
+
+          // Save to backend
+          const updateData: AnnotationUpdateRequest = {
+            geometry: {
+              type: 'polygon',
+              points: newPoints,
+            },
+          };
+          updateAnnotation(selectedAnnotationId, updateData)
+            .then(() => {
+              // Update image status to in-progress
+              if (currentImage) {
+                const updatedCurrentImage = {
+                  ...currentImage,
+                  is_confirmed: false,
+                  status: 'in-progress',
+                };
+
+                useAnnotationStore.setState((state) => ({
+                  currentImage: state.currentImage?.id === currentImage.id
+                    ? updatedCurrentImage
+                    : state.currentImage,
+                  images: state.images.map(img =>
+                    img.id === currentImage.id
+                      ? updatedCurrentImage
+                      : img
+                  ),
+                }));
+              }
+            })
+            .catch((error) => {
+              console.error('Failed to delete vertex:', error);
+              toast.error('Vertex 삭제에 실패했습니다.');
+            });
+
+          // Clear vertex selection
+          setSelectedVertexIndex(null);
+          return;
+        }
+      }
+
       // Space: Confirm Image (supports batch)
       // Must have annotations or no_object to confirm (same condition as button)
       const canConfirm = (annotations.length > 0 || (currentImage as any)?.has_no_object) && !isImageConfirmed;
@@ -1521,7 +2136,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {

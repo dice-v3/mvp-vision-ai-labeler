@@ -143,6 +143,8 @@ interface AnnotationState {
   // Annotations
   annotations: Annotation[];
   selectedAnnotationId: string | null;
+  selectedVertexIndex: number | null;  // For polygon vertex editing
+  selectedBboxHandle: string | null;  // For bbox handle editing ('nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w')
   clipboard: Annotation | null;
 
   // UI State
@@ -292,6 +294,8 @@ const initialState = {
   currentTask: null,  // Phase 2.9: Current task context
   annotations: [],
   selectedAnnotationId: null,
+  selectedVertexIndex: null,
+  selectedBboxHandle: null,
   clipboard: null,
   tool: 'select' as Tool,
   canvas: {
@@ -355,6 +359,8 @@ export const useAnnotationStore = create<AnnotationState>()(
             currentImage: images[index],
             annotations: [], // Clear annotations for new image
             selectedAnnotationId: null,
+            selectedVertexIndex: null,
+            selectedBboxHandle: null,
           });
         }
       },
@@ -408,6 +414,8 @@ export const useAnnotationStore = create<AnnotationState>()(
           currentTask: taskType,
           annotations: [],
           selectedAnnotationId: null,
+          selectedVertexIndex: null,
+          selectedBboxHandle: null,
           tool: 'select',
           canvas: {
             zoom: 1.0,

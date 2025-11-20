@@ -15,6 +15,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
@@ -87,22 +88,26 @@ export function useKeyboardShortcuts() {
       // Regular shortcuts (no modifiers)
       switch (e.key.toLowerCase()) {
         case 'arrowup':
-          // Previous image (when in list view or general navigation)
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowdown':
-          // Next image (when in list view or general navigation)
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
         case 'arrowleft':
-          // Previous image
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowright':
-          // Next image
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
@@ -186,6 +191,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
