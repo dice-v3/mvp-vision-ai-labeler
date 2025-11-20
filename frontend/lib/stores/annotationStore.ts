@@ -1,5 +1,5 @@
 /**
- * Annotation Store (Zustand)
+ * Annotation Store (Zustand) - REFACTORED
  *
  * Manages all annotation state including:
  * - Current image and navigation
@@ -7,10 +7,16 @@
  * - Canvas state (zoom, pan)
  * - UI state (panels, tools)
  * - Undo/redo history
+ *
+ * REFACTORING CHANGES:
+ * - Removed legacy classes field (use taskClasses only)
+ * - Use TaskType enum for type safety
+ * - Task-specific class management throughout
  */
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import { TaskType } from '@/lib/tasks/types';
 
 // ============================================================================
 // Types
@@ -94,10 +100,8 @@ export interface Project {
   name: string;
   datasetId: string;
   taskTypes: string[];
-  // Phase 2.9: Task-based classes structure
+  // REFACTORING: Task-based classes structure (legacy classes field removed)
   taskClasses: Record<string, Record<string, ClassInfo>>;  // {task_type: {class_id: ClassInfo}}
-  // Legacy field for backward compatibility
-  classes: Record<string, ClassInfo>;
   taskConfig: Record<string, any>;
 }
 
@@ -452,6 +456,8 @@ export const useAnnotationStore = create<AnnotationState>()(
       /**
        * Get classes for the current task.
        * Returns empty object if no task is selected or project has no task_classes.
+       *
+       * REFACTORED: No legacy fallback - taskClasses only.
        */
       getCurrentClasses: () => {
         const { project, currentTask } = get();
@@ -460,15 +466,8 @@ export const useAnnotationStore = create<AnnotationState>()(
           return {};
         }
 
-        // Phase 2.9: Use task_classes structure
-        // If taskClasses exists and has any tasks configured, use strict mode
-        if (project.taskClasses && Object.keys(project.taskClasses).length > 0) {
-          // Return current task's classes or empty object if not configured
-          return project.taskClasses[currentTask] || {};
-        }
-
-        // Fallback to legacy classes field (only if taskClasses not configured at all)
-        return project.classes || {};
+        // Return current task's classes or empty object if not configured
+        return project.taskClasses?.[currentTask] || {};
       },
 
       // ======================================================================
