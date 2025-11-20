@@ -312,15 +312,44 @@ def _convert_annotation_to_dice(
             "attributes": ann.attributes or {}
         }
     elif ann.annotation_type == 'polygon':
-        # TODO: Implement polygon support
         geometry = ann.geometry
+        points = geometry.get('points', [])
+
+        # Calculate polygon area using shoelace formula
+        area = 0.0
+        n = len(points)
+        if n >= 3:
+            for i in range(n):
+                j = (i + 1) % n
+                area += points[i][0] * points[j][1]
+                area -= points[j][0] * points[i][1]
+            area = abs(area) / 2.0
+
+        # Calculate bounding box from polygon points
+        if points:
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+        else:
+            bbox = [0, 0, 0, 0]
+
+        # Flatten points for COCO-style segmentation format
+        # COCO expects [x1, y1, x2, y2, ...]
+        segmentation_flat = []
+        for point in points:
+            segmentation_flat.extend(point)
+
         return {
             "id": ann.id,
             "image_id": image_dice_id,
             "class_id": dice_class_id,
             "class_name": dice_class_name,
-            "segmentation": geometry.get('points', []),
-            "area": 0,  # TODO: Calculate polygon area
+            "segmentation": [segmentation_flat],  # COCO format: list of polygons
+            "bbox": bbox,
+            "bbox_format": "xywh",
+            "area": area,
             "iscrowd": 0,
             "attributes": ann.attributes or {}
         }

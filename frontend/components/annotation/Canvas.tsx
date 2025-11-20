@@ -12,7 +12,7 @@ import ClassSelectorModal from './ClassSelectorModal';
 import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI, getProjectAnnotations } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { confirmImage, getProjectImageStatuses } from '@/lib/api/projects';
-import { ToolRegistry, bboxTool } from '@/lib/annotation';
+import { ToolRegistry, bboxTool, polygonTool } from '@/lib/annotation';
 import type { CanvasRenderContext } from '@/lib/annotation';
 import { toast } from '@/lib/stores/toastStore';
 import { confirm } from '@/lib/stores/confirmStore';
@@ -51,6 +51,7 @@ export default function Canvas() {
     // Multi-image selection
     selectedImageIds,
     clearImageSelection,
+    getCurrentClasses, // Phase 2.9: Get task-specific classes
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -66,6 +67,7 @@ export default function Canvas() {
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number; bbox: number[] } | null>(null);
   const [canvasCursor, setCanvasCursor] = useState('default');
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([]);
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -138,7 +140,7 @@ export default function Canvas() {
 
   // Update cursor when tool changes
   useEffect(() => {
-    if (tool === 'bbox') {
+    if (tool === 'bbox' || tool === 'polygon') {
       setCanvasCursor('crosshair');
     } else {
       setCanvasCursor('default');
@@ -208,11 +210,16 @@ export default function Canvas() {
       drawBboxPreview(ctx, x, y, zoom);
     }
 
+    // Draw polygon preview
+    if (tool === 'polygon' && polygonVertices.length > 0) {
+      drawPolygonPreview(ctx, x, y, zoom);
+    }
+
     // Draw crosshair if drawing tool is active
-    if (tool === 'bbox' && !isDrawing && preferences.showLabels) {
+    if ((tool === 'bbox' || tool === 'polygon') && !isDrawing && preferences.showLabels) {
       drawCrosshair(ctx, canvas.width, canvas.height);
     }
-  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project]);
+  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices]);
 
   // Draw grid
   const drawGrid = (
@@ -375,6 +382,37 @@ export default function Canvas() {
     bboxTool.renderPreview(renderCtx, toolState);
   };
 
+  // Draw polygon preview while drawing
+  const drawPolygonPreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (polygonVertices.length === 0 || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const currentPos = canvasState.cursor;
+
+    // Create render context for tools
+    const renderCtx: CanvasRenderContext = {
+      ctx,
+      offsetX,
+      offsetY,
+      zoom,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      showLabels: preferences.showLabels,
+      darkMode: preferences.darkMode,
+    };
+
+    // Create tool state
+    const toolState = {
+      isDrawing: true,
+      drawingStart: null,
+      currentCursor: currentPos,
+      vertices: polygonVertices,
+    };
+
+    // Use polygon tool to render preview
+    polygonTool.renderPreview(renderCtx, toolState);
+  };
+
   // Draw crosshair
   const drawCrosshair = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const { cursor } = canvasState;
@@ -483,13 +521,61 @@ export default function Canvas() {
     // Check if click is within image bounds
     const isInImage = x >= imgX && x <= imgX + scaledWidth && y >= imgY && y <= imgY + scaledHeight;
 
+    // Check if classes are available for the current task
+    const currentClasses = getCurrentClasses();
+    const hasClasses = Object.keys(currentClasses).length > 0;
+
     // If bbox tool is active, start drawing (only within image)
     if (tool === 'bbox' && isInImage) {
+      if (!hasClasses) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
       startDrawing({ x, y });
+    }
+
+    // If polygon tool is active, add vertex or close polygon (only within image)
+    if (tool === 'polygon' && isInImage) {
+      if (!hasClasses && polygonVertices.length === 0) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
+      const closeThreshold = 15;
+
+      // Check if closing polygon (click near first vertex)
+      if (polygonVertices.length >= 3) {
+        const [firstX, firstY] = polygonVertices[0];
+        const dx = x - firstX;
+        const dy = y - firstY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < closeThreshold) {
+          // Close polygon - convert canvas coords to image coords
+          const imagePoints = polygonVertices.map(([vx, vy]): [number, number] => [
+            (vx - imgX) / zoom,
+            (vy - imgY) / zoom,
+          ]);
+
+          // Store pending polygon and show class selector
+          setPendingBbox(null); // Clear any pending bbox
+          // Store polygon points in a temporary state (reuse pendingBbox pattern)
+          (window as any).__pendingPolygon = imagePoints;
+          setShowClassSelector(true);
+          setPolygonVertices([]);
+          return;
+        }
+      }
+
+      // Add vertex
+      setPolygonVertices([...polygonVertices, [x, y]]);
     }
 
     // If classification tool is active, show class selector (only within image)
     if (tool === 'classification' && isInImage) {
+      if (!hasClasses) {
+        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
+        return;
+      }
       setShowClassSelector(true);
     }
   };
@@ -516,7 +602,18 @@ export default function Canvas() {
       // Default cursor based on tool and image position
       let newCursor = 'default';
       if (isInImage) {
-        newCursor = tool === 'bbox' ? 'crosshair' : 'default';
+        newCursor = (tool === 'bbox' || tool === 'polygon') ? 'crosshair' : 'default';
+      }
+
+      // Check if near first vertex for polygon closing
+      if (tool === 'polygon' && polygonVertices.length >= 3) {
+        const [firstX, firstY] = polygonVertices[0];
+        const dx = x - firstX;
+        const dy = y - firstY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 15) {
+          newCursor = 'pointer';
+        }
       }
 
       // Check if hovering over selected annotation's handle (only in select mode)
@@ -895,11 +992,34 @@ export default function Canvas() {
 
     try {
       let annotationData: AnnotationCreateRequest;
-      let annotationType: 'bbox' | 'classification';
+      let annotationType: 'bbox' | 'polygon' | 'classification';
       let geometry: any;
 
-      // Check if this is for bbox or classification
-      if (pendingBbox) {
+      // Check for pending polygon
+      const pendingPolygon = (window as any).__pendingPolygon as [number, number][] | undefined;
+
+      // Check if this is for bbox, polygon, or classification
+      if (pendingPolygon) {
+        // Polygon annotation
+        annotationType = 'polygon';
+
+        // Clip polygon points to image bounds
+        const imgWidth = image?.width || currentImage.width || 0;
+        const imgHeight = image?.height || currentImage.height || 0;
+
+        const clippedPoints = pendingPolygon.map(([px, py]): [number, number] => [
+          Math.max(0, Math.min(imgWidth, px)),
+          Math.max(0, Math.min(imgHeight, py)),
+        ]);
+
+        geometry = {
+          type: 'polygon',
+          points: clippedPoints,
+        };
+
+        // Clear pending polygon
+        delete (window as any).__pendingPolygon;
+      } else if (pendingBbox) {
         // BBox annotation
         annotationType = 'bbox';
 
@@ -1344,6 +1464,39 @@ export default function Canvas() {
         return;
       }
 
+      // Enter: Close polygon (if drawing)
+      if (e.key === 'Enter' && tool === 'polygon' && polygonVertices.length >= 3 && image) {
+        e.preventDefault();
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const { zoom, pan } = canvasState;
+        const scaledWidth = image.width * zoom;
+        const scaledHeight = image.height * zoom;
+        const imgX = (rect.width - scaledWidth) / 2 + pan.x;
+        const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+        // Convert canvas coords to image coords
+        const imagePoints = polygonVertices.map(([vx, vy]): [number, number] => [
+          (vx - imgX) / zoom,
+          (vy - imgY) / zoom,
+        ]);
+
+        // Store pending polygon and show class selector
+        setPendingBbox(null);
+        (window as any).__pendingPolygon = imagePoints;
+        setShowClassSelector(true);
+        setPolygonVertices([]);
+        return;
+      }
+
+      // Escape: Cancel polygon drawing
+      if (e.key === 'Escape' && tool === 'polygon' && polygonVertices.length > 0) {
+        e.preventDefault();
+        setPolygonVertices([]);
+        return;
+      }
+
       // Space: Confirm Image (supports batch)
       // Must have annotations or no_object to confirm (same condition as button)
       const canConfirm = (annotations.length > 0 || (currentImage as any)?.has_no_object) && !isImageConfirmed;
@@ -1368,7 +1521,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -1404,8 +1557,8 @@ export default function Canvas() {
           <span>Select</span>
         </button>
 
-        {/* Phase 2.9: Show BBox tool only for detection and segmentation tasks */}
-        {currentTask !== 'classification' && (
+        {/* Phase 2.9: Show BBox tool for detection tasks */}
+        {currentTask === 'detection' && (
           <button
             onClick={() => setTool('bbox')}
             className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
@@ -1413,12 +1566,30 @@ export default function Canvas() {
                 ? 'bg-violet-500 text-white'
                 : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
-            title="Bounding Box (W)"
+            title="Bounding Box (B)"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <rect x="4" y="4" width="16" height="16" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />
             </svg>
             <span>BBox</span>
+          </button>
+        )}
+
+        {/* Polygon tool for segmentation tasks */}
+        {currentTask === 'segmentation' && (
+          <button
+            onClick={() => setTool('polygon')}
+            className={`px-4 py-2 rounded transition-all text-sm font-medium flex items-center gap-2 ${
+              tool === 'polygon'
+                ? 'bg-violet-500 text-white'
+                : 'text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+            title="Polygon (P)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+            <span>Polygon</span>
           </button>
         )}
 

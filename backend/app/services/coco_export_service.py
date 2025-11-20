@@ -157,35 +157,12 @@ def _build_annotations(
     image_id_to_coco_id = {img_id: idx + 1 for idx, img_id in enumerate(unique_image_ids)}
 
     for annotation in annotations:
-        # Skip non-bbox annotations for now (COCO primarily for object detection)
-        if annotation.annotation_type != "bbox":
+        # Skip non-bbox/polygon annotations (COCO for object detection & segmentation)
+        if annotation.annotation_type not in ("bbox", "polygon"):
             continue
 
-        # Extract bbox from geometry
+        # Extract geometry
         geometry = annotation.geometry
-
-        # Handle both formats:
-        # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
-        # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
-        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
-            bbox_arr = geometry['bbox']
-            x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
-            y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
-            width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
-            height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
-        elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
-            x = float(geometry["x"])
-            y = float(geometry["y"])
-            width = float(geometry["width"])
-            height = float(geometry["height"])
-        else:
-            continue
-
-        # COCO bbox format: [x, y, width, height]
-        bbox = [x, y, width, height]
-
-        # Calculate area
-        area = width * height
 
         # Get COCO image ID
         coco_image_id = image_id_to_coco_id.get(annotation.image_id)
@@ -201,15 +178,78 @@ def _build_annotations(
             except (ValueError, TypeError):
                 category_id = 1
 
-        coco_annotation = {
-            "id": annotation.id,
-            "image_id": coco_image_id,
-            "category_id": category_id,
-            "bbox": bbox,
-            "area": area,
-            "segmentation": [],  # Empty for bbox annotations
-            "iscrowd": 0,
-        }
+        if annotation.annotation_type == "bbox":
+            # Handle both formats:
+            # Format 1: {'type': 'bbox', 'bbox': [x, y, w, h]} (from frontend)
+            # Format 2: {'x': x, 'y': y, 'width': w, 'height': h} (legacy)
+            if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+                bbox_arr = geometry['bbox']
+                x = float(bbox_arr[0]) if len(bbox_arr) > 0 else 0
+                y = float(bbox_arr[1]) if len(bbox_arr) > 1 else 0
+                width = float(bbox_arr[2]) if len(bbox_arr) > 2 else 0
+                height = float(bbox_arr[3]) if len(bbox_arr) > 3 else 0
+            elif "x" in geometry and "y" in geometry and "width" in geometry and "height" in geometry:
+                x = float(geometry["x"])
+                y = float(geometry["y"])
+                width = float(geometry["width"])
+                height = float(geometry["height"])
+            else:
+                continue
+
+            # COCO bbox format: [x, y, width, height]
+            bbox = [x, y, width, height]
+
+            # Calculate area
+            area = width * height
+
+            coco_annotation = {
+                "id": annotation.id,
+                "image_id": coco_image_id,
+                "category_id": category_id,
+                "bbox": bbox,
+                "area": area,
+                "segmentation": [],  # Empty for bbox annotations
+                "iscrowd": 0,
+            }
+
+        elif annotation.annotation_type == "polygon":
+            # Handle polygon for segmentation
+            points = geometry.get('points', [])
+
+            if not points or len(points) < 3:
+                continue
+
+            # Calculate polygon area using shoelace formula
+            area = 0.0
+            n = len(points)
+            for i in range(n):
+                j = (i + 1) % n
+                area += points[i][0] * points[j][1]
+                area -= points[j][0] * points[i][1]
+            area = abs(area) / 2.0
+
+            # Calculate bounding box from polygon points
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+
+            # Flatten points for COCO segmentation format
+            # COCO expects [x1, y1, x2, y2, ...]
+            segmentation_flat = []
+            for point in points:
+                segmentation_flat.extend([float(point[0]), float(point[1])])
+
+            coco_annotation = {
+                "id": annotation.id,
+                "image_id": coco_image_id,
+                "category_id": category_id,
+                "bbox": bbox,
+                "area": area,
+                "segmentation": [segmentation_flat],  # COCO format: list of polygons
+                "iscrowd": 0,
+            }
 
         coco_annotations.append(coco_annotation)
 

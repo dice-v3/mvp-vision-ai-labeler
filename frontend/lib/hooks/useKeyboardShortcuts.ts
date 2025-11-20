@@ -126,9 +126,21 @@ export function useKeyboardShortcuts() {
           e.preventDefault();
           if (currentTask === 'classification') {
             setTool('classification');
+          } else if (currentTask === 'segmentation') {
+            setTool('polygon');
           } else {
             setTool('bbox');
           }
+          break;
+        case 'b':
+          // BBox tool (detection shortcut)
+          e.preventDefault();
+          setTool('bbox');
+          break;
+        case 'p':
+          // Polygon tool (segmentation shortcut)
+          e.preventDefault();
+          setTool('polygon');
           break;
         case 'delete':
         case 'backspace':

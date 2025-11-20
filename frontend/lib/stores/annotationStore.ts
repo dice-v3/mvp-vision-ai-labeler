@@ -438,11 +438,13 @@ export const useAnnotationStore = create<AnnotationState>()(
         }
 
         // Phase 2.9: Use task_classes structure
-        if (project.taskClasses && project.taskClasses[currentTask]) {
-          return project.taskClasses[currentTask];
+        // If taskClasses exists and has any tasks configured, use strict mode
+        if (project.taskClasses && Object.keys(project.taskClasses).length > 0) {
+          // Return current task's classes or empty object if not configured
+          return project.taskClasses[currentTask] || {};
         }
 
-        // Fallback to legacy classes field
+        // Fallback to legacy classes field (only if taskClasses not configured at all)
         return project.classes || {};
       },
 
