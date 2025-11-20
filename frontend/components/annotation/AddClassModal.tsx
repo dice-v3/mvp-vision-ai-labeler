@@ -1,7 +1,11 @@
 /**
- * Add Class Modal Component
+ * Add Class Modal Component - REFACTORED
  *
- * Modal for adding a new class to the project
+ * Modal for adding a new class to the project's current task
+ *
+ * REFACTORING CHANGES:
+ * - currentTask is now required (classes are task-specific)
+ * - Validates currentTask before submitting
  */
 
 'use client';
@@ -14,7 +18,7 @@ interface AddClassModalProps {
   onClose: () => void;
   projectId: string;
   onClassAdded: () => void;
-  currentTask?: string;
+  currentTask: string; // REFACTORED: Now required
 }
 
 // Convert HSL to HEX
