@@ -133,9 +133,14 @@ class StorageClient:
                     expiration=3600
                 )
 
+                # Extract image ID from filename (without extension)
+                image_id = filename.rsplit('.', 1)[0] if '.' in filename else filename
+
                 images.append({
+                    'id': image_id,
                     'key': key,
                     'filename': filename,
+                    'file_name': filename,  # Frontend expects file_name
                     'size': obj['Size'],
                     'last_modified': obj['LastModified'].isoformat(),
                     'url': presigned_url
