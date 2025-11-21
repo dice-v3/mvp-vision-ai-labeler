@@ -211,6 +211,7 @@ interface AnnotationState {
   // Project & Images
   setProject: (project: Project) => void;
   setImages: (images: ImageData[]) => void;
+  loadMoreImages: (newImages: ImageData[]) => void;  // Phase 2.12: Append more images for pagination
   setCurrentIndex: (index: number) => void;
   goToNextImage: () => void;
   goToPrevImage: () => void;
@@ -370,6 +371,12 @@ export const useAnnotationStore = create<AnnotationState>()(
       setImages: (images) => {
         const currentImage = images.length > 0 ? images[0] : null;
         set({ images, currentImage, currentIndex: 0 });
+      },
+
+      // Phase 2.12: Load more images (append to existing images)
+      loadMoreImages: (newImages) => {
+        const { images } = get();
+        set({ images: [...images, ...newImages] });
       },
 
       setCurrentIndex: (index) => {
