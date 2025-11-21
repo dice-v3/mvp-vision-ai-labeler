@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth/context';
 import { listDatasets, updateDataset } from '@/lib/api/datasets';
 import { getProjectForDataset, getDatasetImages, type DatasetImage } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
-import { getProjectImageStatuses } from '@/lib/api/projects';
+import { getProjectStats } from '@/lib/api/projects';
 import { listPermissions, inviteUser, updateUserRole, removeUser, type Permission } from '@/lib/api/permissions';
 import type { Dataset, Project } from '@/lib/types';
 import { toast } from '@/lib/stores/toastStore';
@@ -124,23 +124,21 @@ export default function DashboardPage() {
       const projectData = await getProjectForDataset(datasetId);
       setProject(projectData);
 
-      // Phase 2.9: Load task-based statistics
+      // Phase 2.12: Load task-based statistics using optimized endpoint
       if (projectData.task_types && projectData.task_types.length > 0) {
-        const stats: TaskStats[] = [];
-        let maxProgress = -1;
-        let bestTask = projectData.task_types[0];
+        try {
+          const statsResponse = await getProjectStats(projectData.id);
+          const stats: TaskStats[] = [];
+          let maxProgress = -1;
+          let bestTask = projectData.task_types[0];
 
-        for (const taskType of projectData.task_types) {
-          try {
-            const statusResponse = await getProjectImageStatuses(projectData.id, taskType);
-            const completedCount = statusResponse.statuses.filter(
-              s => s.status === 'completed' || s.is_image_confirmed
-            ).length;
-            const total = projectData.total_images;
+          for (const taskStat of statsResponse.task_stats) {
+            const completedCount = taskStat.completed + taskStat.confirmed;
+            const total = taskStat.total_images;
             const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
 
             stats.push({
-              taskType,
+              taskType: taskStat.task_type,
               completedImages: completedCount,
               totalImages: total,
               progressPercent: percent,
@@ -148,22 +146,20 @@ export default function DashboardPage() {
 
             if (completedCount > maxProgress) {
               maxProgress = completedCount;
-              bestTask = taskType;
+              bestTask = taskStat.task_type;
             }
-          } catch (err) {
-            console.error(`Failed to load stats for ${taskType}:`, err);
-            stats.push({
-              taskType,
-              completedImages: 0,
-              totalImages: projectData.total_images,
-              progressPercent: 0,
-            });
           }
-        }
 
-        setTaskStats(stats);
-        setSelectedTask(bestTask);
-        setPrimaryTask(bestTask);
+          setTaskStats(stats);
+          setSelectedTask(bestTask);
+          setPrimaryTask(bestTask);
+        } catch (err) {
+          console.error('Failed to load project stats:', err);
+          // Fallback to empty stats
+          setTaskStats([]);
+          setSelectedTask(null);
+          setPrimaryTask(null);
+        }
       } else {
         setTaskStats([]);
         setSelectedTask(null);

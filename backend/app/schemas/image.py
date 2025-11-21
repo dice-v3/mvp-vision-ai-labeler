@@ -77,3 +77,26 @@ class ImageConfirmResponse(BaseModel):
     status: str
     total_annotations: int
     confirmed_annotations: int
+
+
+# Phase 2.12: Project Statistics Schemas
+class TaskStatsResponse(BaseModel):
+    """Statistics for a single task type."""
+
+    task_type: str
+    total_images: int
+    not_started: int
+    in_progress: int
+    completed: int
+    confirmed: int
+
+
+class ProjectStatsResponse(BaseModel):
+    """Aggregate statistics for a project, broken down by task type.
+
+    Phase 2.12: Optimized endpoint that returns counts without loading all status records.
+    """
+
+    project_id: str
+    total_images: int
+    task_stats: List[TaskStatsResponse]

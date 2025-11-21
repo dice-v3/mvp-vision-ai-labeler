@@ -22,6 +22,8 @@ from app.schemas.image import (
     ImageStatusListResponse,
     ImageConfirmRequest,
     ImageConfirmResponse,
+    ProjectStatsResponse,
+    TaskStatsResponse,
 )
 from app.schemas.class_schema import ClassCreateRequest, ClassUpdateRequest, ClassResponse
 from app.services.image_status_service import confirm_image_status, unconfirm_image_status
@@ -553,6 +555,125 @@ async def get_project_image_statuses(
         statuses=status_responses,
         total=total_count,  # Phase 2.12: Use total count from query, not len()
         project_id=project_id,
+    )
+
+
+# Phase 2.12: Performance Optimization - Aggregate Statistics Endpoint
+@router.get("/{project_id}/stats", response_model=ProjectStatsResponse, tags=["Project Statistics"])
+async def get_project_stats(
+    project_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get aggregate statistics for a project without loading individual status records.
+
+    Phase 2.12: Optimized endpoint for dashboard to avoid loading thousands of status records.
+
+    Returns:
+    - Total number of images
+    - For each task type: count of images by status (not-started, in-progress, completed, confirmed)
+
+    This uses SQL aggregation (COUNT GROUP BY) instead of loading all records into memory.
+    """
+    # Verify project exists
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Check ownership/permission
+    if project.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this project",
+        )
+
+    # Get total images from project
+    total_images = project.total_images
+
+    task_stats = []
+
+    # If project has task_types, get stats for each task
+    if project.task_types and len(project.task_types) > 0:
+        for task_type in project.task_types:
+            # Use SQL aggregation to count by status - much faster than loading all records!
+            status_counts = labeler_db.query(
+                ImageAnnotationStatus.status,
+                func.count(ImageAnnotationStatus.id).label('count')
+            ).filter(
+                ImageAnnotationStatus.project_id == project_id,
+                ImageAnnotationStatus.task_type == task_type
+            ).group_by(ImageAnnotationStatus.status).all()
+
+            # Count confirmed images
+            confirmed_count = labeler_db.query(func.count(ImageAnnotationStatus.id)).filter(
+                ImageAnnotationStatus.project_id == project_id,
+                ImageAnnotationStatus.task_type == task_type,
+                ImageAnnotationStatus.is_image_confirmed == True
+            ).scalar() or 0
+
+            # Build counts dict
+            counts = {"not-started": 0, "in-progress": 0, "completed": 0}
+            for status_name, count in status_counts:
+                if status_name in counts:
+                    counts[status_name] = count
+
+            # Handle images that don't have status entries yet
+            # (they're implicitly "not-started")
+            total_with_status = sum(counts.values())
+            if total_with_status < total_images:
+                counts["not-started"] += (total_images - total_with_status)
+
+            task_stats.append(TaskStatsResponse(
+                task_type=task_type,
+                total_images=total_images,
+                not_started=counts["not-started"],
+                in_progress=counts["in-progress"],
+                completed=counts["completed"],
+                confirmed=confirmed_count
+            ))
+    else:
+        # No task types, return overall stats
+        status_counts = labeler_db.query(
+            ImageAnnotationStatus.status,
+            func.count(ImageAnnotationStatus.id).label('count')
+        ).filter(
+            ImageAnnotationStatus.project_id == project_id
+        ).group_by(ImageAnnotationStatus.status).all()
+
+        confirmed_count = labeler_db.query(func.count(ImageAnnotationStatus.id)).filter(
+            ImageAnnotationStatus.project_id == project_id,
+            ImageAnnotationStatus.is_image_confirmed == True
+        ).scalar() or 0
+
+        counts = {"not-started": 0, "in-progress": 0, "completed": 0}
+        for status_name, count in status_counts:
+            if status_name in counts:
+                counts[status_name] = count
+
+        total_with_status = sum(counts.values())
+        if total_with_status < total_images:
+            counts["not-started"] += (total_images - total_with_status)
+
+        task_stats.append(TaskStatsResponse(
+            task_type="default",
+            total_images=total_images,
+            not_started=counts["not-started"],
+            in_progress=counts["in-progress"],
+            completed=counts["completed"],
+            confirmed=confirmed_count
+        ))
+
+    return ProjectStatsResponse(
+        project_id=project_id,
+        total_images=total_images,
+        task_stats=task_stats
     )
 
 

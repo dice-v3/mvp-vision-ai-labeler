@@ -180,3 +180,31 @@ export async function addTaskType(projectId: string, taskType: string): Promise<
     task_type: taskType
   });
 }
+
+// ============================================================================
+// Phase 2.12: Project Statistics API
+// ============================================================================
+
+export interface TaskStats {
+  task_type: string;
+  total_images: number;
+  not_started: number;
+  in_progress: number;
+  completed: number;
+  confirmed: number;
+}
+
+export interface ProjectStats {
+  project_id: string;
+  total_images: number;
+  task_stats: TaskStats[];
+}
+
+/**
+ * Get aggregate statistics for a project (optimized - no individual status records)
+ *
+ * Phase 2.12: Efficient endpoint for dashboard that uses SQL aggregation
+ */
+export async function getProjectStats(projectId: string): Promise<ProjectStats> {
+  return apiClient.get<ProjectStats>(`/api/v1/projects/${projectId}/stats`);
+}
