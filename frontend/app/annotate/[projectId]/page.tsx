@@ -7,7 +7,7 @@
  * Route: /annotate/[projectId]
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
@@ -64,10 +64,13 @@ export default function AnnotationPage() {
     setError,
     setProject,
     images,
+    totalImages,
     setImages,
+    loadMoreImages,
     setAnnotations,
     loadPreferences,
     currentImage,
+    currentIndex,
     currentTask,
     preferences,
   } = useAnnotationStore();
@@ -303,6 +306,63 @@ export default function AnnotationPage() {
 
     reloadImageStatuses();
   }, [projectId, currentTask]); // Reload when task changes
+
+  // Phase 2.12: Auto-load more images when navigating near the end
+  const isLoadingMoreRef = useRef(false);
+  useEffect(() => {
+    // Check if user is within 10 images of the end of loaded images
+    const threshold = 10;
+    const isNearEnd = currentIndex >= images.length - threshold;
+    const hasMoreImages = images.length < totalImages;
+    const shouldLoadMore = isNearEnd && hasMoreImages && !isLoadingMoreRef.current;
+
+    if (shouldLoadMore && projectId) {
+      isLoadingMoreRef.current = true;
+
+      const loadMore = async () => {
+        try {
+          const offset = images.length;
+          const limit = 50;
+
+          console.log(`[Auto-load] Loading more images at index ${currentIndex}, offset ${offset}`);
+
+          // Fetch next batch of images
+          const imageResponse = await getProjectImages(projectId, limit, offset);
+
+          // Fetch image statuses for the new images
+          const imageStatusesResponse = await getProjectImageStatuses(projectId, currentTask || undefined, limit, offset);
+          const imageStatusMap = new Map(
+            imageStatusesResponse.statuses.map(s => [s.image_id, s])
+          );
+
+          // Convert to ImageData format with status info
+          const convertedImages = imageResponse.images.map(img => {
+            const imgId = String(img.id);
+            const status = imageStatusMap.get(imgId);
+            return {
+              ...img,
+              id: imgId,
+              annotation_count: status?.total_annotations || 0,
+              is_confirmed: status?.is_image_confirmed || false,
+              status: status?.status || 'not-started',
+              confirmed_at: status?.confirmed_at,
+              has_no_object: status?.has_no_object || false,
+            };
+          });
+
+          // Append new images
+          loadMoreImages(convertedImages);
+          console.log(`[Auto-load] Loaded ${convertedImages.length} more images`);
+        } catch (error) {
+          console.error('[Auto-load] Failed to load more images:', error);
+        } finally {
+          isLoadingMoreRef.current = false;
+        }
+      };
+
+      loadMore();
+    }
+  }, [currentIndex, images.length, totalImages, projectId, currentTask, loadMoreImages]);
 
   if (authLoading || loading) {
     return (
