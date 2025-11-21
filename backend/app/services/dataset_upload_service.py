@@ -14,10 +14,12 @@ import json
 from typing import List, Dict, Optional, Tuple
 from fastapi import UploadFile
 from datetime import datetime
+from sqlalchemy.orm import Session
 
 from app.core.storage import storage_client
 from app.core.config import settings
 from app.services.thumbnail_service import create_thumbnail, get_thumbnail_path
+from app.db.models.labeler import ImageMetadata  # Phase 2.12: Performance
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +41,18 @@ class UploadResult:
 async def upload_files_to_s3(
     dataset_id: str,
     files: List[UploadFile],
+    labeler_db: Session,  # Phase 2.12: For saving metadata
     preserve_structure: bool = True
 ) -> UploadResult:
     """
     Upload files to S3 with optional folder structure preservation.
 
+    Phase 2.12: Now saves image metadata to DB for fast lookups.
+
     Args:
         dataset_id: Dataset ID
         files: List of uploaded files
+        labeler_db: Database session for saving metadata
         preserve_structure: Whether to preserve folder structure
 
     Returns:
@@ -59,7 +65,7 @@ async def upload_files_to_s3(
     for file in files:
         # Handle ZIP files
         if file.filename and file.filename.lower().endswith('.zip'):
-            result = await upload_zip_with_structure(dataset_id, file)
+            result = await upload_zip_with_structure(dataset_id, file, labeler_db)
             images_count += result.images_count
             total_bytes += result.total_bytes
             folder_structure.update(result.folder_structure)
@@ -70,9 +76,11 @@ async def upload_files_to_s3(
             if preserve_structure and '/' in file.filename:
                 # Keep folder structure
                 s3_key = f"datasets/{dataset_id}/images/{file.filename}"
+                folder_path = os.path.dirname(file.filename)
             else:
                 # Flat structure
                 s3_key = f"datasets/{dataset_id}/images/{os.path.basename(file.filename)}"
+                folder_path = None
 
             # Upload original to S3
             content = await file.read()
@@ -97,6 +105,23 @@ async def upload_files_to_s3(
                     ContentType='image/jpeg'
                 )
                 logger.debug(f"Uploaded thumbnail: {thumbnail_key} ({len(thumbnail_bytes)} bytes)")
+
+            # Phase 2.12: Save image metadata to DB
+            file_name = os.path.basename(file.filename)
+            image_id = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
+
+            db_image = ImageMetadata(
+                id=image_id,
+                dataset_id=dataset_id,
+                file_name=file_name,
+                s3_key=s3_key,
+                folder_path=folder_path,
+                size=len(content),
+                uploaded_at=datetime.utcnow(),
+                last_modified=datetime.utcnow()
+            )
+            labeler_db.add(db_image)
+            logger.debug(f"Saved metadata for image: {image_id}")
 
             # Track folder structure
             if '/' in file.filename:

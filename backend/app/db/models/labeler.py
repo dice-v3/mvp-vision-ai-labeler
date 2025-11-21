@@ -134,6 +134,55 @@ class DatasetPermission(LabelerBase):
         return f"<DatasetPermission(dataset_id='{self.dataset_id}', user_id={self.user_id}, role='{self.role}')>"
 
 
+# Phase 2.12: Performance Optimization - Image Metadata Table
+class ImageMetadata(LabelerBase):
+    """
+    Image metadata table for fast lookups without S3 list operations.
+
+    Phase 2.12: Store image metadata in DB to avoid expensive S3 list_objects calls.
+    - Enables true pagination with offset/limit
+    - Drastically improves performance (DB query vs S3 API)
+    - Presigned URLs still generated on-demand
+    """
+
+    __tablename__ = "image_metadata"
+
+    # Primary key
+    id = Column(String(200), primary_key=True)  # Image ID (filename without extension)
+
+    # Foreign keys
+    dataset_id = Column(
+        String(100),
+        ForeignKey('datasets.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+
+    # Image info
+    file_name = Column(String(500), nullable=False)  # Full filename with extension
+    s3_key = Column(String(1000), nullable=False)  # Full S3 key path
+    folder_path = Column(String(1000))  # Folder path within dataset (e.g., "train/defect")
+
+    # File metadata
+    size = Column(BigInteger, nullable=False)  # File size in bytes
+    width = Column(Integer)  # Image width in pixels (optional)
+    height = Column(Integer)  # Image height in pixels (optional)
+
+    # Timestamps
+    uploaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_modified = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Indexes for fast queries
+    __table_args__ = (
+        Index("ix_image_metadata_dataset", "dataset_id"),
+        Index("ix_image_metadata_folder", "dataset_id", "folder_path"),
+        Index("ix_image_metadata_uploaded", "dataset_id", "uploaded_at"),
+    )
+
+    def __repr__(self):
+        return f"<ImageMetadata(id='{self.id}', file_name='{self.file_name}', dataset_id='{self.dataset_id}')>"
+
+
 class AnnotationProject(LabelerBase):
     """Annotation project."""
 
