@@ -326,15 +326,9 @@ async def get_or_create_project_for_dataset(
         labeler_db.commit()
         labeler_db.refresh(project)
 
-    # Calculate real-time class statistics from Labeler DB
+    # REFACTORING: Calculate real-time class statistics from Labeler DB
+    # Legacy classes field removed - use task_classes only
     live_class_stats = calculate_class_statistics(project.id, labeler_db)
-
-    # Update project.classes with live statistics
-    updated_classes = dict(project.classes) if project.classes else {}
-    for class_id, class_info in updated_classes.items():
-        stats = live_class_stats.get(class_id, {'image_count': 0, 'bbox_count': 0})
-        class_info['image_count'] = stats['image_count']
-        class_info['bbox_count'] = stats['bbox_count']
 
     # Update project.task_classes with live statistics
     updated_task_classes = {}
@@ -378,8 +372,7 @@ async def get_or_create_project_for_dataset(
         owner_id=project.owner_id,
         task_types=project.task_types,
         task_config=project.task_config,
-        task_classes=updated_task_classes,  # Phase 2.9: Task-based classes with live stats
-        classes=updated_classes,  # Legacy field for backward compatibility
+        task_classes=updated_task_classes,  # Task-based classes with live stats
         settings=project.settings,
         total_images=project.total_images,
         annotated_images=live_annotated_images,  # Use live data

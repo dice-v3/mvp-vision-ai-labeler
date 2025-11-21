@@ -39,7 +39,7 @@ class AddTaskTypeRequest(BaseModel):
 
 
 class ProjectResponse(BaseModel):
-    """Annotation project response."""
+    """Annotation project response - REFACTORED."""
     id: str
     name: str
     description: Optional[str] = None
@@ -47,8 +47,7 @@ class ProjectResponse(BaseModel):
     owner_id: int
     task_types: List[str]
     task_config: Dict[str, Any]
-    task_classes: Dict[str, Dict[str, Any]] = {}  # Phase 2.9: Task-based classes
-    classes: Dict[str, Any]  # Legacy field
+    task_classes: Dict[str, Dict[str, Any]] = {}  # Task-based classes (REFACTORED: classes field removed)
     settings: Dict[str, Any]
     total_images: int
     annotated_images: int
