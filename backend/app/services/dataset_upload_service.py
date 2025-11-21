@@ -72,14 +72,17 @@ async def upload_files_to_s3(
 
         # Handle individual images
         elif file.filename and is_image_file(file.filename):
-            # Determine S3 key
+            # Determine S3 key and relative path
             if preserve_structure and '/' in file.filename:
                 # Keep folder structure
-                s3_key = f"datasets/{dataset_id}/images/{file.filename}"
-                folder_path = os.path.dirname(file.filename)
+                relative_path = file.filename
+                s3_key = f"datasets/{dataset_id}/images/{relative_path}"
+                folder_path = os.path.dirname(relative_path)
             else:
                 # Flat structure
-                s3_key = f"datasets/{dataset_id}/images/{os.path.basename(file.filename)}"
+                file_name = os.path.basename(file.filename)
+                relative_path = file_name
+                s3_key = f"datasets/{dataset_id}/images/{file_name}"
                 folder_path = None
 
             # Upload original to S3
@@ -107,8 +110,9 @@ async def upload_files_to_s3(
                 logger.debug(f"Uploaded thumbnail: {thumbnail_key} ({len(thumbnail_bytes)} bytes)")
 
             # Phase 2.12: Save image metadata to DB
+            # Generate unique image ID (relative path without extension)
+            image_id = relative_path.rsplit('.', 1)[0] if '.' in relative_path else relative_path
             file_name = os.path.basename(file.filename)
-            image_id = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
 
             db_image = ImageMetadata(
                 id=image_id,
@@ -141,14 +145,18 @@ async def upload_files_to_s3(
 
 async def upload_zip_with_structure(
     dataset_id: str,
-    zip_file: UploadFile
+    zip_file: UploadFile,
+    labeler_db: Session
 ) -> UploadResult:
     """
     Extract ZIP and upload with folder structure.
 
+    Phase 2.12: Now saves image metadata to DB for fast lookups.
+
     Args:
         dataset_id: Dataset ID
         zip_file: ZIP file upload
+        labeler_db: Database session for saving metadata
 
     Returns:
         UploadResult with counts and structure info
@@ -198,12 +206,30 @@ async def upload_zip_with_structure(
                 )
                 logger.debug(f"Uploaded thumbnail: {thumbnail_key} ({len(thumbnail_bytes)} bytes)")
 
+            # Phase 2.12: Save image metadata to DB
+            # Generate unique image ID (relative path without extension)
+            image_id = member.rsplit('.', 1)[0] if '.' in member else member
+            file_name = os.path.basename(member)
+            folder_path = os.path.dirname(member) if os.path.dirname(member) else None
+
+            db_image = ImageMetadata(
+                id=image_id,
+                dataset_id=dataset_id,
+                file_name=file_name,
+                s3_key=s3_key,
+                folder_path=folder_path,
+                size=len(content),
+                uploaded_at=datetime.utcnow(),
+                last_modified=datetime.utcnow()
+            )
+            labeler_db.add(db_image)
+            logger.debug(f"Saved metadata for image: {image_id}")
+
             # Track folder structure
-            folder = os.path.dirname(member)
-            if folder:
-                if folder not in folder_structure:
-                    folder_structure[folder] = 0
-                folder_structure[folder] += 1
+            if folder_path:
+                if folder_path not in folder_structure:
+                    folder_structure[folder_path] = 0
+                folder_structure[folder_path] += 1
 
             logger.info(f"Uploaded from ZIP: {s3_key} ({len(content)} bytes)")
 

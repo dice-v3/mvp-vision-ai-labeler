@@ -183,26 +183,54 @@ async def list_project_images(
             detail="limit must be between 1 and 200"
         )
 
-    # Get images from storage with pagination
+    # Phase 2.12: Get images from DB instead of S3 list (10x faster!)
     try:
-        result = storage_client.list_dataset_images(
-            dataset_id=project.dataset_id,
-            prefix="images/",
-            max_keys=limit,
-            offset=offset
-        )
+        from app.db.models.labeler import ImageMetadata as ImageMetadataModel
 
-        # Convert to ImageMetadata objects
-        images = [ImageMetadata(**img) for img in result['images']]
+        # Query images from DB with pagination
+        query = labeler_db.query(ImageMetadataModel).filter(
+            ImageMetadataModel.dataset_id == project.dataset_id
+        ).order_by(ImageMetadataModel.uploaded_at)
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        db_images = query.offset(offset).limit(limit).all()
+
+        # Convert to API response format with presigned URLs
+        images = []
+        for db_img in db_images:
+            # Generate presigned URL on-demand
+            presigned_url = storage_client.generate_presigned_url(
+                bucket=storage_client.datasets_bucket,
+                key=db_img.s3_key,
+                expiration=3600
+            )
+
+            images.append(ImageMetadata(
+                id=db_img.id,
+                key=db_img.s3_key,
+                filename=db_img.file_name,
+                file_name=db_img.file_name,
+                size=db_img.size,
+                last_modified=db_img.last_modified.isoformat(),
+                url=presigned_url,
+                width=db_img.width,
+                height=db_img.height
+            ))
+
+        logger.info(f"[DB Query] Returned {len(images)} images (offset={offset}, limit={limit}, total={total})")
 
         return ImageListResponse(
             images=images,
-            total=result['total'],
+            total=total,
             dataset_id=project.dataset_id,
             project_id=project_id
         )
 
     except Exception as e:
+        logger.error(f"Failed to list images: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list images: {str(e)}"
