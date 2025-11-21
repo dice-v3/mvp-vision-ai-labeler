@@ -85,6 +85,21 @@ export async function getDatasetImages(
   return apiClient.get<DatasetImage[]>(`/api/v1/datasets/${datasetId}/images?limit=${limit}&offset=${offset}`);
 }
 
+export interface DatasetSize {
+  total_images: number;
+  total_bytes: number;
+  total_mb: number;
+  total_gb: number;
+}
+
+/**
+ * Get total dataset size statistics
+ * Phase 2.12: Performance optimization using DB aggregation
+ */
+export async function getDatasetSize(datasetId: string): Promise<DatasetSize> {
+  return apiClient.get<DatasetSize>(`/api/v1/datasets/${datasetId}/size`);
+}
+
 export interface DeletionImpact {
   dataset_id: string;
   dataset_name: string;

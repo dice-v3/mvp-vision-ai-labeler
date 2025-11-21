@@ -10,7 +10,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { listDatasets, updateDataset } from '@/lib/api/datasets';
-import { getProjectForDataset, getDatasetImages, type DatasetImage } from '@/lib/api/datasets';
+import { getProjectForDataset, getDatasetImages, getDatasetSize, type DatasetImage, type DatasetSize } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
 import { getProjectStats } from '@/lib/api/projects';
 import { listPermissions, inviteUser, updateUserRole, removeUser, type Permission } from '@/lib/api/permissions';
@@ -59,6 +59,8 @@ export default function DashboardPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false);
   const settingsDropdownRef = useRef<HTMLDivElement>(null);
+  // Phase 2.12: Dataset size
+  const [datasetSize, setDatasetSize] = useState<DatasetSize | null>(null);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -189,6 +191,15 @@ export default function DashboardPage() {
         setImages([]);
       } finally {
         setImagesLoading(false);
+      }
+
+      // Phase 2.12: Fetch dataset size
+      try {
+        const sizeData = await getDatasetSize(datasetId);
+        setDatasetSize(sizeData);
+      } catch (err) {
+        console.error('Failed to fetch dataset size:', err);
+        setDatasetSize(null);
       }
     } catch (err) {
       console.error('Failed to fetch project:', err);
@@ -513,7 +524,7 @@ export default function DashboardPage() {
                     };
 
                     return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white rounded-xl p-6 border border-gray-200">
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-medium text-gray-500">전체 이미지</h3>
@@ -545,6 +556,23 @@ export default function DashboardPage() {
                             </svg>
                           </div>
                           <p className="text-3xl font-bold text-green-600">{currentStats.progressPercent}%</p>
+                        </div>
+
+                        {/* Phase 2.12: Dataset size card */}
+                        <div className="bg-white rounded-xl p-6 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-500">데이터셋 용량</h3>
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                            </svg>
+                          </div>
+                          <p className="text-3xl font-bold text-blue-600">
+                            {datasetSize
+                              ? datasetSize.total_gb >= 1
+                                ? `${datasetSize.total_gb.toFixed(2)} GB`
+                                : `${datasetSize.total_mb.toFixed(1)} MB`
+                              : '-'}
+                          </p>
                         </div>
                       </div>
                     );
