@@ -1973,7 +1973,8 @@ async def batch_presigned_urls(
 |   - 2.7 Confirmation | 13 tasks | 21 hours | ✅ Complete |
 |   - 2.8 Version Mgmt | 15 tasks | 25 hours | ✅ Complete |
 |   - 2.9 Task Architecture | 15 tasks | 25 hours | ✅ Complete |
-|   - 2.10 Dataset Mgmt | 20 tasks | 62 hours | 🔄 In Progress |
+|   - 2.10 Dataset Mgmt | 20 tasks | 95 hours | 🔄 In Progress (2.10.1 Complete) |
+|   - 2.11 Task Type Refactoring | 12 tasks | 30 hours | ✅ Complete |
 | Phase 3: Multi-Task Tools | 29 tasks | 78 hours | ⏸️ Pending |
 | Phase 4: AI Integration | 22 tasks | 42 hours | ⏸️ Pending |
 | Phase 5: Polish & Optimization | 20 tasks | 40 hours | ⏸️ Pending |
@@ -2143,10 +2144,13 @@ POST /api/v1/storage/upload
 
 ---
 
-**Last Updated**: 2025-11-19
-**Next Review**: 2025-11-23
+**Last Updated**: 2025-11-21
+**Next Review**: 2025-11-25
 **Progress**: Phase 1: ✅ | Phase 2: ✅ | Phase 2.11: ✅ | Phase 3: 59% (17/29 tasks)
-**Status**: Phase 3.3 Polygon Tool verified complete. Phase 4.5 Large-Scale Dataset Support added to roadmap.
+**Status**:
+- Phase 3.3 Polygon Tool verified complete
+- Phase 4.5 Large-Scale Dataset Support added (67h, support 1M+ images)
+- Phase 2.10 Dataset Management expanded (95h total, ownership + folder upload)
 
 **Session 2025-11-19** (Classification Tool Implementation):
 - ✅ ClassificationTool.ts - Annotation tool class with badge rendering
@@ -2329,47 +2333,296 @@ Complete implementation of task-based annotation architecture enabling independe
 
 **Subtotal**: 15 hours (13h complete, 2h testing remaining)
 
-#### Phase 2.10.2: Dataset Upload (Weeks 8-9) - P1 High
+#### Phase 2.10.2: Dataset Creation & Ownership (Week 8) - P0 Critical ⭐ NEW
 
-**Goal**: Enable dataset upload from Labeler
-**Status**: ⏸️ Deferred (pending deletion implementation)
-**Estimate**: 25 hours
+**Goal**: Enable dataset creation with ownership and permission management
+**Status**: ⏸️ Planning
+**Priority**: P0 (Required before image upload)
+**Estimate**: 22 hours
 
-- [ ] **Backend: POST /api/v1/datasets/upload**
-  - Multi-file upload support
-  - ZIP extraction with folder structure preservation
-  - Annotation import (COCO/DICE format)
-  - Auto-create project
-  - **Estimate**: 8 hours
+**Scenario**: Create Empty Dataset → Upload Images (New/Additional)
 
-- [ ] **Backend: Upload services**
-  - `upload_files_to_s3()` - Handle images + ZIP
-  - `parse_annotation_file()` - Support COCO/DICE
-  - `import_annotations_to_db()` - Bulk insert
-  - **Estimate**: 6 hours
+**Permission Model**:
+- **Owner**: 1+ required, full control (invite users, change permissions, delete images/dataset)
+- **Member**: Labeling, add images, publish (cannot delete images)
 
-- [ ] **Frontend: Upload wizard**
-  - 4-step wizard (Info → Files → Annotations → Review)
-  - Drag & drop file upload
-  - Progress tracking
-  - Folder structure preview
-  - **Estimate**: 8 hours
+##### 2.10.2.1: Dataset Creation (6h)
 
-- [ ] **Frontend: Upload progress**
-  - Real-time upload progress (bytes/total)
-  - File validation
-  - Error handling
+- [ ] **Backend: POST /api/v1/datasets**
+  - Create empty dataset (name, description, task_types)
+  - Create in Platform DB (dataset record + owner)
+  - Create in Labeler DB (link to platform dataset)
+  - Return dataset_id and S3 path structure
+  - **Estimate**: 3 hours
+  - **File**: `backend/app/api/v1/endpoints/datasets.py`
+
+- [ ] **Frontend: Create Dataset Modal**
+  - Dataset name, description inputs
+  - Task type selection (detection, segmentation, classification, geometry)
+  - Multi-select task types with chips
+  - Validation (name required, unique)
+  - **Estimate**: 2 hours
+  - **File**: `frontend/components/datasets/CreateDatasetModal.tsx`
+
+- [ ] **Frontend: Integration**
+  - "Create Dataset" button in dashboard
+  - Success notification
+  - Navigate to dataset detail page after creation
+  - **Estimate**: 1 hour
+
+##### 2.10.2.2: Ownership Model (5h)
+
+- [ ] **Database: Permission tables**
+  - Platform DB: `dataset_permissions` table
+  - Columns: dataset_id, user_id, role (owner/member), granted_by, granted_at
+  - Unique constraint: (dataset_id, user_id)
+  - Check constraint: At least one owner per dataset
+  - **Estimate**: 2 hours
+  - **Migration**: Platform DB migration
+
+- [ ] **Backend: Permission middleware**
+  - Access control decorator: `@require_dataset_permission(role="owner")`
+  - Check user permission before allowing operations
+  - Apply to: delete image, delete dataset, change permissions
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/middleware/permissions.py`
+
+- [ ] **Backend: Permission queries**
+  - `get_user_datasets()` - Filter by user permissions
+  - `check_dataset_permission()` - Verify user role
+  - Optimize with JOIN queries
+  - **Estimate**: 1 hour
+
+##### 2.10.2.3: Permission Management API (6h)
+
+- [ ] **Backend: User invitation endpoint**
+  - `POST /api/v1/datasets/{id}/permissions/invite`
+  - Request: email, role (owner/member)
+  - Validate: Email exists in platform users
+  - Create permission record
+  - Send invitation email (optional)
   - **Estimate**: 3 hours
 
-**Subtotal**: 25 hours
+- [ ] **Backend: Permission CRUD**
+  - `GET /api/v1/datasets/{id}/permissions` - List users
+  - `PUT /api/v1/datasets/{id}/permissions/{user_id}` - Change role
+  - `DELETE /api/v1/datasets/{id}/permissions/{user_id}` - Remove user
+  - Validation: Cannot remove last owner
+  - **Estimate**: 2 hours
 
-**Requirements**:
-- ZIP support (preserve folder structure)
-- Annotation format detection (COCO/DICE/YOLO)
-- Image dimension extraction (PIL)
-- Duplicate name validation
+- [ ] **Backend: Owner transfer**
+  - `POST /api/v1/datasets/{id}/permissions/transfer-owner`
+  - Transfer ownership to another user
+  - Require current owner permission
+  - **Estimate**: 1 hour
 
-#### Phase 2.10.3: UI Enhancements (Week 10) - P2 Medium
+##### 2.10.2.4: Permission UI (5h)
+
+- [ ] **Frontend: Dataset detail permission section**
+  - Show current user's role (Owner/Member badge)
+  - List all users with their roles
+  - Owner count badge (e.g., "2 Owners")
+  - Member count badge
+  - **Estimate**: 2 hours
+  - **File**: `frontend/components/datasets/DatasetPermissions.tsx`
+
+- [ ] **Frontend: Invite user modal**
+  - Email input with autocomplete (from platform users)
+  - Role selector (Owner/Member radio buttons)
+  - Role description tooltips
+  - Only visible to owners
+  - **Estimate**: 2 hours
+
+- [ ] **Frontend: Manage permissions**
+  - Change role dropdown per user
+  - Remove user button (with confirmation)
+  - Transfer ownership button
+  - Disable actions for non-owners
+  - **Estimate**: 1 hour
+
+**Subtotal**: 22 hours
+
+**Platform Backend Integration**:
+- Dataset creation: `POST /platform/api/v1/datasets`
+- User lookup: `GET /platform/api/v1/users/search?email={email}`
+- Permission sync: Labeler reads from Platform DB `dataset_permissions` table
+
+---
+
+#### Phase 2.10.3: Image Upload with Folder Structure (Week 9) - P0 Critical ⭐ NEW
+
+**Goal**: Upload images with folder structure preservation (NO ZIP files)
+**Status**: ⏸️ Planning
+**Priority**: P0 Critical
+**Estimate**: 24 hours
+
+**S3 Storage Structure**:
+```
+s3://{dataset_bucket}/{dataset_id}/images/
+  └── bottle/
+      ├── broken_large/
+      │   ├── 000.png
+      │   └── 001.png
+      └── good/
+          └── 000.png
+```
+
+**Upload Modes**:
+1. **New Upload**: First upload to empty dataset
+2. **Additional Upload**: Add images to existing dataset (merge/overwrite options)
+
+**Path Normalization Issues**:
+- User uploads without `images/` folder → Auto-add
+- User uploads `images/images/` → Auto-fix
+- User uploads `dataset/bottle/` → Strip `dataset/`, keep `bottle/`
+
+##### 2.10.3.1: Folder Upload UI (7h)
+
+- [ ] **Frontend: Folder selection**
+  - Use `<input webkitdirectory>` for folder upload
+  - Display selected folder name and file count
+  - Show folder structure tree preview
+  - Support drag & drop for folders
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/datasets/UploadImagesModal.tsx`
+
+- [ ] **Frontend: Path mapping preview**
+  - Display detected folder structure
+  - Show source path → destination path mapping
+  - Highlight issues (missing `images/`, duplicate paths)
+  - Allow manual path correction
+  - Visual tree with icons (folder, image)
+  - **Estimate**: 3 hours
+
+- [ ] **Frontend: Upload mode selection**
+  - Radio buttons: New Upload / Additional Upload
+  - New Upload: Show "This will be the first upload"
+  - Additional Upload: Show merge/overwrite options
+  - Conflict resolution strategy selector
+  - **Estimate**: 1 hour
+
+##### 2.10.3.2: Path Normalization Logic (6h)
+
+- [ ] **Backend: Path analysis service**
+  - `analyze_folder_structure()` - Detect folder patterns
+  - Detect if `images/` folder exists in uploaded structure
+  - Detect duplicate `images/images/` patterns
+  - Detect common root folder to strip
+  - Return normalization suggestions
+  - **Estimate**: 3 hours
+  - **File**: `backend/app/services/path_normalization_service.py`
+
+- [ ] **Backend: Path normalization rules**
+  - Rule 1: If no `images/` in path, prepend `images/`
+  - Rule 2: If `images/images/`, remove duplicate
+  - Rule 3: Strip common root (e.g., `dataset_name/`)
+  - Rule 4: Preserve all subdirectories under `images/`
+  - Apply rules and return final paths
+  - **Estimate**: 2 hours
+
+- [ ] **Backend: Path validation**
+  - Validate no files outside `images/` folder
+  - Check for invalid characters in paths
+  - Detect duplicate filenames (same path)
+  - Return validation errors to frontend
+  - **Estimate**: 1 hour
+
+##### 2.10.3.3: Upload Service (8h)
+
+- [ ] **Backend: Batch upload endpoint**
+  - `POST /api/v1/datasets/{id}/images/upload`
+  - Accept multiple files with paths
+  - Request: `[{file: File, path: string}, ...]`
+  - Apply path normalization
+  - Upload to S3 with correct paths
+  - Create image records in Labeler DB
+  - Update Platform DB dataset metadata
+  - **Estimate**: 4 hours
+  - **File**: `backend/app/api/v1/endpoints/datasets.py`
+
+- [ ] **Backend: S3 upload with paths**
+  - `upload_file_with_path()` - Upload to exact S3 path
+  - Support parallel uploads (10 concurrent)
+  - Generate presigned URLs for uploaded images
+  - Store in Labeler DB: `file_path`, `file_name`, `file_size`
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/core/storage.py`
+
+- [ ] **Backend: Conflict resolution**
+  - Check if file already exists at path
+  - Merge mode: Skip existing files
+  - Overwrite mode: Replace existing files
+  - Return conflict report to frontend
+  - **Estimate**: 2 hours
+
+##### 2.10.3.4: Upload Progress & Error Handling (3h)
+
+- [ ] **Frontend: Upload progress tracking**
+  - Progress bar per file (uploading / complete / failed)
+  - Overall progress (N/M files complete)
+  - Upload speed estimate (MB/s, time remaining)
+  - Pause/Resume/Cancel buttons
+  - **Estimate**: 2 hours
+
+- [ ] **Frontend: Error handling**
+  - Show failed files with error messages
+  - Retry failed files button
+  - Download error log (CSV)
+  - Partial success handling (some files uploaded)
+  - **Estimate**: 1 hour
+
+**Subtotal**: 24 hours
+
+**Technical Requirements**:
+- Frontend: `webkitdirectory` attribute for folder selection
+- Backend: Preserve relative paths from browser FileList
+- S3: Direct upload with exact paths (no ZIP extraction)
+- Database: Store `file_path` with full folder structure
+
+**Example User Flow**:
+1. User selects folder: `my_dataset/bottle/broken_large/*.png`
+2. System detects: No `images/` folder
+3. System suggests: `images/bottle/broken_large/*.png`
+4. User confirms mapping
+5. Upload starts with progress tracking
+6. Images stored: `s3://{bucket}/{dataset_id}/images/bottle/broken_large/*.png`
+
+---
+
+#### Phase 2.10.4: Annotation Import (Week 9) - P1 High
+
+**Goal**: Import existing annotations from COCO/DICE/YOLO formats
+**Status**: ⏸️ Planning
+**Estimate**: 12 hours
+
+- [ ] **Backend: Annotation import endpoint**
+  - `POST /api/v1/datasets/{id}/annotations/import`
+  - Accept annotation file (JSON for COCO/DICE, txt for YOLO)
+  - Detect format automatically
+  - Parse annotations
+  - Match to uploaded images by filename
+  - **Estimate**: 4 hours
+
+- [ ] **Backend: Format parsers**
+  - `parse_coco_annotations()` - COCO format
+  - `parse_dice_annotations()` - DICE format
+  - `parse_yolo_annotations()` - YOLO format
+  - Convert to internal annotation format
+  - Bulk insert to DB
+  - **Estimate**: 5 hours
+
+- [ ] **Frontend: Annotation import UI**
+  - Upload annotation file button
+  - Format selector (auto-detect or manual)
+  - Preview parsed annotations (count, classes)
+  - Import button with progress
+  - **Estimate**: 3 hours
+
+**Subtotal**: 12 hours
+
+---
+
+#### Phase 2.10.5: UI Enhancements (Week 10) - P2 Medium
 
 **Goal**: Improved dataset management UX
 **Status**: ⏸️ Planning
@@ -2396,7 +2649,7 @@ Complete implementation of task-based annotation architecture enabling independe
 
 **Subtotal**: 12 hours
 
-#### Phase 2.10.4: Safety Features (Week 11) - P2 Medium
+#### Phase 2.10.6: Safety Features (Week 11) - P2 Medium
 
 **Goal**: Audit log and recovery mechanisms
 **Status**: ⏸️ Planning
@@ -2426,11 +2679,13 @@ Complete implementation of task-based annotation architecture enabling independe
 
 | Phase | Hours | Priority | Status |
 |-------|-------|----------|--------|
-| 2.10.1: Deletion | 15h | P0 Critical | ✅ Complete (13h done) |
-| 2.10.2: Upload | 25h | P1 High | ⏸️ Deferred |
-| 2.10.3: UI | 12h | P2 Medium | ⏸️ Planning |
-| 2.10.4: Safety | 10h | P2 Medium | ⏸️ Planning |
-| **Total** | **62h** | | |
+| 2.10.1: Dataset Deletion | 15h | P0 Critical | ✅ Complete (13h done) |
+| 2.10.2: Dataset Creation & Ownership | 22h | P0 Critical | ⏸️ Planning |
+| 2.10.3: Image Upload (Folder Structure) | 24h | P0 Critical | ⏸️ Planning |
+| 2.10.4: Annotation Import | 12h | P1 High | ⏸️ Planning |
+| 2.10.5: UI Enhancements | 12h | P2 Medium | ⏸️ Planning |
+| 2.10.6: Safety Features | 10h | P2 Medium | ⏸️ Planning |
+| **Total** | **95h** | | |
 
 ### Migration Strategy
 
