@@ -161,9 +161,9 @@ export default function AnnotationPage() {
       if (projectData.dataset_id) {
         const imagesData = await getDatasetImages(projectData.dataset_id, 50, 0);
 
-        // Phase 2.12: Load image statuses for annotation counts
+        // Phase 2.12: Load image statuses for annotation counts (paginated)
         // (No longer loading all annotations upfront - lazy loading instead)
-        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined);
+        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined, 50, 0);
         const imageStatusMap = new Map(
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );

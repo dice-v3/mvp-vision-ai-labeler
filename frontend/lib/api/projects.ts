@@ -128,10 +128,16 @@ export interface ImageConfirmResponse {
  */
 export async function getProjectImageStatuses(
   projectId: string,
-  taskType?: string
+  taskType?: string,
+  limit: number = 50,
+  offset: number = 0
 ): Promise<ImageStatusListResponse> {
-  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : '';
-  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status${params}`);
+  const params = new URLSearchParams();
+  if (taskType) params.set('task_type', taskType);
+  params.set('limit', limit.toString());
+  params.set('offset', offset.toString());
+
+  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status?${params.toString()}`);
 }
 
 /**

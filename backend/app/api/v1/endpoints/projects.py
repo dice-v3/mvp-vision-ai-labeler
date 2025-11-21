@@ -447,13 +447,20 @@ async def add_task_type(
 async def get_project_image_statuses(
     project_id: str,
     task_type: Optional[str] = None,  # Phase 2.9: Filter by task type
+    limit: int = 50,  # Phase 2.12: Pagination
+    offset: int = 0,  # Phase 2.12: Pagination
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get annotation status for all images in a project.
+    Get annotation status for images in a project (paginated).
 
     Phase 2.9: Supports task_type filtering for task-specific status.
+    Phase 2.12: Performance - Added pagination support.
+
+    Args:
+        - limit: Maximum number of statuses to return (default: 50, max: 200)
+        - offset: Number of statuses to skip (default: 0)
 
     Returns status information including:
     - Image completion status (not-started, in-progress, completed)
@@ -479,7 +486,20 @@ async def get_project_image_statuses(
             detail="Not authorized to access this project",
         )
 
-    # Get all image statuses for the project
+    # Validate pagination params
+    if offset < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="offset must be >= 0"
+        )
+
+    if limit < 1 or limit > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 200"
+        )
+
+    # Get image statuses for the project with pagination
     # Phase 2.9: Filter by task_type if provided
     query = labeler_db.query(ImageAnnotationStatus).filter(
         ImageAnnotationStatus.project_id == project_id
@@ -488,7 +508,11 @@ async def get_project_image_statuses(
     if task_type:
         query = query.filter(ImageAnnotationStatus.task_type == task_type)
 
-    statuses = query.all()
+    # Phase 2.12: Get total count first (for pagination info)
+    total_count = query.count()
+
+    # Phase 2.12: Apply pagination
+    statuses = query.offset(offset).limit(limit).all()
 
     # Query for no_object annotations to determine has_no_object per image
     from sqlalchemy import and_
@@ -527,7 +551,7 @@ async def get_project_image_statuses(
 
     return ImageStatusListResponse(
         statuses=status_responses,
-        total=len(status_responses),
+        total=total_count,  # Phase 2.12: Use total count from query, not len()
         project_id=project_id,
     )
 
