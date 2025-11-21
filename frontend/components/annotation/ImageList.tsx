@@ -276,12 +276,18 @@ export default function ImageList() {
                     }`}
                     title={`${img.file_name}${isSelected ? ' (Selected)' : ''}`}
                   >
-                  {/* Thumbnail image */}
+                  {/* Thumbnail image - Phase 2.12: Use thumbnail for performance */}
                   <img
-                    src={img.url}
+                    src={img.thumbnail_url || img.url}
                     alt={img.file_name}
                     className="w-full h-full object-cover bg-gray-900"
                     loading="lazy"
+                    onError={(e) => {
+                      // Fallback to original image if thumbnail fails
+                      if ((e.target as HTMLImageElement).src !== img.url) {
+                        (e.target as HTMLImageElement).src = img.url;
+                      }
+                    }}
                   />
 
                   {/* Image number badge */}

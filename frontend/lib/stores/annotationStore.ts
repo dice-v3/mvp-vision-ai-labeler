@@ -32,6 +32,7 @@ export interface ImageData {
   file_name: string;
   folder_path?: string;  // Folder path for folder-structured datasets
   url: string;
+  thumbnail_url?: string;  // Phase 2.12: Thumbnail for performance
   width?: number;
   height?: number;
   annotated?: boolean;
@@ -41,6 +42,9 @@ export interface ImageData {
   is_confirmed?: boolean;
   status?: string;  // not-started, in-progress, completed
   confirmed_at?: string;
+
+  // Phase 2.12: Track if no_object annotation exists for current task
+  has_no_object?: boolean;
 }
 
 export interface BboxGeometry {

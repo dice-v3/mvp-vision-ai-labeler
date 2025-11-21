@@ -19,6 +19,7 @@ class ImageMetadata(BaseModel):
     size: int = Field(..., description="File size in bytes")
     last_modified: str = Field(..., description="Last modified timestamp (ISO format)")
     url: str = Field(..., description="Presigned URL for accessing the image")
+    thumbnail_url: Optional[str] = Field(None, description="Presigned URL for thumbnail (Phase 2.12)")
     width: Optional[int] = Field(None, description="Image width in pixels")
     height: Optional[int] = Field(None, description="Image height in pixels")
 

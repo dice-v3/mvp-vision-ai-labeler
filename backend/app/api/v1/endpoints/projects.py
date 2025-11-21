@@ -210,6 +210,19 @@ async def list_project_images(
                 expiration=3600
             )
 
+            # Phase 2.12: Generate thumbnail URL for performance
+            thumbnail_url = None
+            try:
+                from app.services.thumbnail_service import get_thumbnail_path
+                thumbnail_key = get_thumbnail_path(db_img.s3_key)
+                thumbnail_url = storage_client.generate_presigned_url(
+                    bucket=storage_client.datasets_bucket,
+                    key=thumbnail_key,
+                    expiration=3600
+                )
+            except Exception as e:
+                logger.debug(f"Thumbnail not available for {db_img.id}: {e}")
+
             # Generate full relative path for display
             # ID is relative path without extension (e.g., "train/good/001")
             # Extract extension from file_name and append to ID
@@ -224,6 +237,7 @@ async def list_project_images(
                 size=db_img.size,
                 last_modified=db_img.last_modified.isoformat(),
                 url=presigned_url,
+                thumbnail_url=thumbnail_url,  # Phase 2.12: Add thumbnail URL
                 width=db_img.width,
                 height=db_img.height
             ))
