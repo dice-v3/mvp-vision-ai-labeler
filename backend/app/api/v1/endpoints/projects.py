@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 import uuid
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -30,6 +31,7 @@ from app.services.image_status_service import confirm_image_status, unconfirm_im
 from app.api.v1.endpoints import projects_classes
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Include class management endpoints
 router.include_router(projects_classes.router, prefix="", tags=["Classes"])
