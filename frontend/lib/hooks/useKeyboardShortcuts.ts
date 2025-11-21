@@ -139,49 +139,40 @@ export function useKeyboardShortcuts() {
           e.preventDefault();
           goToNextImage();
           break;
-        case 'q':
-          // Tool slot 1: Select tool
+        case '1':
+          // Slot 1: Select tool (all tasks)
           e.preventDefault();
           setTool('select');
           break;
-        case 'w':
-          // Tool slot 2: Task-specific tool
+        case '2':
+          // Slot 2: Primary task tool
           e.preventDefault();
           if (currentTask === 'classification') {
             setTool('classification');
+          } else if (currentTask === 'detection') {
+            setTool('bbox');
           } else if (currentTask === 'segmentation') {
             setTool('polygon');
           } else if (currentTask === 'geometry') {
             setTool('polyline');
           } else {
+            // Default to bbox for unknown tasks
             setTool('bbox');
           }
           break;
-        case 'l':
-          // Polyline tool
+        case '3':
+          // Slot 3: Circle 2-point (geometry only)
           e.preventDefault();
-          setTool('polyline');
-          break;
-        case 'c':
-          // Circle tool (without Ctrl)
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            if (e.shiftKey) {
-              setTool('circle3p');
-            } else {
-              setTool('circle');
-            }
+          if (currentTask === 'geometry') {
+            setTool('circle');
           }
           break;
-        case 'e':
-          // Circle tool (alternative shortcut)
+        case '4':
+          // Slot 4: Circle 3-point (geometry only)
           e.preventDefault();
-          setTool('circle');
-          break;
-        case 'r':
-          // Circle 3-point tool (alternative shortcut)
-          e.preventDefault();
-          setTool('circle3p');
+          if (currentTask === 'geometry') {
+            setTool('circle3p');
+          }
           break;
         case 'b':
           // BBox tool (detection shortcut)
