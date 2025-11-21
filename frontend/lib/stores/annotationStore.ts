@@ -138,6 +138,11 @@ export interface Preferences {
   darkMode: boolean;
   autoSelectClass: boolean;
   imageListView: 'grid' | 'list';
+  // Phase 2.10.2: Magnifier settings
+  autoMagnifier: boolean; // Auto-show in drawing tools
+  magnifierMode: 'following' | 'fixed'; // Position mode
+  magnifierSize: number; // Diameter in pixels
+  magnificationLevel: number; // Default zoom level
 }
 
 export interface AnnotationSnapshot {
@@ -311,6 +316,11 @@ const DEFAULT_PREFERENCES: Preferences = {
   darkMode: true,
   autoSelectClass: true,
   imageListView: 'grid',
+  // Phase 2.10.2: Magnifier defaults
+  autoMagnifier: true, // Auto-show in drawing tools
+  magnifierMode: 'following', // Follow cursor by default
+  magnifierSize: 200, // 200px diameter
+  magnificationLevel: 3.0, // 3x zoom
 };
 
 const initialState = {
