@@ -372,14 +372,33 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       setImages: (images) => {
-        const currentImage = images.length > 0 ? images[0] : null;
-        set({ images, currentImage, currentIndex: 0 });
+        // Remove duplicates based on image ID (just in case)
+        const uniqueImages = Array.from(
+          new Map(images.map(img => [img.id, img])).values()
+        );
+
+        if (uniqueImages.length < images.length) {
+          console.warn(`[Store] Removed ${images.length - uniqueImages.length} duplicate images during setImages`);
+        }
+
+        const currentImage = uniqueImages.length > 0 ? uniqueImages[0] : null;
+        set({ images: uniqueImages, currentImage, currentIndex: 0 });
       },
 
       // Phase 2.12: Load more images (append to existing images)
       loadMoreImages: (newImages) => {
         const { images } = get();
-        set({ images: [...images, ...newImages] });
+
+        // Filter out duplicates based on image ID
+        const existingIds = new Set(images.map(img => img.id));
+        const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
+
+        if (uniqueNewImages.length > 0) {
+          set({ images: [...images, ...uniqueNewImages] });
+          console.log(`[Store] Added ${uniqueNewImages.length} new images (${newImages.length - uniqueNewImages.length} duplicates filtered)`);
+        } else {
+          console.log(`[Store] No new images to add (all ${newImages.length} were duplicates)`);
+        }
       },
 
       setCurrentIndex: (index) => {
