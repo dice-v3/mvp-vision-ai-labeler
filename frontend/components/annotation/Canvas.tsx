@@ -17,6 +17,7 @@ import type { CanvasRenderContext } from '@/lib/annotation';
 import { Circle3pTool } from '@/lib/annotation/tools/Circle3pTool';
 import { toast } from '@/lib/stores/toastStore';
 import { confirm } from '@/lib/stores/confirmStore';
+import { ArrowUturnLeftIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,6 +56,11 @@ export default function Canvas() {
     getCurrentClasses, // Phase 2.9: Get task-specific classes
     selectedVertexIndex, // Polygon vertex editing
     selectedBboxHandle, // Bbox handle editing
+    // Phase 2.10: Undo/Redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -2606,6 +2612,27 @@ export default function Canvas() {
         return;
       }
 
+      // Phase 2.10: Undo/Redo shortcuts
+      // Ctrl+Z / Cmd+Z: Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) {
+          undo();
+          toast.success('Undone');
+        }
+        return;
+      }
+
+      // Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z: Redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+          toast.success('Redone');
+        }
+        return;
+      }
+
       // Enter: Close polygon (if drawing)
       if (e.key === 'Enter' && tool === 'polygon' && polygonVertices.length >= 3 && image) {
         e.preventDefault();
@@ -3122,7 +3149,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, selectedBboxHandle, selectedCircleHandle, polylineVertices, circleCenter, circle3pPoints]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, selectedBboxHandle, selectedCircleHandle, polylineVertices, circleCenter, circle3pPoints, undo, redo, canUndo, canRedo]);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -3278,6 +3305,52 @@ export default function Canvas() {
 
       {/* Zoom controls */}
       <div className="absolute bottom-4 left-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 flex items-center gap-2 shadow-lg">
+        {/* Undo button */}
+        <button
+          onClick={() => {
+            if (canUndo()) {
+              undo();
+              toast.success('Undone');
+            }
+          }}
+          disabled={!canUndo()}
+          className={`
+            w-8 h-8 flex items-center justify-center rounded transition-colors
+            ${canUndo()
+              ? 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white'
+              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+            }
+          `}
+          title="Undo (Ctrl+Z)"
+        >
+          <ArrowUturnLeftIcon className="w-4 h-4" />
+        </button>
+
+        {/* Redo button */}
+        <button
+          onClick={() => {
+            if (canRedo()) {
+              redo();
+              toast.success('Redone');
+            }
+          }}
+          disabled={!canRedo()}
+          className={`
+            w-8 h-8 flex items-center justify-center rounded transition-colors
+            ${canRedo()
+              ? 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white'
+              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+            }
+          `}
+          title="Redo (Ctrl+Y)"
+        >
+          <ArrowUturnRightIcon className="w-4 h-4" />
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
+
+        {/* Zoom out button */}
         <button
           onClick={() => setZoom(canvasState.zoom - 0.25)}
           className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-900 dark:text-white"
