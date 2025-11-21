@@ -2333,12 +2333,18 @@ Complete implementation of task-based annotation architecture enabling independe
 
 **Subtotal**: 15 hours (13h complete, 2h testing remaining)
 
-#### Phase 2.10.2: Dataset Creation & Ownership (Week 8) - P0 Critical ⭐ NEW
+#### Phase 2.10.2: Dataset Creation & Ownership (Week 8) - P0 Critical ⭐ UPDATED
 
-**Goal**: Enable dataset creation with ownership and permission management
+**Goal**: Migrate datasets to Labeler DB + Enable dataset creation with ownership
 **Status**: ⏸️ Planning
 **Priority**: P0 (Required before image upload)
-**Estimate**: 22 hours
+**Estimate**: 32 hours (+10h for DB migration)
+
+**IMPORTANT DECISION** (2025-11-21):
+- **Dataset management exclusively through Labeler Backend**
+- **Migrate `datasets` and `dataset_permissions` tables from Platform DB → Labeler DB**
+- **Enable foreign key constraints within Labeler DB**
+- **Platform DB used for `users` table only (read-only)**
 
 **Scenario**: Create Empty Dataset → Upload Images (New/Additional)
 
@@ -2346,12 +2352,56 @@ Complete implementation of task-based annotation architecture enabling independe
 - **Owner**: 1+ required, full control (invite users, change permissions, delete images/dataset)
 - **Member**: Labeling, add images, publish (cannot delete images)
 
+##### 2.10.2.0: DB Migration (Platform → Labeler) (10h) ⭐ NEW
+
+- [ ] **Labeler DB: Create datasets table**
+  - Create table in Labeler DB (same schema as Platform)
+  - Columns: id, name, description, owner_id, storage_path, num_images, etc.
+  - owner_id references Platform users.id (NO FK, different DB)
+  - **Estimate**: 2 hours
+  - **File**: `backend/alembic/versions/20251121_*_add_datasets_to_labeler.py`
+
+- [ ] **Labeler DB: Create dataset_permissions table**
+  - Columns: id, dataset_id, user_id, role, granted_by, granted_at
+  - FK constraint: dataset_id → datasets.id ON DELETE CASCADE
+  - Unique constraint: (dataset_id, user_id)
+  - Check constraint: role IN ('owner', 'member')
+  - **Estimate**: 1 hour
+  - **Migration**: Same migration file
+
+- [ ] **Add foreign key constraints**
+  - annotation_projects.dataset_id → datasets.id ON DELETE CASCADE
+  - images.dataset_id → datasets.id ON DELETE CASCADE
+  - Enable referential integrity within Labeler DB
+  - **Estimate**: 1 hour
+
+- [ ] **Data migration script**
+  - Copy existing datasets from Platform DB → Labeler DB
+  - Create owner permissions for each dataset (owner_id → owner role)
+  - Verify data integrity after migration
+  - **Estimate**: 3 hours
+  - **File**: `backend/scripts/migrate_datasets_to_labeler.py`
+
+- [ ] **Update SQLAlchemy models**
+  - Move Dataset model from platform.py → labeler.py
+  - Add DatasetPermission model to labeler.py
+  - Update relationships (ForeignKey to datasets)
+  - **Estimate**: 2 hours
+  - **Files**: `backend/app/db/models/labeler.py`
+
+- [ ] **Test migration**
+  - Test with sample datasets
+  - Verify CASCADE delete works
+  - Verify all existing functionality still works
+  - **Estimate**: 1 hour
+
 ##### 2.10.2.1: Dataset Creation (6h)
 
 - [ ] **Backend: POST /api/v1/datasets**
   - Create empty dataset (name, description, task_types)
-  - Create in Platform DB (dataset record + owner)
-  - Create in Labeler DB (link to platform dataset)
+  - **Create in Labeler DB only** ⭐ (single transaction)
+  - Create owner permission (SAME TRANSACTION)
+  - Create annotation_project (SAME TRANSACTION)
   - Return dataset_id and S3 path structure
   - **Estimate**: 3 hours
   - **File**: `backend/app/api/v1/endpoints/datasets.py`
@@ -2370,27 +2420,20 @@ Complete implementation of task-based annotation architecture enabling independe
   - Navigate to dataset detail page after creation
   - **Estimate**: 1 hour
 
-##### 2.10.2.2: Ownership Model (5h)
-
-- [ ] **Database: Permission tables**
-  - Platform DB: `dataset_permissions` table
-  - Columns: dataset_id, user_id, role (owner/member), granted_by, granted_at
-  - Unique constraint: (dataset_id, user_id)
-  - Check constraint: At least one owner per dataset
-  - **Estimate**: 2 hours
-  - **Migration**: Platform DB migration
+##### 2.10.2.2: Ownership Model (3h) ⭐ REDUCED (DB migration done in 2.10.2.0)
 
 - [ ] **Backend: Permission middleware**
   - Access control decorator: `@require_dataset_permission(role="owner")`
+  - **Query Labeler DB** (not Platform DB!)
   - Check user permission before allowing operations
   - Apply to: delete image, delete dataset, change permissions
   - **Estimate**: 2 hours
   - **File**: `backend/app/middleware/permissions.py`
 
 - [ ] **Backend: Permission queries**
-  - `get_user_datasets()` - Filter by user permissions
-  - `check_dataset_permission()` - Verify user role
-  - Optimize with JOIN queries
+  - `get_user_datasets()` - Filter by user permissions from Labeler DB
+  - `check_dataset_permission()` - Verify user role from Labeler DB
+  - **Optimize with JOIN queries within Labeler DB** (FK enabled!)
   - **Estimate**: 1 hour
 
 ##### 2.10.2.3: Permission Management API (6h)
@@ -2440,12 +2483,20 @@ Complete implementation of task-based annotation architecture enabling independe
   - Disable actions for non-owners
   - **Estimate**: 1 hour
 
-**Subtotal**: 22 hours
+**Subtotal**: 32 hours (+10h for DB migration)
+
+**Breakdown**:
+- 2.10.2.0: DB Migration (10h) ⭐ NEW
+- 2.10.2.1: Dataset Creation (6h)
+- 2.10.2.2: Ownership Model (3h) ⭐ REDUCED from 5h
+- 2.10.2.3: Permission Management API (6h)
+- 2.10.2.4: Permission UI (5h)
+- Testing (2h) ⭐ NEW
 
 **Platform Backend Integration**:
-- Dataset creation: `POST /platform/api/v1/datasets`
-- User lookup: `GET /platform/api/v1/users/search?email={email}`
-- Permission sync: Labeler reads from Platform DB `dataset_permissions` table
+- **User lookup only**: `GET /platform/api/v1/users/search?email={email}`
+- **No dataset APIs needed** - Labeler owns all dataset operations
+- **Platform reads from Labeler** (optional, via API if needed)
 
 ---
 
@@ -2680,12 +2731,17 @@ s3://{dataset_bucket}/{dataset_id}/images/
 | Phase | Hours | Priority | Status |
 |-------|-------|----------|--------|
 | 2.10.1: Dataset Deletion | 15h | P0 Critical | ✅ Complete (13h done) |
-| 2.10.2: Dataset Creation & Ownership | 22h | P0 Critical | ⏸️ Planning |
+| 2.10.2: Creation & Ownership + **DB Migration** ⭐ | **32h** | P0 Critical | ⏸️ Planning |
 | 2.10.3: Image Upload (Folder Structure) | 24h | P0 Critical | ⏸️ Planning |
 | 2.10.4: Annotation Import | 12h | P1 High | ⏸️ Planning |
 | 2.10.5: UI Enhancements | 12h | P2 Medium | ⏸️ Planning |
 | 2.10.6: Safety Features | 10h | P2 Medium | ⏸️ Planning |
-| **Total** | **95h** | | |
+| **Total** | **105h** | | **(+10h from v1.0)** |
+
+**Key Change** (v2.0 - 2025-11-21):
+- Phase 2.10.2 increased from 22h → 32h
+- Added 2.10.2.0: DB Migration (10h) to move datasets to Labeler DB
+- **Decision**: Dataset management exclusively through Labeler Backend
 
 ### Migration Strategy
 

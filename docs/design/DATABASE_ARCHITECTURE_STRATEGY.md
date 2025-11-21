@@ -2,13 +2,27 @@
 
 **Date**: 2025-11-21
 **Status**: Planning
-**Version**: 1.0
+**Version**: 2.0 (Updated for Labeler-Owned Datasets)
 
 ---
 
-## 1. Current Architecture Overview
+## Important Update (2025-11-21)
 
-### 1.1 Two-Database Architecture
+**Decision**: Dataset management will be handled **exclusively through Labeler Backend**.
+
+This changes the database architecture from a shared Platform/Labeler model to a **Labeler-centric model** where:
+- ✅ Labeler owns `datasets` and `dataset_permissions` tables
+- ✅ All dataset operations (create, upload, delete) through Labeler
+- ✅ Foreign key constraints enabled within Labeler DB
+- ✅ Transactional integrity for dataset operations
+
+**Migration**: `datasets` and `dataset_permissions` tables moved from Platform DB → Labeler DB
+
+---
+
+## 1. New Architecture Overview (v2.0)
+
+### 1.1 Labeler-Centric Two-Database Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -18,51 +32,52 @@
 │  │   Platform DB        │      │    Labeler DB        │        │
 │  │   (Read-Only)        │      │   (Read-Write)       │        │
 │  │                      │      │                      │        │
-│  │ - users              │      │ - annotation_projects│        │
-│  │ - datasets           │      │ - annotations        │        │
-│  │ - snapshots          │      │ - images             │        │
-│  │ - dataset_permissions│      │ - annotation_versions│        │
-│  │   (NEW)              │      │ - image_annotation_  │        │
+│  │ - users              │      │ - datasets ⭐ MOVED │        │
+│  │ - snapshots          │      │ - dataset_permissions        │
+│  │                      │      │   ⭐ MOVED           │        │
+│  │                      │      │ - annotation_projects│        │
+│  │                      │      │ - annotations        │        │
+│  │                      │      │ - images             │        │
+│  │                      │      │ - annotation_versions│        │
+│  │                      │      │ - image_annotation_  │        │
 │  │                      │      │   status             │        │
 │  └──────────────────────┘      └──────────────────────┘        │
+│         ▲                                │                      │
+│         │                                │                      │
+│         └─── User lookup only            └─── Full ownership   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Key Characteristics**:
-- **NO Foreign Key Constraints** between databases
-- Platform DB: PostgreSQL (read-only access for Labeler)
-- Labeler DB: PostgreSQL (full read-write access)
+- **Foreign Key Constraints ENABLED** within Labeler DB
+- Platform DB: PostgreSQL (read-only access for user info only)
+- Labeler DB: PostgreSQL (full read-write, owns datasets)
 - Two separate SQLAlchemy engines
+- **Transactional integrity** for dataset operations within Labeler DB
 
 ---
 
-## 2. Database Role Separation (Current)
+## 2. Database Role Separation (v2.0)
 
 ### 2.1 Platform DB Responsibilities
 
 **Owner**: Platform Backend
-**Access**: Labeler has **READ-ONLY** access
+**Access**: Labeler has **READ-ONLY** access (user info only)
 
 | Table | Purpose | Owner | Labeler Access |
 |-------|---------|-------|----------------|
 | `users` | User accounts, authentication | Platform | Read (for user lookup) |
-| `datasets` | Dataset metadata, storage paths | Platform | Read (for dataset info) |
 | `snapshots` | Dataset snapshots | Platform | Read |
-| `dataset_permissions` | Dataset access control (NEW) | Platform | Read |
 
 **Platform DB Data**:
 - **User Management**: email, hashed_password, system_role
-- **Dataset Metadata**: name, description, owner_id, storage_path
-- **Access Control**: Who can access which dataset (owner/member)
-- **Storage Information**: S3 paths, file counts, content hash
+- **Authentication**: Login, JWT token generation
 
 **Platform Backend Responsibilities**:
 - User authentication & authorization
-- Dataset creation/deletion
-- Permission management (invite, change role, remove)
-- S3 bucket management
-- Dataset-level metadata updates
+- User CRUD operations
+- Platform-level snapshots (if needed)
 
 ---
 
@@ -71,16 +86,20 @@
 **Owner**: Labeler Backend
 **Access**: Full read-write
 
-| Table | Purpose | Dependencies |
+| Table | Purpose | Foreign Keys |
 |-------|---------|--------------|
-| `annotation_projects` | Project configuration, task types, classes | `datasets.id` (no FK) |
-| `annotations` | Annotation data (bbox, polygon, etc.) | `annotation_projects.id` |
-| `images` | Image records with presigned URLs | `datasets.id` (no FK) |
-| `annotation_versions` | Published annotation versions | `annotation_projects.id` |
-| `annotation_snapshots` | Snapshot of annotations at publish time | `annotation_versions.id` |
-| `image_annotation_status` | Image-level annotation status | `images.id`, `annotation_projects.id` |
+| `datasets` ⭐ | Dataset metadata, storage paths | ✅ Referenced by other tables |
+| `dataset_permissions` ⭐ | Dataset access control (owner/member) | ✅ FK → `datasets.id` |
+| `annotation_projects` | Project configuration, task types, classes | ✅ FK → `datasets.id` |
+| `annotations` | Annotation data (bbox, polygon, etc.) | ✅ FK → `annotation_projects.id` |
+| `images` | Image records with presigned URLs | ✅ FK → `datasets.id` |
+| `annotation_versions` | Published annotation versions | ✅ FK → `annotation_projects.id` |
+| `annotation_snapshots` | Snapshot of annotations at publish time | ✅ FK → `annotation_versions.id` |
+| `image_annotation_status` | Image-level annotation status | ✅ FK → `images.id`, `annotation_projects.id` |
 
 **Labeler DB Data**:
+- **Dataset Management** ⭐: name, description, owner_id, storage_path, num_images
+- **Access Control** ⭐: User permissions (owner/member roles)
 - **Annotation Data**: All bbox, polygon, classification annotations
 - **Project Configuration**: task_types, task_config, task_classes
 - **Image Tracking**: file_path, file_name, presigned URLs
@@ -88,54 +107,81 @@
 - **Statistics**: Annotation counts, image status
 
 **Labeler Backend Responsibilities**:
+- **Dataset creation/deletion** ⭐ (NEW)
+- **Permission management** ⭐ (invite users, change roles)
+- **Image upload/delete** ⭐ (NEW)
 - Annotation CRUD operations
 - Project configuration management
 - Class management (per task type)
 - Image status tracking
 - Annotation export (COCO, YOLO, DICE)
 - Versioning and snapshots
+- **S3 bucket management** ⭐ (NEW)
 
 ---
 
-## 3. Data Ownership & Synchronization Strategy
+## 3. Data Ownership & Synchronization Strategy (v2.0)
 
 ### 3.1 Master-Slave Relationships
 
 | Data Type | Master (Source of Truth) | Slave (Cached Copy) |
 |-----------|--------------------------|---------------------|
-| User Information | Platform DB `users` | Labeler references by `user_id` only |
-| Dataset Metadata | Platform DB `datasets` | Labeler reads on-demand |
-| Dataset Permissions | Platform DB `dataset_permissions` | Labeler reads for access control |
+| User Information | Platform DB `users` | Labeler references by `user_id` only (no cache) |
+| **Dataset Metadata** ⭐ | **Labeler DB `datasets`** | **Platform reads via Labeler API (optional)** |
+| **Dataset Permissions** ⭐ | **Labeler DB `dataset_permissions`** | **None** |
 | Annotation Data | Labeler DB `annotations` | None (Labeler owns) |
 | Project Config | Labeler DB `annotation_projects` | None (Labeler owns) |
 
-### 3.2 Current Synchronization Strategy
+**Key Change**: Dataset ownership moved to Labeler DB
 
-**Read-Heavy Pattern**: Labeler reads from Platform DB, never writes
+### 3.2 New Synchronization Strategy (v2.0)
+
+**Labeler-Centric Pattern**: Labeler owns datasets, Platform reads users only
 
 ```python
-# Example: Get user info from Platform DB
+# Example 1: Get user info from Platform DB (READ-ONLY)
 @router.get("/users/{user_id}")
 def get_user(user_id: int, platform_db: Session = Depends(get_platform_db)):
     user = platform_db.query(User).filter(User.id == user_id).first()
     return user  # Read-only, never commit()
 
-# Example: Create annotation in Labeler DB
-@router.post("/annotations")
-def create_annotation(
-    annotation: AnnotationCreate,
+# Example 2: Create dataset in Labeler DB (SINGLE TRANSACTION)
+@router.post("/datasets")
+def create_dataset(
+    dataset: DatasetCreate,
+    current_user = Depends(get_current_user),
     labeler_db: Session = Depends(get_labeler_db),
 ):
-    new_annotation = Annotation(**annotation.dict())
-    labeler_db.add(new_annotation)
-    labeler_db.commit()  # Write to Labeler DB only
-    return new_annotation
+    # 1. Create dataset
+    new_dataset = Dataset(**dataset.dict(), owner_id=current_user.id)
+    labeler_db.add(new_dataset)
+
+    # 2. Create owner permission (SAME TRANSACTION)
+    permission = DatasetPermission(
+        dataset_id=new_dataset.id,
+        user_id=current_user.id,
+        role='owner'
+    )
+    labeler_db.add(permission)
+
+    # 3. Create annotation project (SAME TRANSACTION)
+    project = AnnotationProject(
+        dataset_id=new_dataset.id,
+        ...
+    )
+    labeler_db.add(project)
+
+    # ⭐ Single commit for all operations!
+    labeler_db.commit()
+
+    return new_dataset
 ```
 
-**Problem**: No automatic sync mechanism
-- If Platform deletes a dataset, Labeler DB has orphaned data
-- If Platform changes user email, Labeler cache is stale
-- No referential integrity enforcement
+**Benefits**:
+- ✅ Transactional integrity (all-or-nothing)
+- ✅ Foreign key constraints (CASCADE delete)
+- ✅ No orphaned data problem
+- ✅ Simpler code (single DB for datasets)
 
 ---
 
@@ -208,45 +254,69 @@ labeler_db.commit()  # If this fails, dataset exists but no project!
 
 ---
 
-## 5. Proposed Architecture: Hybrid Approach
+## 5. Approved Architecture: Labeler-Owned Datasets (v2.0)
 
-### 5.1 Option A: Direct DB Access (Current - Keep)
+### 5.1 Labeler DB Migration Strategy ⭐ RECOMMENDED
+
+**Decision**: Migrate `datasets` and `dataset_permissions` tables from Platform DB → Labeler DB
 
 **Architecture**:
 ```
-┌────────────────┐
-│ Labeler Backend│
-│                │
-│  ┌─────────┐   │     ┌─────────────┐
-│  │ Service │───┼────▶│ Platform DB │ (Read-Only)
-│  │  Layer  │   │     └─────────────┘
-│  │         │   │     ┌─────────────┐
-│  │         │───┼────▶│ Labeler DB  │ (Read-Write)
-│  └─────────┘   │     └─────────────┘
-└────────────────┘
+┌─────────────────────────────────────────────────────┐
+│              Labeler Backend                        │
+│                                                     │
+│  ┌─────────────┐                                    │
+│  │   Service   │                                    │
+│  │    Layer    │                                    │
+│  └─────────────┘                                    │
+│        │                                            │
+│        ├──────────┐                                 │
+│        │          │                                 │
+│        ▼          ▼                                 │
+│  ┌──────────┐  ┌────────────────────┐              │
+│  │Platform  │  │   Labeler DB       │              │
+│  │   DB     │  │                    │              │
+│  │          │  │ ┌────────────────┐ │              │
+│  │- users   │  │ │ datasets ⭐    │ │              │
+│  │          │  │ │ dataset_       │ │              │
+│  │(Read     │  │ │ permissions ⭐ │ │              │
+│  │ Only)    │  │ └────────────────┘ │              │
+│  └──────────┘  │        ↓ FK        │              │
+│                │ ┌────────────────┐ │              │
+│                │ │ annotation_    │ │              │
+│                │ │ projects       │ │              │
+│                │ └────────────────┘ │              │
+│                │        ↓ FK        │              │
+│                │ ┌────────────────┐ │              │
+│                │ │ annotations    │ │              │
+│                │ └────────────────┘ │              │
+│                └────────────────────┘              │
+└─────────────────────────────────────────────────────┘
 ```
 
 **Data Flow**:
-1. User request → Labeler Backend
-2. Read user/permission from Platform DB
-3. Write annotations to Labeler DB
-4. Return response
+1. User creates dataset
+2. Labeler creates dataset in Labeler DB
+3. Labeler creates permission (owner) - SAME TRANSACTION
+4. Labeler creates annotation_project - SAME TRANSACTION
+5. Single commit (all-or-nothing)
 
 **Pros**:
-- Simple, low latency
-- No additional infrastructure
-- Direct SQL queries (efficient)
+- ✅ Transactional integrity (single DB)
+- ✅ Foreign key constraints enabled
+- ✅ CASCADE delete (no orphaned data)
+- ✅ Simpler code (one DB for datasets)
+- ✅ Labeler fully owns dataset lifecycle
 
 **Cons**:
-- No transactional integrity across DBs
-- Manual permission checks
-- Orphaned data risk
+- ⚠️ Migration required (10h)
+- ⚠️ Platform needs API to query datasets (optional)
 
-**Use Cases**: Internal tool, MVP, small teams
+**Use Cases**: Production, all team sizes
 
----
+### 5.2 Migration Plan (10 hours)
 
-### 5.2 Option B: Platform API Gateway (Recommended for Production)
+#### Phase 1: Schema Creation in Labeler DB (2h)
 
 **Architecture**:
 ```
@@ -821,34 +891,30 @@ async def list_datasets(
 
 ---
 
-## 11. Decision Summary
+## 11. Decision Summary (v2.0 - UPDATED)
 
-### For Phase 2.10 (Current Sprint):
+### **APPROVED Decision** (2025-11-21):
 
-✅ **Use Option A: Direct DB Access**
-
-**Rationale**:
-- Simple, already in use
-- No Platform backend changes needed
-- Low latency
-- Sufficient for MVP and small teams
-
-**Accept Trade-offs**:
-- No transactional integrity
-- Manual permission checks
-- Orphaned data risk (mitigated by cleanup scripts)
-
-### For Future (Post-MVP):
-
-🎯 **Migrate to Option B: Platform API Gateway**
+✅ **Migrate datasets and dataset_permissions to Labeler DB**
 
 **Rationale**:
-- Better separation of concerns
-- Transactional integrity
-- Easier to scale
-- Platform owns permission logic
+- ✅ Dataset management handled **exclusively through Labeler**
+- ✅ Transactional integrity (single DB for datasets)
+- ✅ Foreign key constraints enabled (CASCADE delete)
+- ✅ No orphaned data problem
+- ✅ Simpler code (one DB for all dataset operations)
+- ✅ Labeler fully owns dataset lifecycle
 
-**Timeline**: Week 12+ (after Phase 2.10 complete)
+**Implementation**: Phase 2.10.2 (32h, +10h from original plan)
+
+**Key Changes**:
+1. Create `datasets` and `dataset_permissions` tables in Labeler DB
+2. Migrate existing data from Platform DB → Labeler DB
+3. Add foreign key constraints within Labeler DB
+4. Update all endpoints to use Labeler DB only
+5. Platform DB used for `users` table only (read-only)
+
+**Timeline**: Week 8 (Phase 2.10.2)
 
 ---
 
