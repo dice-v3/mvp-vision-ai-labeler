@@ -44,54 +44,87 @@ class StorageClient:
         self,
         dataset_id: str,
         prefix: str = "images/",
-        max_keys: int = 1000
-    ) -> List[Dict[str, any]]:
+        max_keys: int = 1000,
+        offset: int = 0
+    ) -> Dict[str, any]:
         """
-        List all images in a dataset.
+        List images in a dataset with pagination support.
+
+        Performance optimization:
+        - Fetches all image metadata first (fast)
+        - Generates presigned URLs only for requested page (slow operation)
+        - Supports offset/limit pagination
 
         Args:
             dataset_id: Dataset ID
             prefix: Folder prefix (default: "images/")
-            max_keys: Maximum number of objects to return
+            max_keys: Maximum number of images to return in this page
+            offset: Number of images to skip (for pagination)
 
         Returns:
-            List of image metadata dicts with keys:
-            - key: S3 object key
-            - filename: Original filename
-            - size: File size in bytes
-            - last_modified: Last modified timestamp
-            - url: Presigned URL (valid for 1 hour)
+            Dict with keys:
+            - images: List of image metadata dicts
+            - total: Total number of images in dataset
+            - offset: Current offset
+            - limit: Current limit
         """
         try:
             # Storage structure: datasets/{dataset_id}/images/xxx.jpg
             s3_prefix = f"datasets/{dataset_id}/{prefix}"
 
-            logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}")
+            logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}, offset={offset}, limit={max_keys}")
 
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.datasets_bucket,
-                Prefix=s3_prefix,
-                MaxKeys=max_keys
-            )
+            # Phase 1: Get all image keys (fast - no URL generation)
+            all_objects = []
+            continuation_token = None
 
-            if 'Contents' not in response:
-                logger.warning(f"No images found in {s3_prefix}")
-                return []
+            while True:
+                list_params = {
+                    'Bucket': self.datasets_bucket,
+                    'Prefix': s3_prefix,
+                    'MaxKeys': 1000
+                }
+                if continuation_token:
+                    list_params['ContinuationToken'] = continuation_token
 
-            images = []
-            for obj in response['Contents']:
+                response = self.s3_client.list_objects_v2(**list_params)
+
+                if 'Contents' in response:
+                    all_objects.extend(response['Contents'])
+
+                if not response.get('IsTruncated'):
+                    break
+
+                continuation_token = response.get('NextContinuationToken')
+
+            # Filter image files only
+            image_objects = []
+            for obj in all_objects:
                 key = obj['Key']
 
-                # Skip folders (keys ending with /)
+                # Skip folders
                 if key.endswith('/'):
                     continue
 
-                # Extract filename from key (e.g., "ds_123/images/photo.jpg" -> "photo.jpg")
+                # Extract filename
                 filename = key.split('/')[-1]
 
                 # Skip non-image files
                 if not self._is_image_file(filename):
                     continue
+
+                image_objects.append(obj)
+
+            total_images = len(image_objects)
+
+            # Phase 2: Apply pagination (slice)
+            paginated_objects = image_objects[offset:offset + max_keys]
+
+            # Phase 3: Generate presigned URLs only for paginated images (slow)
+            images = []
+            for obj in paginated_objects:
+                key = obj['Key']
+                filename = key.split('/')[-1]
 
                 # Generate presigned URL (valid for 1 hour)
                 presigned_url = self.generate_presigned_url(
@@ -108,8 +141,14 @@ class StorageClient:
                     'url': presigned_url
                 })
 
-            logger.info(f"Found {len(images)} images in {dataset_id}")
-            return images
+            logger.info(f"Found {total_images} total images, returning {len(images)} (offset={offset}, limit={max_keys})")
+
+            return {
+                'images': images,
+                'total': total_images,
+                'offset': offset,
+                'limit': max_keys
+            }
 
         except ClientError as e:
             logger.error(f"Failed to list images in {dataset_id}: {e}")

@@ -127,18 +127,30 @@ async def list_projects(
 @router.get("/{project_id}/images", response_model=ImageListResponse, tags=["Projects"])
 async def list_project_images(
     project_id: str,
-    limit: int = 1000,
+    limit: int = 50,
+    offset: int = 0,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get list of images in a project.
+    Get list of images in a project with pagination support.
 
-    Returns all images from the dataset with presigned URLs for browser access.
+    Performance optimized:
+    - Fetches only requested page of images
+    - Generates presigned URLs only for visible images
+    - Supports offset/limit pagination
 
-    - **project_id**: Project ID
-    - **limit**: Maximum number of images to return (default: 1000)
+    Args:
+        - **project_id**: Project ID
+        - **limit**: Maximum number of images to return per page (default: 50, max: 200)
+        - **offset**: Number of images to skip (default: 0)
+
+    Returns:
+        - images: List of images with presigned URLs
+        - total: Total number of images in dataset
+        - offset: Current offset
+        - limit: Current limit
     """
     # Get project
     project = labeler_db.query(AnnotationProject).filter(AnnotationProject.id == project_id).first()
@@ -156,20 +168,34 @@ async def list_project_images(
             detail="Not authorized to access this project",
         )
 
-    # Get images from storage
+    # Validate pagination params
+    if offset < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="offset must be >= 0"
+        )
+
+    if limit < 1 or limit > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 200"
+        )
+
+    # Get images from storage with pagination
     try:
-        images_data = storage_client.list_dataset_images(
+        result = storage_client.list_dataset_images(
             dataset_id=project.dataset_id,
             prefix="images/",
-            max_keys=min(limit, 1000)
+            max_keys=limit,
+            offset=offset
         )
 
         # Convert to ImageMetadata objects
-        images = [ImageMetadata(**img) for img in images_data]
+        images = [ImageMetadata(**img) for img in result['images']]
 
         return ImageListResponse(
             images=images,
-            total=len(images),
+            total=result['total'],
             dataset_id=project.dataset_id,
             project_id=project_id
         )

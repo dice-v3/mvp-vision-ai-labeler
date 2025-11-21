@@ -157,49 +157,26 @@ export default function AnnotationPage() {
         useAnnotationStore.setState({ currentTask: initialTask });
       }
 
-      // Load images using dataset_id from project
+      // Phase 2.12: Performance Optimization - Load only first 50 images
       if (projectData.dataset_id) {
-        const imagesData = await getDatasetImages(projectData.dataset_id, 1000);
+        const imagesData = await getDatasetImages(projectData.dataset_id, 50, 0);
 
-        // Load all annotations for the project to count per image
-        const allAnnotations = await getProjectAnnotations(projectId);
-
-        // Count annotations per image (filtered by initial task)
-        const annotationCountMap = new Map<string, number>();
-
-        allAnnotations.forEach((ann: any) => {
-          const imageId = ann.image_id || ann.imageId;
-          const annType = ann.annotation_type;
-
-          // Phase 2.9: Only count annotations for the current task
-          // no_object is filtered by its task_type attribute
-          if (annType === 'no_object') {
-            const noObjectTaskType = ann.attributes?.task_type;
-            if (noObjectTaskType === initialTask) {
-              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
-            }
-          } else {
-            const annTaskType = getTaskTypeForAnnotation(annType);
-            if (!initialTask || annTaskType === initialTask) {
-              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
-            }
-          }
-        });
-
-        // Phase 2.7/2.9: Load image statuses (filtered by initial task)
+        // Phase 2.12: Load image statuses for annotation counts
+        // (No longer loading all annotations upfront - lazy loading instead)
         const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined);
         const imageStatusMap = new Map(
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );
 
-        // Convert DatasetImage[] to ImageData[] (number id -> string id) and add annotation counts + status
+        // Convert DatasetImage[] to ImageData[] with status info
         const convertedImages = imagesData.map(img => {
           const imgId = String(img.id);
           const status = imageStatusMap.get(imgId);
           return {
             ...img,
             id: imgId,
-            annotation_count: annotationCountMap.get(imgId) || 0,
+            // Phase 2.12: Use annotation count from status (more efficient)
+            annotation_count: status?.total_annotations || 0,
             // Phase 2.7: Add status info
             is_confirmed: status?.is_image_confirmed || false,
             status: status?.status || 'not-started',
@@ -211,12 +188,15 @@ export default function AnnotationPage() {
 
         setImages(convertedImages || []);
 
-        // Load annotations for first image if available
+        // Phase 2.12: Load annotations only for first image (lazy loading)
         if (convertedImages && convertedImages.length > 0) {
           const firstImageId = convertedImages[0].id;
-          const firstImageAnnotations = allAnnotations
-            .filter((ann: any) => (ann.image_id || ann.imageId) === firstImageId)
-            // Phase 2.9: Filter by initial task type
+
+          // Fetch annotations for first image only
+          const imageAnnotations = await getProjectAnnotations(projectId, firstImageId);
+
+          // Filter by task type
+          const filteredAnnotations = imageAnnotations
             .filter((ann: any) => {
               // no_object is filtered by its task_type attribute
               if (ann.annotation_type === 'no_object') {
@@ -226,7 +206,8 @@ export default function AnnotationPage() {
               return !initialTask || annTaskType === initialTask;
             })
             .map(convertAPIAnnotationToStore);
-          setAnnotations(firstImageAnnotations || []);
+
+          setAnnotations(filteredAnnotations || []);
         }
       }
 

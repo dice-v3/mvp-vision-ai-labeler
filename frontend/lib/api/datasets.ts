@@ -79,9 +79,10 @@ export interface DatasetImage {
  */
 export async function getDatasetImages(
   datasetId: string,
-  limit: number = 12
+  limit: number = 12,
+  offset: number = 0
 ): Promise<DatasetImage[]> {
-  return apiClient.get<DatasetImage[]>(`/api/v1/datasets/${datasetId}/images?limit=${limit}`);
+  return apiClient.get<DatasetImage[]>(`/api/v1/datasets/${datasetId}/images?limit=${limit}&offset=${offset}`);
 }
 
 export interface DeletionImpact {

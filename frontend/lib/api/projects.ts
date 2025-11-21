@@ -78,8 +78,12 @@ export interface ImageListResponse {
   project_id: string;
 }
 
-export async function getProjectImages(projectId: string, limit: number = 1000): Promise<ImageListResponse> {
-  return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}`);
+export async function getProjectImages(
+  projectId: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<ImageListResponse> {
+  return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================
