@@ -69,7 +69,7 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
     print()
 
     if len(annotations) == 0:
-        print("✅ No annotations to migrate!")
+        print("[OK] No annotations to migrate!")
         return
 
     # Statistics
@@ -92,7 +92,7 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
                 task_type_str = ann.attributes.get('task_type') if ann.attributes else None
 
                 if not task_type_str:
-                    print(f"⚠️  Warning: no_object annotation {ann.id} has no task_type in attributes")
+                    print(f"[WARNING]  Warning: no_object annotation {ann.id} has no task_type in attributes")
                     stats['errors'] += 1
                     continue
 
@@ -103,14 +103,14 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
                 try:
                     ann_type = AnnotationType(ann.annotation_type)
                 except ValueError:
-                    print(f"⚠️  Warning: Unknown annotation_type '{ann.annotation_type}' for annotation {ann.id}")
+                    print(f"[WARNING]  Warning: Unknown annotation_type '{ann.annotation_type}' for annotation {ann.id}")
                     stats['errors'] += 1
                     continue
 
                 task_type_enum = task_registry.get_task_for_annotation_type(ann_type)
 
                 if not task_type_enum:
-                    print(f"⚠️  Warning: No task found for annotation_type '{ann.annotation_type}' (annotation {ann.id})")
+                    print(f"[WARNING]  Warning: No task found for annotation_type '{ann.annotation_type}' (annotation {ann.id})")
                     stats['errors'] += 1
                     continue
 
@@ -127,7 +127,7 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
                 print(f"  [{i}] Annotation {ann.id}: {ann.annotation_type} → {task_type_str}")
 
         except Exception as e:
-            print(f"❌ Error processing annotation {ann.id}: {e}")
+            print(f"[ERROR] Error processing annotation {ann.id}: {e}")
             stats['errors'] += 1
 
     # Commit changes
@@ -135,7 +135,7 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
         print()
         print("Committing changes to database...")
         db.commit()
-        print("✅ Migration complete!")
+        print("[OK] Migration complete!")
     else:
         print()
         print("DRY RUN - No changes committed")
@@ -158,10 +158,10 @@ def migrate_annotations(dry_run: bool = False, project_id: str = None):
     remaining = db.query(func.count(Annotation.id)).filter(Annotation.task_type.is_(None)).scalar()
 
     if remaining > 0:
-        print(f"⚠️  WARNING: {remaining} annotations still have null task_type!")
+        print(f"[WARNING]  WARNING: {remaining} annotations still have null task_type!")
         print("   Review errors above and re-run migration.")
     else:
-        print("✅ VERIFICATION PASSED: All annotations have task_type values!")
+        print("[OK] VERIFICATION PASSED: All annotations have task_type values!")
 
     db.close()
 
@@ -202,7 +202,7 @@ Examples:
     try:
         migrate_annotations(dry_run=args.dry_run, project_id=args.project_id)
     except Exception as e:
-        print(f"\n❌ Migration failed: {e}")
+        print(f"\n[ERROR] Migration failed: {e}")
         sys.exit(1)
 
 

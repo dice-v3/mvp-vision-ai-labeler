@@ -27,7 +27,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'refactoring_001'
-down_revision = '20251118_0002_add_task_type_to_image_status'
+down_revision = 'e4f5a6b7c8d9'  # 20251118_0002_add_task_type_to_image_status
 branch_labels = None
 depends_on = None
 
@@ -75,8 +75,8 @@ def upgrade() -> None:
     print("[Migration] Removing legacy 'classes' column from annotation_projects...")
     op.drop_column('annotation_projects', 'classes')
 
-    print("[Migration] ✅ Schema changes complete!")
-    print("[Migration] ⚠️  IMPORTANT: Run data migration script to populate task_type values")
+    print("[Migration] [OK] Schema changes complete!")
+    print("[Migration] [IMPORTANT] Run data migration script to populate task_type values")
     print("[Migration]     python scripts/migrate_annotations_task_type.py")
 
 
@@ -105,4 +105,4 @@ def downgrade() -> None:
     print("[Migration] Dropping task_type column...")
     op.drop_column('annotations', 'task_type')
 
-    print("[Migration] ⚠️  Downgrade complete - system reverted to legacy architecture")
+    print("[Migration] [WARNING] Downgrade complete - system reverted to legacy architecture")
