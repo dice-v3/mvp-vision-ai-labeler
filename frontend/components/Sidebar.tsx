@@ -142,6 +142,7 @@ export default function Sidebar({
 
     {/* Create Dataset Modal */}
     <CreateDatasetModal
+      mode="create"
       isOpen={createModalOpen}
       onClose={() => setCreateModalOpen(false)}
       onSuccess={handleCreateSuccess}

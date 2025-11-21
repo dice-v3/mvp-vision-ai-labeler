@@ -40,11 +40,13 @@ export function ToastContainer() {
         return (
           <div
             key={toast.id}
+            onClick={() => removeToast(toast.id)}
             className={`
               ${style.bg}
               rounded-lg shadow-lg px-4 py-3
               animate-in slide-in-from-right duration-300
               flex items-center gap-3
+              cursor-pointer hover:opacity-90 transition-opacity
             `}
           >
             <span className="text-white text-sm flex-shrink-0">
@@ -53,12 +55,6 @@ export function ToastContainer() {
             <p className="text-white text-sm flex-1">
               {toast.message}
             </p>
-            <button
-              onClick={() => removeToast(toast.id)}
-              className="text-white/80 hover:text-white flex-shrink-0 text-lg leading-none"
-            >
-              ×
-            </button>
           </div>
         );
       })}

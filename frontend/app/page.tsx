@@ -21,6 +21,7 @@ import DeleteDatasetModal from '@/components/datasets/DeleteDatasetModal';
 import DatasetMembersAvatars from '@/components/datasets/DatasetMembersAvatars';
 import InviteMemberModal from '@/components/datasets/InviteMemberModal';
 import CreateDatasetModal from '@/components/datasets/CreateDatasetModal';
+import MultiStepUploadModal from '@/components/datasets/upload/MultiStepUploadModal';
 
 // Phase 2.9: Task progress stats
 interface TaskStats {
@@ -46,6 +47,7 @@ export default function DashboardPage() {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [error, setError] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   // Phase 2.9: Task-based stats
   const [taskStats, setTaskStats] = useState<TaskStats[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -228,6 +230,25 @@ export default function DashboardPage() {
     }
 
     toast.success('데이터셋 정보가 업데이트되었습니다');
+  };
+
+  const handleUploadSuccess = async () => {
+    // Refresh dataset info and images
+    if (selectedDatasetId) {
+      // Refresh datasets to update image counts
+      await fetchDatasets();
+
+      // Refresh images
+      setImagesLoading(true);
+      try {
+        const imagesData = await getDatasetImages(selectedDatasetId, 8);
+        setImages(imagesData);
+      } catch (err) {
+        console.error('Failed to refresh images:', err);
+      } finally {
+        setImagesLoading(false);
+      }
+    }
   };
 
   // Permission management handlers
@@ -413,17 +434,28 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Start Labeling Button */}
+                  {/* Action Buttons */}
                   {project && (
-                    <button
-                      onClick={handleStartLabeling}
-                      className="px-6 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all flex items-center space-x-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                      </svg>
-                      <span>레이블링 시작</span>
-                    </button>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => setUploadModalOpen(true)}
+                        className="px-4 py-2 rounded-lg border border-violet-600 text-violet-600 font-medium hover:bg-violet-50 transition-colors flex items-center space-x-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span>이미지 업로드</span>
+                      </button>
+                      <button
+                        onClick={handleStartLabeling}
+                        className="px-6 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all flex items-center space-x-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                        </svg>
+                        <span>레이블링 시작</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -636,12 +668,17 @@ export default function DashboardPage() {
                           {images.slice(0, 8).map((image) => (
                             <div key={image.id} className="aspect-square relative rounded border border-gray-200 overflow-hidden hover:border-violet-400 transition-colors group">
                               <img
-                                src={image.url}
+                                src={image.thumbnail_url || image.url}
                                 alt={image.file_name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  console.error('Image failed to load:', image.file_name, image.url);
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  console.error('Image failed to load:', image.file_name, image.thumbnail_url || image.url);
+                                  // If thumbnail fails, try original
+                                  if (image.thumbnail_url && (e.target as HTMLImageElement).src !== image.url) {
+                                    (e.target as HTMLImageElement).src = image.url;
+                                  } else {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }
                                 }}
                                 onLoad={() => console.log('Image loaded:', image.file_name)}
                               />
@@ -750,6 +787,17 @@ export default function DashboardPage() {
           onClose={() => setEditModalOpen(false)}
           onSuccess={handleEditDataset}
           dataset={selectedDataset}
+        />
+      )}
+
+      {/* Upload Images Modal */}
+      {selectedDataset && (
+        <MultiStepUploadModal
+          datasetId={selectedDataset.id}
+          datasetName={selectedDataset.name}
+          isOpen={uploadModalOpen}
+          onClose={() => setUploadModalOpen(false)}
+          onSuccess={handleUploadSuccess}
         />
       )}
     </div>

@@ -109,3 +109,25 @@ class DeleteDatasetResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UploadSummary(BaseModel):
+    """Summary of uploaded files."""
+    images_uploaded: int
+    annotations_imported: int = 0
+    storage_bytes_used: int
+    folder_structure: Dict[str, int] = {}
+
+    class Config:
+        from_attributes = True
+
+
+class DatasetUploadResponse(BaseModel):
+    """Response after dataset upload."""
+    dataset_id: str
+    dataset_name: str
+    project_id: str
+    upload_summary: UploadSummary
+
+    class Config:
+        from_attributes = True

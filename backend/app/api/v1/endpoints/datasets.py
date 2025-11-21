@@ -2,14 +2,17 @@
 
 import uuid
 import json
+import logging
 import boto3
 from botocore.client import Config
 from datetime import datetime
-from typing import List, Optional, Dict, Set
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional, Dict, Set, Any
+from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
@@ -23,6 +26,8 @@ from app.schemas.dataset import (
     DeleteDatasetRequest,
     DeleteDatasetResponse,
     DeletionImpactResponse,
+    DatasetUploadResponse,
+    UploadSummary,
 )
 from app.schemas.permission import (
     PermissionInviteRequest,
@@ -35,7 +40,21 @@ from app.services.dataset_delete_service import (
     calculate_deletion_impact,
     delete_dataset_complete,
 )
+from app.services.dataset_upload_service import (
+    upload_files_to_s3,
+    parse_annotation_file,
+)
+from app.services.annotation_import_service import (
+    import_annotations_to_db,
+    update_image_status,
+)
+from app.services.thumbnail_service import get_thumbnail_path
+from app.services.storage_folder_service import (
+    get_storage_structure,
+    preview_upload_structure,
+)
 from app.core.security import require_dataset_permission
+from app.core.storage import storage_client
 
 router = APIRouter()
 
@@ -47,6 +66,7 @@ class ImageResponse(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     url: str  # Presigned URL for viewing
+    thumbnail_url: Optional[str] = None  # Presigned URL for thumbnail
 
     class Config:
         from_attributes = True
@@ -683,7 +703,7 @@ async def list_dataset_images(
             s3_key = f"{dataset.storage_path.rstrip('/')}/images/{img['file_name']}"
             print(f"DEBUG: Generating presigned URL for s3_key: {s3_key}")
 
-            # Generate presigned URL (valid for 1 hour)
+            # Generate presigned URL for original image (valid for 1 hour)
             url = s3_client.generate_presigned_url(
                 'get_object',
                 Params={
@@ -694,12 +714,30 @@ async def list_dataset_images(
             )
             print(f"DEBUG: Generated URL: {url}")
 
+            # Generate presigned URL for thumbnail
+            thumbnail_url = None
+            try:
+                thumbnail_key = get_thumbnail_path(s3_key)
+                thumbnail_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': settings.S3_BUCKET_DATASETS,
+                        'Key': thumbnail_key
+                    },
+                    ExpiresIn=3600
+                )
+                print(f"DEBUG: Generated thumbnail URL: {thumbnail_url}")
+            except Exception as thumb_error:
+                # Thumbnail might not exist for old images
+                print(f"Thumbnail not available for {img.get('file_name')}: {thumb_error}")
+
             result.append(ImageResponse(
                 id=img['id'],
                 file_name=img['file_name'],
                 width=img.get('width'),
                 height=img.get('height'),
-                url=url
+                url=url,
+                thumbnail_url=thumbnail_url
             ))
         except Exception as e:
             print(f"Error generating presigned URL for {img.get('file_name')}: {e}")
@@ -1137,3 +1175,376 @@ async def transfer_dataset_ownership(
     }
 
     return PermissionResponse.model_validate(response_dict)
+
+
+@router.post("/upload", response_model=DatasetUploadResponse, tags=["Datasets"], status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    dataset_name: str = Form(...),
+    dataset_description: Optional[str] = Form(None),
+    task_types: Optional[str] = Form(None),  # JSON string of task types
+    visibility: str = Form("private"),
+    files: List[UploadFile] = File(...),
+    annotation_file: Optional[UploadFile] = File(None),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload new dataset with images and optional annotations.
+
+    Supports:
+    - Multiple image files (jpg, png, etc.)
+    - ZIP archive with folder structure
+    - Optional annotations.json (COCO/DICE format)
+
+    Process:
+    1. Validate files and name uniqueness
+    2. Create dataset record in Labeler DB
+    3. Upload images to S3 (preserve folder structure)
+    4. Parse and upload annotations if provided
+    5. Auto-create project in Labeler DB
+    6. Import annotations to Labeler DB if provided
+    7. Return upload summary
+    """
+    # Parse task_types from JSON string
+    task_types_list = []
+    if task_types:
+        try:
+            task_types_list = json.loads(task_types)
+        except:
+            task_types_list = []
+
+    # Step 1: Generate dataset ID
+    dataset_id = f"ds_{uuid.uuid4().hex[:16]}"
+    storage_path = f"datasets/{dataset_id}/"
+
+    # Step 2: Upload files to S3
+    upload_result = await upload_files_to_s3(
+        dataset_id=dataset_id,
+        files=files,
+        preserve_structure=True
+    )
+
+    # Step 3: Handle annotations if provided
+    annotations_data = None
+    if annotation_file:
+        annotations_data = await parse_annotation_file(annotation_file)
+
+        # Upload to S3
+        annotation_json = json.dumps(annotations_data).encode('utf-8')
+        annotation_path = f"datasets/{dataset_id}/annotations_detection.json"
+        storage_client.s3_client.put_object(
+            Bucket=storage_client.datasets_bucket,
+            Key=annotation_path,
+            Body=annotation_json,
+            ContentType='application/json'
+        )
+
+    # Step 4: Create dataset record in Labeler DB
+    db_dataset = Dataset(
+        id=dataset_id,
+        name=dataset_name,
+        description=dataset_description,
+        owner_id=current_user.id,
+        storage_path=storage_path,
+        storage_type="s3",
+        format="images",
+        labeled=annotations_data is not None,
+        num_images=upload_result.images_count,
+        visibility=visibility,
+        status="active",
+        integrity_status="valid",
+        version=1,
+        is_snapshot=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_dataset)
+
+    # Step 5: Create owner permission
+    db_permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_permission)
+
+    # Step 6: Create annotation project
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+
+    # Build task_config based on task_types
+    task_config = {}
+    for task_type in task_types_list:
+        if task_type == "detection":
+            task_config["detection"] = {"type": "bbox"}
+        elif task_type == "segmentation":
+            task_config["segmentation"] = {"type": "polygon"}
+        elif task_type == "classification":
+            task_config["classification"] = {"type": "single"}
+        elif task_type == "geometry":
+            task_config["geometry"] = {"type": "line"}
+
+    # Extract classes from annotations if provided
+    task_classes = {}
+    if annotations_data and 'categories' in annotations_data:
+        # Build classes dict from categories
+        classes_list = []
+        for cat in annotations_data['categories']:
+            classes_list.append({
+                "id": str(cat['id']),
+                "name": cat['name'],
+                "color": cat.get('color', '#FF0000'),
+                "order": cat.get('id', 0)
+            })
+
+        # Determine task type from annotations
+        if annotations_data.get('annotations'):
+            first_ann = annotations_data['annotations'][0]
+            if 'bbox' in first_ann:
+                task_classes['detection'] = classes_list
+            elif 'segmentation' in first_ann:
+                task_classes['segmentation'] = classes_list
+
+    db_project = AnnotationProject(
+        id=project_id,
+        name=dataset_name,
+        description=dataset_description or f"Annotation project for {dataset_name}",
+        dataset_id=dataset_id,
+        owner_id=current_user.id,
+        task_types=task_types_list,
+        task_config=task_config,
+        task_classes=task_classes,
+        settings={},
+        total_images=upload_result.images_count,
+        annotated_images=0,
+        total_annotations=0,
+        status="active",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        last_updated_by=current_user.id,
+    )
+    labeler_db.add(db_project)
+
+    # Commit dataset, permission, and project
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(db_dataset)
+        labeler_db.refresh(db_project)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create dataset: {str(e)}"
+        )
+
+    # Step 7: Import annotations if provided
+    annotations_imported = 0
+    if annotations_data:
+        import_result = import_annotations_to_db(
+            labeler_db=labeler_db,
+            project_id=project_id,
+            annotations_data=annotations_data,
+            current_user=current_user
+        )
+        annotations_imported = import_result.count
+
+        # Update project stats
+        db_project.total_annotations = annotations_imported
+        labeler_db.commit()
+
+    # Return response
+    return DatasetUploadResponse(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        project_id=project_id,
+        upload_summary=UploadSummary(
+            images_uploaded=upload_result.images_count,
+            annotations_imported=annotations_imported,
+            storage_bytes_used=upload_result.total_bytes,
+            folder_structure=upload_result.folder_structure
+        )
+    )
+
+
+@router.post("/{dataset_id}/images", response_model=UploadSummary, tags=["Datasets"])
+async def add_images_to_dataset(
+    dataset_id: str,
+    files: List[UploadFile] = File(...),
+    annotation_file: Optional[UploadFile] = File(None),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Add images to an existing dataset.
+
+    Requires member or owner permission.
+
+    Process:
+    1. Upload images to S3
+    2. Parse and import annotations if provided
+    3. Update dataset and project image counts
+    4. Return upload summary
+    """
+    # Get dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Get project
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.dataset_id == dataset_id
+    ).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project not found for dataset {dataset_id}"
+        )
+
+    # Step 1: Upload files to S3
+    upload_result = await upload_files_to_s3(
+        dataset_id=dataset_id,
+        files=files,
+        preserve_structure=True
+    )
+
+    # Step 2: Handle annotations if provided
+    annotations_imported = 0
+    if annotation_file:
+        annotations_data = await parse_annotation_file(annotation_file)
+
+        # Upload to S3
+        annotation_json = json.dumps(annotations_data).encode('utf-8')
+        annotation_path = f"datasets/{dataset_id}/annotations_detection.json"
+        storage_client.s3_client.put_object(
+            Bucket=storage_client.datasets_bucket,
+            Key=annotation_path,
+            Body=annotation_json,
+            ContentType='application/json'
+        )
+
+        # Import annotations
+        import_result = import_annotations_to_db(
+            labeler_db=labeler_db,
+            project_id=project.id,
+            annotations_data=annotations_data,
+            current_user=current_user
+        )
+        annotations_imported = import_result.count
+
+        # Update project stats
+        project.total_annotations += annotations_imported
+        dataset.labeled = True
+
+    # Step 3: Update counts
+    dataset.num_images += upload_result.images_count
+    project.total_images += upload_result.images_count
+    dataset.updated_at = datetime.utcnow()
+    project.updated_at = datetime.utcnow()
+
+    labeler_db.commit()
+
+    return UploadSummary(
+        images_uploaded=upload_result.images_count,
+        annotations_imported=annotations_imported,
+        storage_bytes_used=upload_result.total_bytes,
+        folder_structure=upload_result.folder_structure
+    )
+
+
+@router.get("/{dataset_id}/storage/structure", tags=["Storage"])
+async def get_dataset_storage_structure(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Get folder structure for dataset storage.
+
+    Returns:
+        - Folder hierarchy with file counts and sizes
+        - Total statistics
+    """
+    # Verify dataset exists
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    try:
+        structure = get_storage_structure(dataset_id)
+        return structure
+    except Exception as e:
+        logger.error(f"Failed to get storage structure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve storage structure"
+        )
+
+
+class UploadPreviewRequest(BaseModel):
+    """Request for upload preview."""
+    file_mappings: List[Dict[str, Any]]
+    target_folder: str = ""
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "file_mappings": [
+                    {
+                        "filename": "img001.jpg",
+                        "relative_path": "train/cat/img001.jpg",
+                        "size": 50000
+                    }
+                ],
+                "target_folder": "dataset_v2/"
+            }
+        }
+
+
+@router.post("/{dataset_id}/storage/preview", tags=["Storage"])
+async def preview_dataset_upload(
+    dataset_id: str,
+    request: UploadPreviewRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Preview what the storage will look like after upload.
+
+    This allows users to:
+    - See which files will be new vs duplicates
+    - Preview the final folder structure
+    - Adjust target folder before actual upload
+    """
+    # Verify dataset exists
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    try:
+        preview = preview_upload_structure(
+            dataset_id=dataset_id,
+            file_mappings=request.file_mappings,
+            target_folder=request.target_folder
+        )
+        return preview
+    except Exception as e:
+        logger.error(f"Failed to generate upload preview: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate upload preview"
+        )

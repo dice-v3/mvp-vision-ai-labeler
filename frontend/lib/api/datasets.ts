@@ -71,6 +71,7 @@ export interface DatasetImage {
   width?: number;
   height?: number;
   url: string;
+  thumbnail_url?: string;
 }
 
 /**
@@ -146,4 +147,237 @@ export async function deleteDataset(
   request: DeleteDatasetRequest
 ): Promise<DeleteDatasetResponse> {
   return apiClient.delete<DeleteDatasetResponse>(`/api/v1/datasets/${datasetId}`, request);
+}
+
+export interface UploadDatasetRequest {
+  dataset_name: string;
+  dataset_description?: string;
+  task_types?: string[];
+  visibility?: 'private' | 'public';
+  files: File[];
+  annotation_file?: File;
+}
+
+export interface UploadSummary {
+  images_uploaded: number;
+  annotations_imported: number;
+  storage_bytes_used: number;
+  folder_structure: Record<string, number>;
+}
+
+export interface UploadDatasetResponse {
+  dataset_id: string;
+  dataset_name: string;
+  project_id: string;
+  upload_summary: UploadSummary;
+}
+
+/**
+ * Upload new dataset with images and optional annotations
+ */
+export async function uploadDataset(
+  request: UploadDatasetRequest,
+  onProgress?: (progress: number) => void
+): Promise<UploadDatasetResponse> {
+  const formData = new FormData();
+  formData.append('dataset_name', request.dataset_name);
+
+  if (request.dataset_description) {
+    formData.append('dataset_description', request.dataset_description);
+  }
+
+  if (request.task_types && request.task_types.length > 0) {
+    formData.append('task_types', JSON.stringify(request.task_types));
+  }
+
+  if (request.visibility) {
+    formData.append('visibility', request.visibility);
+  }
+
+  // Add image files with path information
+  request.files.forEach((file) => {
+    // @ts-ignore - webkitRelativePath exists on File
+    const filename = file.webkitRelativePath || file.name;
+    formData.append('files', file, filename);
+  });
+
+  // Add annotation file if provided
+  if (request.annotation_file) {
+    formData.append('annotation_file', request.annotation_file);
+  }
+
+  // Use XMLHttpRequest for progress tracking
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          onProgress(progress);
+        }
+      });
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const response = JSON.parse(xhr.responseText);
+        resolve(response);
+      } else {
+        const error = JSON.parse(xhr.responseText);
+        reject(new Error(error.detail || 'Upload failed'));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'));
+    });
+
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload cancelled'));
+    });
+
+    // Get token from localStorage
+    const token = localStorage.getItem('access_token');
+
+    xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/upload`);
+
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    xhr.send(formData);
+  });
+}
+
+export interface FolderInfo {
+  path: string;
+  name: string;
+  file_count: number;
+  total_size_bytes: number;
+  depth: number;
+}
+
+export interface StorageStructure {
+  dataset_id: string;
+  total_files: number;
+  total_size_bytes: number;
+  folders: FolderInfo[];
+}
+
+/**
+ * Get storage folder structure for a dataset
+ */
+export async function getStorageStructure(datasetId: string): Promise<StorageStructure> {
+  return apiClient.get<StorageStructure>(`/api/v1/datasets/${datasetId}/storage/structure`);
+}
+
+export interface FileMapping {
+  filename: string;
+  relative_path: string;
+  size: number;
+}
+
+export interface UploadPreviewRequest {
+  file_mappings: FileMapping[];
+  target_folder: string;
+}
+
+export interface PreviewFileInfo {
+  filename: string;
+  path: string;
+  size: number;
+  status: 'new' | 'duplicate';
+}
+
+export interface UploadPreview {
+  dataset_id: string;
+  target_folder: string;
+  current_structure: StorageStructure;
+  new_files: PreviewFileInfo[];
+  duplicate_files: PreviewFileInfo[];
+  summary: {
+    total_new: number;
+    total_duplicates: number;
+    total_files: number;
+  };
+}
+
+/**
+ * Preview upload structure before actual upload
+ */
+export async function previewUpload(
+  datasetId: string,
+  request: UploadPreviewRequest
+): Promise<UploadPreview> {
+  return apiClient.post<UploadPreview>(`/api/v1/datasets/${datasetId}/storage/preview`, request);
+}
+
+/**
+ * Add images to existing dataset
+ */
+export async function addImagesToDataset(
+  datasetId: string,
+  files: File[],
+  annotationFile?: File,
+  onProgress?: (progress: number) => void
+): Promise<UploadSummary> {
+  const formData = new FormData();
+
+  // Add image files with path information
+  files.forEach((file) => {
+    // @ts-ignore - webkitRelativePath exists on File
+    const filename = file.webkitRelativePath || file.name;
+    formData.append('files', file, filename);
+  });
+
+  // Add annotation file if provided
+  if (annotationFile) {
+    formData.append('annotation_file', annotationFile);
+  }
+
+  // Use XMLHttpRequest for progress tracking
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          onProgress(progress);
+        }
+      });
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const response = JSON.parse(xhr.responseText);
+        resolve(response);
+      } else {
+        const error = JSON.parse(xhr.responseText);
+        reject(new Error(error.detail || 'Upload failed'));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'));
+    });
+
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload cancelled'));
+    });
+
+    // Get token from localStorage
+    const token = localStorage.getItem('access_token');
+
+    xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/${datasetId}/images`);
+
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    xhr.send(formData);
+  });
 }
