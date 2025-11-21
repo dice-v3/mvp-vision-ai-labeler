@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 class ImageMetadata(BaseModel):
     """Image metadata with presigned URL."""
 
+    id: str = Field(..., description="Image ID (filename without extension)")
     key: str = Field(..., description="S3 object key")
     filename: str = Field(..., description="Image filename")
+    file_name: str = Field(..., description="Image filename (alias for frontend compatibility)")
     size: int = Field(..., description="File size in bytes")
     last_modified: str = Field(..., description="Last modified timestamp (ISO format)")
     url: str = Field(..., description="Presigned URL for accessing the image")
@@ -77,3 +79,26 @@ class ImageConfirmResponse(BaseModel):
     status: str
     total_annotations: int
     confirmed_annotations: int
+
+
+# Phase 2.12: Project Statistics Schemas
+class TaskStatsResponse(BaseModel):
+    """Statistics for a single task type."""
+
+    task_type: str
+    total_images: int
+    not_started: int
+    in_progress: int
+    completed: int
+    confirmed: int
+
+
+class ProjectStatsResponse(BaseModel):
+    """Aggregate statistics for a project, broken down by task type.
+
+    Phase 2.12: Optimized endpoint that returns counts without loading all status records.
+    """
+
+    project_id: str
+    total_images: int
+    task_stats: List[TaskStatsResponse]

@@ -8,18 +8,23 @@
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { useState, useEffect, useRef } from 'react';
+import { getProjectImages, getProjectImageStatuses } from '@/lib/api/projects';
 
 type FilterType = 'all' | 'not-started' | 'in-progress' | 'completed';
 
 export default function ImageList() {
   const {
+    project,
     images,
+    totalImages,
     currentIndex,
     setCurrentIndex,
     annotations,
     preferences,
     setPreference,
     currentTask, // Phase 2.9: Task context
+    loadMoreImages, // Phase 2.12: Load more images
+    backgroundLoading, // Phase 2.12: Background loading state
     // Multi-image selection
     selectedImageIds,
     toggleImageSelection,
@@ -30,6 +35,7 @@ export default function ImageList() {
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);  // Phase 2.12: Loading state for pagination
   const currentImageRef = useRef<HTMLDivElement | HTMLTableRowElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,6 +53,48 @@ export default function ImageList() {
     if (img.is_confirmed) return 'completed';
     if (count > 0) return 'in-progress';
     return 'not-started';
+  };
+
+  // Phase 2.12: Load more images function
+  const handleLoadMore = async () => {
+    if (!project?.id || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const offset = images.length;
+      const limit = 50;
+
+      // Fetch next batch of images
+      const imageResponse = await getProjectImages(project.id, limit, offset);
+
+      // Fetch image statuses for the new images
+      const imageStatusesResponse = await getProjectImageStatuses(project.id, currentTask || undefined, limit, offset);
+      const imageStatusMap = new Map(
+        imageStatusesResponse.statuses.map(s => [s.image_id, s])
+      );
+
+      // Convert to ImageData format with status info
+      const convertedImages = imageResponse.images.map(img => {
+        const imgId = String(img.id);
+        const status = imageStatusMap.get(imgId);
+        return {
+          ...img,
+          id: imgId,
+          annotation_count: status?.total_annotations || 0,
+          is_confirmed: status?.is_image_confirmed || false,
+          status: status?.status || 'not-started',
+          confirmed_at: status?.confirmed_at,
+          has_no_object: status?.has_no_object || false,
+        };
+      });
+
+      // Append new images to the store
+      loadMoreImages(convertedImages);
+    } catch (error) {
+      console.error('Failed to load more images:', error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   // Phase 2.7: Enhanced Status Badge Component
@@ -332,6 +380,48 @@ export default function ImageList() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Phase 2.12: Load More Button */}
+        {images.length < totalImages && (
+          <div className="mt-4 flex justify-center">
+            {/* Load More button - compact with border */}
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore || backgroundLoading}
+              className={`
+                w-8 h-8 flex items-center justify-center rounded-full transition-all relative
+                ${(loadingMore || backgroundLoading)
+                  ? 'cursor-not-allowed'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'
+                }
+              `}
+              title={`Load More (${images.length} / ${totalImages})`}
+            >
+              {(loadingMore || backgroundLoading) ? (
+                /* Spinner filling entire button area */
+                <svg className="animate-spin w-full h-full text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <>
+                  {/* Dashed border */}
+                  <div className="absolute inset-0 rounded-full border border-dashed border-gray-400 dark:border-gray-500" />
+                  {/* + icon */}
+                  <svg
+                    className="w-3 h-3 text-gray-500 dark:text-gray-400 relative z-10"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </>
+              )}
+            </button>
           </div>
         )}
       </div>

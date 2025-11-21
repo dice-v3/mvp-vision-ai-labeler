@@ -78,8 +78,12 @@ export interface ImageListResponse {
   project_id: string;
 }
 
-export async function getProjectImages(projectId: string, limit: number = 1000): Promise<ImageListResponse> {
-  return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}`);
+export async function getProjectImages(
+  projectId: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<ImageListResponse> {
+  return apiClient.get<ImageListResponse>(`/api/v1/projects/${projectId}/images?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================
@@ -124,10 +128,16 @@ export interface ImageConfirmResponse {
  */
 export async function getProjectImageStatuses(
   projectId: string,
-  taskType?: string
+  taskType?: string,
+  limit: number = 50,
+  offset: number = 0
 ): Promise<ImageStatusListResponse> {
-  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : '';
-  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status${params}`);
+  const params = new URLSearchParams();
+  if (taskType) params.set('task_type', taskType);
+  params.set('limit', limit.toString());
+  params.set('offset', offset.toString());
+
+  return apiClient.get<ImageStatusListResponse>(`/api/v1/projects/${projectId}/images/status?${params.toString()}`);
 }
 
 /**
@@ -169,4 +179,32 @@ export async function addTaskType(projectId: string, taskType: string): Promise<
   return apiClient.post<Project>(`/api/v1/projects/${projectId}/task-types`, {
     task_type: taskType
   });
+}
+
+// ============================================================================
+// Phase 2.12: Project Statistics API
+// ============================================================================
+
+export interface TaskStats {
+  task_type: string;
+  total_images: number;
+  not_started: number;
+  in_progress: number;
+  completed: number;
+  confirmed: number;
+}
+
+export interface ProjectStats {
+  project_id: string;
+  total_images: number;
+  task_stats: TaskStats[];
+}
+
+/**
+ * Get aggregate statistics for a project (optimized - no individual status records)
+ *
+ * Phase 2.12: Efficient endpoint for dashboard that uses SQL aggregation
+ */
+export async function getProjectStats(projectId: string): Promise<ProjectStats> {
+  return apiClient.get<ProjectStats>(`/api/v1/projects/${projectId}/stats`);
 }

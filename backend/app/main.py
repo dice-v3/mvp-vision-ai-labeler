@@ -4,15 +4,48 @@ Vision AI Labeler - Backend API
 Main FastAPI application entry point.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.datastructures import Headers, FormData
+from starlette.requests import Request as StarletteRequest
 
 from app.core.config import settings
 from app.api.v1.router import api_router
 
 
-# Create FastAPI application
+# Custom Request class to increase multipart field limit
+class CustomRequest(StarletteRequest):
+    """Custom request class with increased multipart limits."""
+
+    async def form(self) -> FormData:
+        """Override form() to increase max_fields limit."""
+        if not hasattr(self, "_form"):
+            assert (
+                "multipart/form-data" in self.headers.get("content-type", "")
+                or "application/x-www-form-urlencoded" in self.headers.get("content-type", "")
+            )
+            from starlette.formparsers import MultiPartParser
+
+            # Increase max_fields from default 1000 to 50000
+            # This allows uploading folders with up to 50000 files
+            #
+            # Batch upload (500 files per request) handles large uploads efficiently:
+            # - 50000 files = 100 batches of 500 files each
+            # - Each batch uploads independently with progress tracking
+            # - Partial failures don't stop the entire upload
+            multipart_parser = MultiPartParser(
+                self.headers,
+                self.stream(),
+                max_files=1000,
+                max_fields=50000  # Increased to support very large datasets
+            )
+            self._form = await multipart_parser.parse()
+        return self._form
+
+
+# Create FastAPI application with custom request class
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -20,6 +53,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Override request class
+app.router.request_class = CustomRequest
 
 
 # CORS Configuration

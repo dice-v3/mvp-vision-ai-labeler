@@ -1,31 +1,60 @@
-"""Dataset endpoints (read-only from Platform DB)."""
+"""Dataset endpoints - MIGRATED to Labeler DB (2025-11-21)."""
 
 import uuid
 import json
+import logging
 import boto3
 from botocore.client import Config
-from typing import List, Optional, Dict, Set
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from typing import List, Optional, Dict, Set, Any
+from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
+
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
-from app.db.models.platform import Dataset, User
-from app.db.models.labeler import AnnotationProject, Annotation
+from app.db.models.platform import User
+from app.db.models.labeler import Dataset, DatasetPermission, AnnotationProject, Annotation
 from app.schemas.dataset import (
+    DatasetCreate,
+    DatasetUpdate,
     DatasetResponse,
     DeleteDatasetRequest,
     DeleteDatasetResponse,
     DeletionImpactResponse,
+    DatasetUploadResponse,
+    UploadSummary,
+)
+from app.schemas.permission import (
+    PermissionInviteRequest,
+    PermissionResponse,
+    PermissionUpdateRequest,
+    TransferOwnershipRequest,
 )
 from app.schemas.project import ProjectResponse
 from app.services.dataset_delete_service import (
     calculate_deletion_impact,
     delete_dataset_complete,
 )
+from app.services.dataset_upload_service import (
+    upload_files_to_s3,
+    parse_annotation_file,
+)
+from app.services.annotation_import_service import (
+    import_annotations_to_db,
+    update_image_status,
+)
+from app.services.thumbnail_service import get_thumbnail_path
+from app.services.storage_folder_service import (
+    get_storage_structure,
+    preview_upload_structure,
+)
+from app.core.security import require_dataset_permission
+from app.core.storage import storage_client
 
 router = APIRouter()
 
@@ -37,6 +66,7 @@ class ImageResponse(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     url: str  # Presigned URL for viewing
+    thumbnail_url: Optional[str] = None  # Presigned URL for thumbnail
 
     class Config:
         from_attributes = True
@@ -131,88 +161,257 @@ def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str
     return result
 
 
+@router.post("", response_model=DatasetResponse, tags=["Datasets"], status_code=status.HTTP_201_CREATED)
+async def create_dataset(
+    dataset: DatasetCreate,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create new empty dataset in Labeler DB.
+
+    This endpoint creates:
+    1. Dataset record in Labeler DB
+    2. Owner permission for the current user
+    3. Annotation project linked to the dataset
+
+    All operations are performed in a single transaction for consistency.
+
+    - **name**: Dataset name
+    - **description**: Optional dataset description
+    - **task_types**: List of task types (e.g., ['detection', 'classification'])
+    """
+    # Generate dataset ID
+    dataset_id = f"ds_{uuid.uuid4().hex[:16]}"
+
+    # Define storage path
+    storage_path = f"datasets/{dataset_id}/"
+
+    # Create dataset record in Labeler DB
+    db_dataset = Dataset(
+        id=dataset_id,
+        name=dataset.name,
+        description=dataset.description,
+        owner_id=current_user.id,
+        storage_path=storage_path,
+        storage_type="s3",
+        format="images",
+        labeled=False,
+        num_images=0,
+        visibility=dataset.visibility or "private",
+        status="active",
+        integrity_status="valid",
+        version=1,
+        is_snapshot=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_dataset)
+
+    # Create owner permission record (SAME TRANSACTION)
+    db_permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_permission)
+
+    # Create annotation project (SAME TRANSACTION)
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+
+    # Build task_config based on task_types (handle None and empty list)
+    task_types = dataset.task_types or []
+    task_config = {}
+    for task_type in task_types:
+        if task_type == "detection":
+            task_config["detection"] = {"type": "bbox"}
+        elif task_type == "segmentation":
+            task_config["segmentation"] = {"type": "polygon"}
+        elif task_type == "classification":
+            task_config["classification"] = {"type": "single"}
+        elif task_type == "geometry":
+            task_config["geometry"] = {"type": "line"}
+
+    db_project = AnnotationProject(
+        id=project_id,
+        name=dataset.name,
+        description=dataset.description or f"Annotation project for {dataset.name}",
+        dataset_id=dataset_id,
+        owner_id=current_user.id,
+        task_types=task_types,
+        task_config=task_config,
+        task_classes={},  # Empty classes - to be added later
+        settings={},
+        total_images=0,
+        annotated_images=0,
+        total_annotations=0,
+        status="active",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        last_updated_by=current_user.id,
+    )
+    labeler_db.add(db_project)
+
+    # Commit all changes in single transaction
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(db_dataset)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create dataset: {str(e)}"
+        )
+
+    # Build response with owner information
+    dataset_dict = {
+        **db_dataset.__dict__,
+        "num_items": db_dataset.num_images,
+        "source": db_dataset.storage_type,
+        "owner_name": current_user.full_name,
+        "owner_email": current_user.email,
+        "owner_badge_color": current_user.badge_color,
+    }
+
+    return DatasetResponse.model_validate(dataset_dict)
+
+
 @router.get("", response_model=List[DatasetResponse], tags=["Datasets"])
 async def list_datasets(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_platform_db),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get list of datasets from Platform database.
+    Get list of datasets from Labeler database.
 
     - **skip**: Number of records to skip (pagination)
     - **limit**: Maximum number of records to return (max 100)
     """
-    # Query datasets with owner information
+    # Query datasets from Labeler DB
     datasets = (
-        db.query(
-            Dataset,
-            User.full_name.label("owner_name"),
-            User.email.label("owner_email"),
-            User.badge_color.label("owner_badge_color"),
-        )
-        .join(User, Dataset.owner_id == User.id)
+        labeler_db.query(Dataset)
         .offset(skip)
         .limit(min(limit, 100))
         .all()
     )
 
-    # Convert to response format
+    # Convert to response format with owner information from Platform DB
     result = []
-    for dataset, owner_name, owner_email, owner_badge_color in datasets:
+    for dataset in datasets:
+        # Get owner info from Platform DB
+        owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+
         dataset_dict = {
             **dataset.__dict__,
-            "num_items": dataset.num_images or 0,  # Use num_images for Platform DB
-            "source": dataset.storage_type or "upload",  # Use storage_type for Platform DB
-            "owner_name": owner_name,
-            "owner_email": owner_email,
-            "owner_badge_color": owner_badge_color,
+            "num_items": dataset.num_images or 0,
+            "source": dataset.storage_type or "upload",
+            "owner_name": owner.full_name if owner else None,
+            "owner_email": owner.email if owner else None,
+            "owner_badge_color": owner.badge_color if owner else None,
         }
         result.append(DatasetResponse.model_validate(dataset_dict))
 
     return result
 
 
-@router.get("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
-async def get_dataset(
+@router.put("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
+async def update_dataset(
     dataset_id: str,
-    db: Session = Depends(get_platform_db),
+    dataset_update: DatasetUpdate,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("owner")),
 ):
     """
-    Get dataset by ID from Platform database.
+    Update dataset information.
+
+    Only owners can update dataset information.
 
     - **dataset_id**: Dataset ID
+    - **name**: New dataset name
+    - **description**: New dataset description
+    - **visibility**: New visibility setting (private or public)
     """
-    # Query dataset with owner information
-    result = (
-        db.query(
-            Dataset,
-            User.full_name.label("owner_name"),
-            User.email.label("owner_email"),
-            User.badge_color.label("owner_badge_color"),
-        )
-        .join(User, Dataset.owner_id == User.id)
-        .filter(Dataset.id == dataset_id)
-        .first()
-    )
+    # Query dataset from Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
 
-    if not result:
+    if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Dataset {dataset_id} not found",
         )
 
-    dataset, owner_name, owner_email, owner_badge_color = result
+    # Update fields
+    dataset.name = dataset_update.name
+    dataset.description = dataset_update.description
+    if dataset_update.visibility:
+        dataset.visibility = dataset_update.visibility
+    dataset.updated_at = datetime.utcnow()
+
+    # Commit changes
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(dataset)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update dataset: {str(e)}"
+        )
+
+    # Get owner info from Platform DB
+    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
 
     dataset_dict = {
         **dataset.__dict__,
-        "num_items": dataset.num_images or 0,  # Use num_images for Platform DB
-        "source": dataset.storage_type or "upload",  # Use storage_type for Platform DB
-        "owner_name": owner_name,
-        "owner_email": owner_email,
-        "owner_badge_color": owner_badge_color,
+        "num_items": dataset.num_images or 0,
+        "source": dataset.storage_type or "upload",
+        "owner_name": owner.full_name if owner else None,
+        "owner_email": owner.email if owner else None,
+        "owner_badge_color": owner.badge_color if owner else None,
+    }
+
+    return DatasetResponse.model_validate(dataset_dict)
+
+
+@router.get("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
+async def get_dataset(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get dataset by ID from Labeler database.
+
+    - **dataset_id**: Dataset ID
+    """
+    # Query dataset from Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Get owner info from Platform DB
+    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+
+    dataset_dict = {
+        **dataset.__dict__,
+        "num_items": dataset.num_images or 0,
+        "source": dataset.storage_type or "upload",
+        "owner_name": owner.full_name if owner else None,
+        "owner_email": owner.email if owner else None,
+        "owner_badge_color": owner.badge_color if owner else None,
     }
 
     return DatasetResponse.model_validate(dataset_dict)
@@ -234,8 +433,8 @@ async def get_or_create_project_for_dataset(
 
     - **dataset_id**: Dataset ID
     """
-    # First, verify dataset exists in Platform DB
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # First, verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -392,141 +591,147 @@ async def get_or_create_project_for_dataset(
 async def list_dataset_images(
     dataset_id: str,
     limit: int = 12,
-    platform_db: Session = Depends(get_platform_db),
+    random: bool = True,  # Phase 2.12: Random selection for dataset summary
+    labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Get list of images for a dataset with presigned URLs.
 
+    Phase 2.12: Performance optimization - uses DB queries instead of S3 list.
+
     - **dataset_id**: Dataset ID
     - **limit**: Maximum number of images to return (default 12)
+    - **random**: If true, return random images; if false, return in upload order (default true)
     """
-    # Verify dataset exists
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # Verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Dataset {dataset_id} not found",
         )
 
-    images = []
+    # Phase 2.12: Get images from DB instead of S3 list (10x faster!)
+    from app.db.models.labeler import ImageMetadata as ImageMetadataModel
 
-    # Load metadata from annotations.json (for width/height info)
-    image_metadata = {}
-    if dataset.annotation_path:
-        annotations_data = load_annotations_from_s3(dataset.annotation_path)
-        if annotations_data:
-            # Build metadata lookup by file_name
-            for img in annotations_data.get('images', []):
-                file_name = img.get('file_name')
-                if file_name:
-                    image_metadata[file_name] = {
-                        'width': img.get('width'),
-                        'height': img.get('height'),
-                    }
-
-    # List images from S3 - use file_path as image_id (source of truth)
-    try:
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=settings.S3_ENDPOINT,
-            aws_access_key_id=settings.S3_ACCESS_KEY,
-            aws_secret_access_key=settings.S3_SECRET_KEY,
-            region_name=settings.S3_REGION,
-            config=Config(signature_version='s3v4')
-        )
-
-        # List ALL objects in the images/ directory
-        images_prefix = f"{dataset.storage_path.rstrip('/')}/images/"
-        paginator = s3_client.get_paginator('list_objects_v2')
-
-        all_objects = []
-        for page in paginator.paginate(Bucket=settings.S3_BUCKET_DATASETS, Prefix=images_prefix):
-            if 'Contents' in page:
-                all_objects.extend(page['Contents'])
-
-        # Convert S3 objects to image format
-        for obj in all_objects:
-            # Get the full key
-            full_key = obj['Key']
-            # Skip if it's a directory marker
-            if full_key.endswith('/'):
-                continue
-
-            # Extract relative path from images/ directory
-            # e.g., "datasets/{id}/images/bottle/broken_large/000.png" -> "bottle/broken_large/000.png"
-            if '/images/' in full_key:
-                relative_path = full_key.split('/images/', 1)[1]
-            else:
-                relative_path = full_key.split('/')[-1]
-
-            if not relative_path:
-                continue
-
-            # Get metadata from annotations.json if available
-            metadata = image_metadata.get(relative_path, {})
-
-            # IMPORTANT: Use file_path as image_id (source of truth = storage)
-            # This ensures consistency regardless of upload order or annotations.json
-            images.append({
-                'id': relative_path,  # file_path as unique identifier
-                'file_name': relative_path,
-                'width': metadata.get('width'),
-                'height': metadata.get('height'),
-            })
-    except Exception as e:
-        print(f"Error listing images from S3: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list images: {str(e)}",
-        )
-
-    if not images:
-        return []
-
-    # Limit number of images
-    images = images[:limit]
-
-    # Generate presigned URLs
-    s3_client = boto3.client(
-        's3',
-        endpoint_url=settings.S3_ENDPOINT,
-        aws_access_key_id=settings.S3_ACCESS_KEY,
-        aws_secret_access_key=settings.S3_SECRET_KEY,
-        region_name=settings.S3_REGION,
-        config=Config(signature_version='s3v4')
+    query = labeler_db.query(ImageMetadataModel).filter(
+        ImageMetadataModel.dataset_id == dataset_id
     )
 
-    result = []
-    for img in images:
-        try:
-            # Construct S3 key: datasets/{dataset_id}/images/{file_name}
-            s3_key = f"{dataset.storage_path.rstrip('/')}/images/{img['file_name']}"
-            print(f"DEBUG: Generating presigned URL for s3_key: {s3_key}")
+    # Phase 2.12: Random selection for dataset summary diversity
+    if random:
+        # Use database-level random ordering
+        query = query.order_by(func.random())
+    else:
+        # Default to upload order
+        query = query.order_by(ImageMetadataModel.uploaded_at)
 
-            # Generate presigned URL (valid for 1 hour)
-            url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': settings.S3_BUCKET_DATASETS,
-                    'Key': s3_key
-                },
-                ExpiresIn=3600
+    db_images = query.limit(limit).all()
+
+    if not db_images:
+        return []
+
+    # Generate presigned URLs
+    result = []
+    for db_img in db_images:
+        try:
+            # Generate presigned URL for original image (valid for 1 hour)
+            url = storage_client.generate_presigned_url(
+                bucket=storage_client.datasets_bucket,
+                key=db_img.s3_key,
+                expiration=3600
             )
-            print(f"DEBUG: Generated URL: {url}")
+
+            # Generate presigned URL for thumbnail
+            thumbnail_url = None
+            try:
+                thumbnail_key = get_thumbnail_path(db_img.s3_key)
+                thumbnail_url = storage_client.generate_presigned_url(
+                    bucket=storage_client.datasets_bucket,
+                    key=thumbnail_key,
+                    expiration=3600
+                )
+            except Exception:
+                # Thumbnail might not exist for old images
+                pass
 
             result.append(ImageResponse(
-                id=img['id'],
-                file_name=img['file_name'],
-                width=img.get('width'),
-                height=img.get('height'),
-                url=url
+                id=db_img.id,
+                file_name=db_img.id,  # Use relative path as file_name for display
+                width=db_img.width,
+                height=db_img.height,
+                url=url,
+                thumbnail_url=thumbnail_url
             ))
         except Exception as e:
-            print(f"Error generating presigned URL for {img.get('file_name')}: {e}")
+            logger.error(f"Error generating presigned URL for {db_img.id}: {e}")
             continue
 
     return result
+
+
+class DatasetSizeResponse(BaseModel):
+    """Dataset size statistics."""
+    total_images: int
+    total_bytes: int
+    total_mb: float
+    total_gb: float
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{dataset_id}/size", response_model=DatasetSizeResponse, tags=["Datasets"])
+async def get_dataset_size(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get total dataset size from image metadata.
+
+    Phase 2.12: Fast calculation using DB aggregation instead of S3 list.
+
+    - **dataset_id**: Dataset ID
+
+    Returns:
+    - total_images: Number of images in dataset
+    - total_bytes: Total size in bytes
+    - total_mb: Total size in MB
+    - total_gb: Total size in GB
+    """
+    # Verify dataset exists
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Phase 2.12: Use DB aggregation for fast calculation
+    from app.db.models.labeler import ImageMetadata as ImageMetadataModel
+
+    # Count total images
+    total_images = labeler_db.query(func.count(ImageMetadataModel.id)).filter(
+        ImageMetadataModel.dataset_id == dataset_id
+    ).scalar() or 0
+
+    # Sum total size
+    total_bytes = labeler_db.query(func.sum(ImageMetadataModel.size)).filter(
+        ImageMetadataModel.dataset_id == dataset_id
+    ).scalar() or 0
+
+    # Convert to MB and GB
+    total_mb = total_bytes / (1024 * 1024) if total_bytes else 0
+    total_gb = total_bytes / (1024 * 1024 * 1024) if total_bytes else 0
+
+    return DatasetSizeResponse(
+        total_images=total_images,
+        total_bytes=int(total_bytes),
+        total_mb=round(total_mb, 2),
+        total_gb=round(total_gb, 2)
+    )
 
 
 @router.get("/{dataset_id}/deletion-impact", response_model=DeletionImpactResponse, tags=["Datasets"])
@@ -580,7 +785,7 @@ async def delete_dataset(
     3. Delete all image annotation statuses
     4. Delete all export versions
     5. Delete all S3 files (images, annotations, exports)
-    6. Delete the dataset record from Platform DB
+    6. Delete the dataset record from Labeler DB
 
     **IMPORTANT**: This is a destructive operation and cannot be undone.
     You must confirm by providing the exact dataset name.
@@ -588,8 +793,8 @@ async def delete_dataset(
     - **dataset_id**: Dataset ID
     - **request**: Deletion request with confirmation
     """
-    # Verify dataset exists
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # Verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -625,4 +830,709 @@ async def delete_dataset(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete dataset: {str(e)}"
+        )
+
+
+# =============================================================================
+# Dataset Permission Management (Phase 2.10.2)
+# =============================================================================
+
+@router.post("/{dataset_id}/permissions/invite", response_model=PermissionResponse, tags=["Permissions"])
+async def invite_user_to_dataset(
+    dataset_id: str,
+    request: PermissionInviteRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Invite a user to dataset (owner only).
+
+    - **user_email**: Email of user to invite
+    - **role**: Role to grant ('owner' or 'member')
+    """
+    # Validate role
+    if request.role not in ['owner', 'member']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'owner' or 'member'"
+        )
+
+    # Find user by email in Platform DB
+    user = platform_db.query(User).filter(User.email == request.user_email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email {request.user_email} not found"
+        )
+
+    # Check if permission already exists
+    existing = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user.id,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User {request.user_email} already has access to this dataset"
+        )
+
+    # Create permission
+    permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=user.id,
+        role=request.role,
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(permission)
+    labeler_db.commit()
+    labeler_db.refresh(permission)
+
+    # Get granted_by user info
+    granted_by_user = platform_db.query(User).filter(User.id == current_user.id).first()
+
+    # Build response
+    response_dict = {
+        **permission.__dict__,
+        "user_name": user.full_name,
+        "user_email": user.email,
+        "user_badge_color": user.badge_color,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)
+
+
+@router.get("/{dataset_id}/permissions", response_model=List[PermissionResponse], tags=["Permissions"])
+async def list_dataset_permissions(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("member")),
+):
+    """
+    List all permissions for a dataset (members can view).
+
+    - **dataset_id**: Dataset ID
+    """
+    # Get all permissions for this dataset
+    permissions = (
+        labeler_db.query(DatasetPermission)
+        .filter(DatasetPermission.dataset_id == dataset_id)
+        .all()
+    )
+
+    # Build response with user information
+    result = []
+    for perm in permissions:
+        # Get user info from Platform DB
+        user = platform_db.query(User).filter(User.id == perm.user_id).first()
+        granted_by_user = platform_db.query(User).filter(User.id == perm.granted_by).first()
+
+        response_dict = {
+            **perm.__dict__,
+            "user_name": user.full_name if user else None,
+            "user_email": user.email if user else None,
+            "user_badge_color": user.badge_color if user else None,
+            "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+            "granted_by_email": granted_by_user.email if granted_by_user else None,
+        }
+        result.append(PermissionResponse.model_validate(response_dict))
+
+    return result
+
+
+@router.put("/{dataset_id}/permissions/{user_id}", response_model=PermissionResponse, tags=["Permissions"])
+async def update_user_permission(
+    dataset_id: str,
+    user_id: int,
+    request: PermissionUpdateRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Update a user's permission role (owner only).
+
+    - **dataset_id**: Dataset ID
+    - **user_id**: User ID to update
+    - **role**: New role ('owner' or 'member')
+    """
+    # Validate role
+    if request.role not in ['owner', 'member']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'owner' or 'member'"
+        )
+
+    # Find permission
+    permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user_id,
+        )
+        .first()
+    )
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission not found for user {user_id}"
+        )
+
+    # Can't change own permission
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own permission"
+        )
+
+    # Update role
+    permission.role = request.role
+    labeler_db.commit()
+    labeler_db.refresh(permission)
+
+    # Get user info
+    user = platform_db.query(User).filter(User.id == user_id).first()
+    granted_by_user = platform_db.query(User).filter(User.id == permission.granted_by).first()
+
+    response_dict = {
+        **permission.__dict__,
+        "user_name": user.full_name if user else None,
+        "user_email": user.email if user else None,
+        "user_badge_color": user.badge_color if user else None,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)
+
+
+@router.delete("/{dataset_id}/permissions/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Permissions"])
+async def remove_user_permission(
+    dataset_id: str,
+    user_id: int,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Remove a user's permission from dataset (owner only).
+
+    - **dataset_id**: Dataset ID
+    - **user_id**: User ID to remove
+    """
+    # Find permission
+    permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user_id,
+        )
+        .first()
+    )
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission not found for user {user_id}"
+        )
+
+    # Can't remove own permission
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove your own permission"
+        )
+
+    # Ensure at least one owner remains
+    owner_count = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.role == "owner",
+        )
+        .count()
+    )
+
+    if permission.role == "owner" and owner_count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove the last owner. Transfer ownership first."
+        )
+
+    # Delete permission
+    labeler_db.delete(permission)
+    labeler_db.commit()
+
+    return None
+
+
+@router.post("/{dataset_id}/permissions/transfer-owner", response_model=PermissionResponse, tags=["Permissions"])
+async def transfer_dataset_ownership(
+    dataset_id: str,
+    request: TransferOwnershipRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Transfer dataset ownership to another user (owner only).
+
+    This will:
+    1. Change the new user's role to 'owner'
+    2. Change the current owner's role to 'member'
+    3. Update dataset.owner_id
+
+    - **dataset_id**: Dataset ID
+    - **new_owner_user_id**: User ID of new owner
+    """
+    # Find new owner's permission
+    new_owner_permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == request.new_owner_user_id,
+        )
+        .first()
+    )
+
+    if not new_owner_permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User {request.new_owner_user_id} doesn't have access to this dataset"
+        )
+
+    # Can't transfer to yourself
+    if request.new_owner_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are already the owner"
+        )
+
+    # Get current owner permission
+    current_owner_permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    # Get dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Transfer ownership
+    new_owner_permission.role = "owner"
+    if current_owner_permission:
+        current_owner_permission.role = "member"
+    dataset.owner_id = request.new_owner_user_id
+
+    labeler_db.commit()
+    labeler_db.refresh(new_owner_permission)
+
+    # Get user info
+    user = platform_db.query(User).filter(User.id == request.new_owner_user_id).first()
+    granted_by_user = platform_db.query(User).filter(User.id == new_owner_permission.granted_by).first()
+
+    response_dict = {
+        **new_owner_permission.__dict__,
+        "user_name": user.full_name if user else None,
+        "user_email": user.email if user else None,
+        "user_badge_color": user.badge_color if user else None,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)
+
+
+@router.post("/upload", response_model=DatasetUploadResponse, tags=["Datasets"], status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    dataset_name: str = Form(...),
+    dataset_description: Optional[str] = Form(None),
+    task_types: Optional[str] = Form(None),  # JSON string of task types
+    visibility: str = Form("private"),
+    files: List[UploadFile] = File(...),
+    annotation_file: Optional[UploadFile] = File(None),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload new dataset with images and optional annotations.
+
+    Supports:
+    - Multiple image files (jpg, png, etc.)
+    - ZIP archive with folder structure
+    - Optional annotations.json (COCO/DICE format)
+
+    Process:
+    1. Validate files and name uniqueness
+    2. Create dataset record in Labeler DB
+    3. Upload images to S3 (preserve folder structure)
+    4. Parse and upload annotations if provided
+    5. Auto-create project in Labeler DB
+    6. Import annotations to Labeler DB if provided
+    7. Return upload summary
+    """
+    # Parse task_types from JSON string
+    task_types_list = []
+    if task_types:
+        try:
+            task_types_list = json.loads(task_types)
+        except:
+            task_types_list = []
+
+    # Step 1: Generate dataset ID
+    dataset_id = f"ds_{uuid.uuid4().hex[:16]}"
+    storage_path = f"datasets/{dataset_id}/"
+
+    # Step 2: Upload files to S3
+    upload_result = await upload_files_to_s3(
+        dataset_id=dataset_id,
+        files=files,
+        preserve_structure=True
+    )
+
+    # Step 3: Handle annotations if provided
+    annotations_data = None
+    if annotation_file:
+        annotations_data = await parse_annotation_file(annotation_file)
+
+        # Upload to S3
+        annotation_json = json.dumps(annotations_data).encode('utf-8')
+        annotation_path = f"datasets/{dataset_id}/annotations_detection.json"
+        storage_client.s3_client.put_object(
+            Bucket=storage_client.datasets_bucket,
+            Key=annotation_path,
+            Body=annotation_json,
+            ContentType='application/json'
+        )
+
+    # Step 4: Create dataset record in Labeler DB
+    db_dataset = Dataset(
+        id=dataset_id,
+        name=dataset_name,
+        description=dataset_description,
+        owner_id=current_user.id,
+        storage_path=storage_path,
+        storage_type="s3",
+        format="images",
+        labeled=annotations_data is not None,
+        num_images=upload_result.images_count,
+        visibility=visibility,
+        status="active",
+        integrity_status="valid",
+        version=1,
+        is_snapshot=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_dataset)
+
+    # Step 5: Create owner permission
+    db_permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_permission)
+
+    # Step 6: Create annotation project
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+
+    # Build task_config based on task_types
+    task_config = {}
+    for task_type in task_types_list:
+        if task_type == "detection":
+            task_config["detection"] = {"type": "bbox"}
+        elif task_type == "segmentation":
+            task_config["segmentation"] = {"type": "polygon"}
+        elif task_type == "classification":
+            task_config["classification"] = {"type": "single"}
+        elif task_type == "geometry":
+            task_config["geometry"] = {"type": "line"}
+
+    # Extract classes from annotations if provided
+    task_classes = {}
+    if annotations_data and 'categories' in annotations_data:
+        # Build classes dict from categories
+        classes_list = []
+        for cat in annotations_data['categories']:
+            classes_list.append({
+                "id": str(cat['id']),
+                "name": cat['name'],
+                "color": cat.get('color', '#FF0000'),
+                "order": cat.get('id', 0)
+            })
+
+        # Determine task type from annotations
+        if annotations_data.get('annotations'):
+            first_ann = annotations_data['annotations'][0]
+            if 'bbox' in first_ann:
+                task_classes['detection'] = classes_list
+            elif 'segmentation' in first_ann:
+                task_classes['segmentation'] = classes_list
+
+    db_project = AnnotationProject(
+        id=project_id,
+        name=dataset_name,
+        description=dataset_description or f"Annotation project for {dataset_name}",
+        dataset_id=dataset_id,
+        owner_id=current_user.id,
+        task_types=task_types_list,
+        task_config=task_config,
+        task_classes=task_classes,
+        settings={},
+        total_images=upload_result.images_count,
+        annotated_images=0,
+        total_annotations=0,
+        status="active",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        last_updated_by=current_user.id,
+    )
+    labeler_db.add(db_project)
+
+    # Commit dataset, permission, and project
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(db_dataset)
+        labeler_db.refresh(db_project)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create dataset: {str(e)}"
+        )
+
+    # Step 7: Import annotations if provided
+    annotations_imported = 0
+    if annotations_data:
+        import_result = import_annotations_to_db(
+            labeler_db=labeler_db,
+            project_id=project_id,
+            annotations_data=annotations_data,
+            current_user=current_user
+        )
+        annotations_imported = import_result.count
+
+        # Update project stats
+        db_project.total_annotations = annotations_imported
+        labeler_db.commit()
+
+    # Return response
+    return DatasetUploadResponse(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        project_id=project_id,
+        upload_summary=UploadSummary(
+            images_uploaded=upload_result.images_count,
+            annotations_imported=annotations_imported,
+            storage_bytes_used=upload_result.total_bytes,
+            folder_structure=upload_result.folder_structure
+        )
+    )
+
+
+@router.post("/{dataset_id}/images", response_model=UploadSummary, tags=["Datasets"])
+async def add_images_to_dataset(
+    dataset_id: str,
+    files: List[UploadFile] = File(...),
+    annotation_file: Optional[UploadFile] = File(None),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Add images to an existing dataset.
+
+    Requires member or owner permission.
+
+    Process:
+    1. Upload images to S3
+    2. Parse and import annotations if provided
+    3. Update dataset and project image counts
+    4. Return upload summary
+    """
+    # Get dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Get project
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.dataset_id == dataset_id
+    ).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project not found for dataset {dataset_id}"
+        )
+
+    # Step 1: Upload files to S3
+    upload_result = await upload_files_to_s3(
+        dataset_id=dataset_id,
+        files=files,
+        preserve_structure=True
+    )
+
+    # Step 2: Handle annotations if provided
+    annotations_imported = 0
+    if annotation_file:
+        annotations_data = await parse_annotation_file(annotation_file)
+
+        # Upload to S3
+        annotation_json = json.dumps(annotations_data).encode('utf-8')
+        annotation_path = f"datasets/{dataset_id}/annotations_detection.json"
+        storage_client.s3_client.put_object(
+            Bucket=storage_client.datasets_bucket,
+            Key=annotation_path,
+            Body=annotation_json,
+            ContentType='application/json'
+        )
+
+        # Import annotations
+        import_result = import_annotations_to_db(
+            labeler_db=labeler_db,
+            project_id=project.id,
+            annotations_data=annotations_data,
+            current_user=current_user
+        )
+        annotations_imported = import_result.count
+
+        # Update project stats
+        project.total_annotations += annotations_imported
+        dataset.labeled = True
+
+    # Step 3: Update counts
+    dataset.num_images += upload_result.images_count
+    project.total_images += upload_result.images_count
+    dataset.updated_at = datetime.utcnow()
+    project.updated_at = datetime.utcnow()
+
+    labeler_db.commit()
+
+    return UploadSummary(
+        images_uploaded=upload_result.images_count,
+        annotations_imported=annotations_imported,
+        storage_bytes_used=upload_result.total_bytes,
+        folder_structure=upload_result.folder_structure
+    )
+
+
+@router.get("/{dataset_id}/storage/structure", tags=["Storage"])
+async def get_dataset_storage_structure(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Get folder structure for dataset storage.
+
+    Returns:
+        - Folder hierarchy with file counts and sizes
+        - Total statistics
+    """
+    # Verify dataset exists
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    try:
+        structure = get_storage_structure(dataset_id)
+        return structure
+    except Exception as e:
+        logger.error(f"Failed to get storage structure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve storage structure"
+        )
+
+
+class UploadPreviewRequest(BaseModel):
+    """Request for upload preview."""
+    file_mappings: List[Dict[str, Any]]
+    target_folder: str = ""
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "file_mappings": [
+                    {
+                        "filename": "img001.jpg",
+                        "relative_path": "train/cat/img001.jpg",
+                        "size": 50000
+                    }
+                ],
+                "target_folder": "dataset_v2/"
+            }
+        }
+
+
+@router.post("/{dataset_id}/storage/preview", tags=["Storage"])
+async def preview_dataset_upload(
+    dataset_id: str,
+    request: UploadPreviewRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("member")),
+):
+    """
+    Preview what the storage will look like after upload.
+
+    This allows users to:
+    - See which files will be new vs duplicates
+    - Preview the final folder structure
+    - Adjust target folder before actual upload
+    """
+    # Verify dataset exists
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    try:
+        preview = preview_upload_structure(
+            dataset_id=dataset_id,
+            file_mappings=request.file_mappings,
+            target_folder=request.target_folder
+        )
+        return preview
+    except Exception as e:
+        logger.error(f"Failed to generate upload preview: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate upload preview"
         )

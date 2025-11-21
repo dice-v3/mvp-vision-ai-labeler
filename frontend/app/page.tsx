@@ -6,16 +6,22 @@
  * 사이드바 + 데이터셋 상세 정보 표시
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
-import { listDatasets } from '@/lib/api/datasets';
-import { getProjectForDataset, getDatasetImages, type DatasetImage } from '@/lib/api/datasets';
+import { listDatasets, updateDataset } from '@/lib/api/datasets';
+import { getProjectForDataset, getDatasetImages, getDatasetSize, type DatasetImage, type DatasetSize } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
-import { getProjectImageStatuses } from '@/lib/api/projects';
+import { getProjectStats } from '@/lib/api/projects';
+import { listPermissions, inviteUser, updateUserRole, removeUser, type Permission } from '@/lib/api/permissions';
 import type { Dataset, Project } from '@/lib/types';
+import { toast } from '@/lib/stores/toastStore';
 import Sidebar from '@/components/Sidebar';
 import DeleteDatasetModal from '@/components/datasets/DeleteDatasetModal';
+import DatasetMembersAvatars from '@/components/datasets/DatasetMembersAvatars';
+import InviteMemberModal from '@/components/datasets/InviteMemberModal';
+import CreateDatasetModal from '@/components/datasets/CreateDatasetModal';
+import MultiStepUploadModal from '@/components/datasets/upload/MultiStepUploadModal';
 
 // Phase 2.9: Task progress stats
 interface TaskStats {
@@ -41,11 +47,20 @@ export default function DashboardPage() {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [error, setError] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   // Phase 2.9: Task-based stats
   const [taskStats, setTaskStats] = useState<TaskStats[]>([]);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [primaryTask, setPrimaryTask] = useState<string | null>(null); // Task with most progress
+  // Phase 2.10.2: Permission management
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false);
+  const settingsDropdownRef = useRef<HTMLDivElement>(null);
+  // Phase 2.12: Dataset size
+  const [datasetSize, setDatasetSize] = useState<DatasetSize | null>(null);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -58,6 +73,18 @@ export default function DashboardPage() {
       fetchDatasets();
     }
   }, [user, authLoading, router]);
+
+  // Close settings dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (settingsDropdownRef.current && !settingsDropdownRef.current.contains(event.target as Node)) {
+        setSettingsDropdownOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchDatasets = async () => {
     try {
@@ -81,29 +108,39 @@ export default function DashboardPage() {
     const dataset = datasets.find(d => d.id === datasetId);
     setSelectedDataset(dataset || null);
 
+    // Fetch permissions
+    setPermissionsLoading(true);
+    try {
+      const perms = await listPermissions(datasetId);
+      setPermissions(perms);
+    } catch (err) {
+      console.error('Failed to fetch permissions:', err);
+      setPermissions([]);
+    } finally {
+      setPermissionsLoading(false);
+    }
+
     // Fetch project info
     setProjectLoading(true);
     try {
       const projectData = await getProjectForDataset(datasetId);
       setProject(projectData);
 
-      // Phase 2.9: Load task-based statistics
+      // Phase 2.12: Load task-based statistics using optimized endpoint
       if (projectData.task_types && projectData.task_types.length > 0) {
-        const stats: TaskStats[] = [];
-        let maxProgress = -1;
-        let bestTask = projectData.task_types[0];
+        try {
+          const statsResponse = await getProjectStats(projectData.id);
+          const stats: TaskStats[] = [];
+          let maxProgress = -1;
+          let bestTask = projectData.task_types[0];
 
-        for (const taskType of projectData.task_types) {
-          try {
-            const statusResponse = await getProjectImageStatuses(projectData.id, taskType);
-            const completedCount = statusResponse.statuses.filter(
-              s => s.status === 'completed' || s.is_image_confirmed
-            ).length;
-            const total = projectData.total_images;
+          for (const taskStat of statsResponse.task_stats) {
+            const completedCount = taskStat.completed + taskStat.confirmed;
+            const total = taskStat.total_images;
             const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
 
             stats.push({
-              taskType,
+              taskType: taskStat.task_type,
               completedImages: completedCount,
               totalImages: total,
               progressPercent: percent,
@@ -111,22 +148,20 @@ export default function DashboardPage() {
 
             if (completedCount > maxProgress) {
               maxProgress = completedCount;
-              bestTask = taskType;
+              bestTask = taskStat.task_type;
             }
-          } catch (err) {
-            console.error(`Failed to load stats for ${taskType}:`, err);
-            stats.push({
-              taskType,
-              completedImages: 0,
-              totalImages: projectData.total_images,
-              progressPercent: 0,
-            });
           }
-        }
 
-        setTaskStats(stats);
-        setSelectedTask(bestTask);
-        setPrimaryTask(bestTask);
+          setTaskStats(stats);
+          setSelectedTask(bestTask);
+          setPrimaryTask(bestTask);
+        } catch (err) {
+          console.error('Failed to load project stats:', err);
+          // Fallback to empty stats
+          setTaskStats([]);
+          setSelectedTask(null);
+          setPrimaryTask(null);
+        }
       } else {
         setTaskStats([]);
         setSelectedTask(null);
@@ -157,6 +192,15 @@ export default function DashboardPage() {
       } finally {
         setImagesLoading(false);
       }
+
+      // Phase 2.12: Fetch dataset size
+      try {
+        const sizeData = await getDatasetSize(datasetId);
+        setDatasetSize(sizeData);
+      } catch (err) {
+        console.error('Failed to fetch dataset size:', err);
+        setDatasetSize(null);
+      }
     } catch (err) {
       console.error('Failed to fetch project:', err);
       setProject(null);
@@ -174,14 +218,85 @@ export default function DashboardPage() {
   };
 
   const handleDeleteSuccess = async () => {
-    setSuccessMessage('데이터셋이 성공적으로 삭제되었습니다');
+    toast.success('데이터셋이 성공적으로 삭제되었습니다');
 
     // Refresh dataset list
     await fetchDatasets();
-
-    // Clear success message after 3 seconds
-    setTimeout(() => setSuccessMessage(''), 3000);
   };
+
+  const handleEditDataset = async () => {
+    // Refresh datasets to get updated data
+    await fetchDatasets();
+
+    // If we're viewing this dataset, refresh its details
+    if (selectedDatasetId) {
+      const updatedDataset = datasets.find(d => d.id === selectedDatasetId);
+      if (updatedDataset) {
+        // The dataset will be automatically updated in the UI via datasets state
+      }
+    }
+
+    toast.success('데이터셋 정보가 업데이트되었습니다');
+  };
+
+  const handleUploadSuccess = async () => {
+    // Refresh dataset info and images
+    if (selectedDatasetId) {
+      // Refresh datasets to update image counts
+      await fetchDatasets();
+
+      // Refresh images
+      setImagesLoading(true);
+      try {
+        const imagesData = await getDatasetImages(selectedDatasetId, 8);
+        setImages(imagesData);
+      } catch (err) {
+        console.error('Failed to refresh images:', err);
+      } finally {
+        setImagesLoading(false);
+      }
+    }
+  };
+
+  // Permission management handlers
+  const handleInvite = async (email: string, role: 'owner' | 'member') => {
+    if (!selectedDatasetId) return;
+
+    await inviteUser(selectedDatasetId, { user_email: email, role });
+
+    // Refresh permissions
+    const perms = await listPermissions(selectedDatasetId);
+    setPermissions(perms);
+
+    toast.success(`${email}님을 ${role === 'owner' ? 'Owner' : 'Member'}로 초대했습니다`);
+  };
+
+  const handleChangeRole = async (userId: number, newRole: 'owner' | 'member') => {
+    if (!selectedDatasetId) return;
+
+    await updateUserRole(selectedDatasetId, userId, { role: newRole });
+
+    // Refresh permissions
+    const perms = await listPermissions(selectedDatasetId);
+    setPermissions(perms);
+
+    toast.success(`역할이 ${newRole === 'owner' ? 'Owner' : 'Member'}로 변경되었습니다`);
+  };
+
+  const handleRemove = async (userId: number) => {
+    if (!selectedDatasetId) return;
+
+    await removeUser(selectedDatasetId, userId);
+
+    // Refresh permissions
+    const perms = await listPermissions(selectedDatasetId);
+    setPermissions(perms);
+
+    toast.success('멤버가 제거되었습니다');
+  };
+
+  // Check if current user is owner
+  const isOwner = permissions.some(p => p.user_id === user?.id && p.role === 'owner');
 
   if (authLoading || loading) {
     return (
@@ -208,6 +323,7 @@ export default function DashboardPage() {
         datasets={datasets}
         selectedDatasetId={selectedDatasetId}
         onDatasetSelect={handleDatasetSelect}
+        onDatasetRefresh={fetchDatasets}
         onLogout={logout}
       />
 
@@ -217,11 +333,6 @@ export default function DashboardPage() {
           {error && (
             <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
               <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          {successMessage && (
-            <div className="mb-6 p-4 rounded-lg bg-green-50 border border-green-200">
-              <p className="text-sm text-green-800">{successMessage}</p>
             </div>
           )}
 
@@ -239,19 +350,73 @@ export default function DashboardPage() {
             <div>
               {/* Dataset Header */}
               <div className="mb-8">
+                {/* Title Row with Settings and Members */}
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">{selectedDataset.name}</h1>
-                    <p className="text-gray-600">{selectedDataset.description || '설명 없음'}</p>
+                  <div className="flex items-center space-x-3">
+                    <h1 className="text-3xl font-bold text-gray-900">{selectedDataset.name}</h1>
+
+                    {/* Settings Dropdown */}
+                    <div className="relative" ref={settingsDropdownRef}>
+                      <button
+                        onClick={() => setSettingsDropdownOpen(!settingsDropdownOpen)}
+                        className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors"
+                        title="설정"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {settingsDropdownOpen && (
+                        <div className="absolute top-12 left-0 z-50 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+                          <button
+                            onClick={() => {
+                              setSettingsDropdownOpen(false);
+                              setEditModalOpen(true);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            <span>정보 수정</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSettingsDropdownOpen(false);
+                              setDeleteModalOpen(true);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>데이터셋 삭제</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {selectedDataset.labeled && (
-                    <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-700">
-                      라벨링 완료
-                    </span>
+
+                  {/* Members Avatars */}
+                  {!permissionsLoading && permissions.length > 0 && user && (
+                    <DatasetMembersAvatars
+                      members={permissions}
+                      currentUserId={user.id}
+                      isOwner={isOwner}
+                      onInvite={() => setInviteModalOpen(true)}
+                      onChangeRole={handleChangeRole}
+                      onRemove={handleRemove}
+                    />
                   )}
                 </div>
 
-                {/* Dataset Info Tags & Task Types & Start Button */}
+                {/* Description */}
+                <p className="text-gray-600 mb-4">{selectedDataset.description || '설명 없음'}</p>
+
+                {/* Info Tags and Start Button */}
                 <div className="flex items-center justify-between">
                   <div className="flex flex-wrap gap-2">
                     {selectedDataset.format && (
@@ -269,18 +434,25 @@ export default function DashboardPage() {
                         {selectedDataset.visibility}
                       </span>
                     )}
+                    {selectedDataset.labeled && (
+                      <span className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700">
+                        라벨링 완료
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setDeleteModalOpen(true)}
-                      className="px-4 py-2 rounded-lg bg-white border border-red-300 text-red-600 font-medium hover:bg-red-50 transition-colors flex items-center space-x-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      <span>삭제</span>
-                    </button>
-                    {project && (
+
+                  {/* Action Buttons */}
+                  {project && (
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => setUploadModalOpen(true)}
+                        className="px-4 py-2 rounded-lg border border-violet-600 text-violet-600 font-medium hover:bg-violet-50 transition-colors flex items-center space-x-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span>이미지 업로드</span>
+                      </button>
                       <button
                         onClick={handleStartLabeling}
                         className="px-6 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all flex items-center space-x-2"
@@ -290,8 +462,8 @@ export default function DashboardPage() {
                         </svg>
                         <span>레이블링 시작</span>
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -352,7 +524,7 @@ export default function DashboardPage() {
                     };
 
                     return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white rounded-xl p-6 border border-gray-200">
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-medium text-gray-500">전체 이미지</h3>
@@ -384,6 +556,23 @@ export default function DashboardPage() {
                             </svg>
                           </div>
                           <p className="text-3xl font-bold text-green-600">{currentStats.progressPercent}%</p>
+                        </div>
+
+                        {/* Phase 2.12: Dataset size card */}
+                        <div className="bg-white rounded-xl p-6 border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-500">데이터셋 용량</h3>
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                            </svg>
+                          </div>
+                          <p className="text-3xl font-bold text-blue-600">
+                            {datasetSize
+                              ? datasetSize.total_gb >= 1
+                                ? `${datasetSize.total_gb.toFixed(2)} GB`
+                                : `${datasetSize.total_mb.toFixed(1)} MB`
+                              : '-'}
+                          </p>
                         </div>
                       </div>
                     );
@@ -503,12 +692,17 @@ export default function DashboardPage() {
                           {images.slice(0, 8).map((image) => (
                             <div key={image.id} className="aspect-square relative rounded border border-gray-200 overflow-hidden hover:border-violet-400 transition-colors group">
                               <img
-                                src={image.url}
+                                src={image.thumbnail_url || image.url}
                                 alt={image.file_name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  console.error('Image failed to load:', image.file_name, image.url);
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  console.error('Image failed to load:', image.file_name, image.thumbnail_url || image.url);
+                                  // If thumbnail fails, try original
+                                  if (image.thumbnail_url && (e.target as HTMLImageElement).src !== image.url) {
+                                    (e.target as HTMLImageElement).src = image.url;
+                                  } else {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }
                                 }}
                                 onLoad={() => console.log('Image loaded:', image.file_name)}
                               />
@@ -599,6 +793,35 @@ export default function DashboardPage() {
           isOpen={deleteModalOpen}
           onClose={() => setDeleteModalOpen(false)}
           onSuccess={handleDeleteSuccess}
+        />
+      )}
+
+      {/* Invite Member Modal */}
+      <InviteMemberModal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        onInvite={handleInvite}
+      />
+
+      {/* Edit Dataset Modal */}
+      {selectedDataset && (
+        <CreateDatasetModal
+          mode="edit"
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          onSuccess={handleEditDataset}
+          dataset={selectedDataset}
+        />
+      )}
+
+      {/* Upload Images Modal */}
+      {selectedDataset && (
+        <MultiStepUploadModal
+          datasetId={selectedDataset.id}
+          datasetName={selectedDataset.name}
+          isOpen={uploadModalOpen}
+          onClose={() => setUploadModalOpen(false)}
+          onSuccess={handleUploadSuccess}
         />
       )}
     </div>

@@ -11,8 +11,8 @@ from botocore.config import Config
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
-from app.db.models.platform import User, Dataset
-from app.db.models.labeler import Annotation, AnnotationHistory, AnnotationProject
+from app.db.models.platform import User
+from app.db.models.labeler import Dataset, Annotation, AnnotationHistory, AnnotationProject
 from app.schemas.annotation import (
     AnnotationCreate,
     AnnotationUpdate,
@@ -923,8 +923,8 @@ async def import_annotations_from_json(
             detail=f"Project {project_id} not found"
         )
 
-    # Get dataset
-    dataset = platform_db.query(Dataset).filter(
+    # Get dataset from Labeler DB
+    dataset = labeler_db.query(Dataset).filter(
         Dataset.id == project.dataset_id
     ).first()
 

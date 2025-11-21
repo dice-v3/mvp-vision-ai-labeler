@@ -153,6 +153,7 @@ interface AnnotationState {
   // Project & Images
   project: Project | null;
   images: ImageData[];
+  totalImages: number;  // Phase 2.12: Total image count for pagination
   currentIndex: number;
   currentImage: ImageData | null;
 
@@ -190,6 +191,7 @@ interface AnnotationState {
   saveStatus: SaveStatus;
   lastSaved: Date | null;
   loading: boolean;
+  backgroundLoading: boolean;  // Phase 2.12: Background pagination loading
   error: string | null;
 
   // Last selected class (for auto-select)
@@ -210,6 +212,7 @@ interface AnnotationState {
   // Project & Images
   setProject: (project: Project) => void;
   setImages: (images: ImageData[]) => void;
+  loadMoreImages: (newImages: ImageData[]) => void;  // Phase 2.12: Append more images for pagination
   setCurrentIndex: (index: number) => void;
   goToNextImage: () => void;
   goToPrevImage: () => void;
@@ -266,6 +269,7 @@ interface AnnotationState {
   // Network
   setSaveStatus: (status: SaveStatus) => void;
   setLoading: (loading: boolean) => void;
+  setBackgroundLoading: (loading: boolean) => void;  // Phase 2.12: Background loading
   setError: (error: string | null) => void;
 
   // Class Selection
@@ -308,6 +312,7 @@ const DEFAULT_PREFERENCES: Preferences = {
 const initialState = {
   project: null,
   images: [],
+  totalImages: 0,  // Phase 2.12: Total image count for pagination
   currentIndex: 0,
   currentImage: null,
   currentTask: null,  // Phase 2.9: Current task context
@@ -338,6 +343,7 @@ const initialState = {
   saveStatus: 'saved' as SaveStatus,
   lastSaved: null,
   loading: false,
+  backgroundLoading: false,  // Phase 2.12: Background pagination loading
   error: null,
   lastSelectedClassId: null,
   hiddenAnnotationIds: new Set<string>(),
@@ -366,8 +372,33 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       setImages: (images) => {
-        const currentImage = images.length > 0 ? images[0] : null;
-        set({ images, currentImage, currentIndex: 0 });
+        // Remove duplicates based on image ID (just in case)
+        const uniqueImages = Array.from(
+          new Map(images.map(img => [img.id, img])).values()
+        );
+
+        if (uniqueImages.length < images.length) {
+          console.warn(`[Store] Removed ${images.length - uniqueImages.length} duplicate images during setImages`);
+        }
+
+        const currentImage = uniqueImages.length > 0 ? uniqueImages[0] : null;
+        set({ images: uniqueImages, currentImage, currentIndex: 0 });
+      },
+
+      // Phase 2.12: Load more images (append to existing images)
+      loadMoreImages: (newImages) => {
+        const { images } = get();
+
+        // Filter out duplicates based on image ID
+        const existingIds = new Set(images.map(img => img.id));
+        const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
+
+        if (uniqueNewImages.length > 0) {
+          set({ images: [...images, ...uniqueNewImages] });
+          console.log(`[Store] Added ${uniqueNewImages.length} new images (${newImages.length - uniqueNewImages.length} duplicates filtered)`);
+        } else {
+          console.log(`[Store] No new images to add (all ${newImages.length} were duplicates)`);
+        }
       },
 
       setCurrentIndex: (index) => {
@@ -739,6 +770,7 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       setLoading: (loading) => set({ loading }),
+      setBackgroundLoading: (loading) => set({ backgroundLoading: loading }),
       setError: (error) => set({ error }),
 
       // ======================================================================

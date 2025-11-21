@@ -7,13 +7,12 @@
  * Route: /annotate/[projectId]
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import type { Annotation as StoreAnnotation } from '@/lib/stores/annotationStore';
-import { getProjectById, getProjectImageStatuses } from '@/lib/api/projects';
-import { getDatasetImages } from '@/lib/api/datasets';
+import { getProjectById, getProjectImageStatuses, getProjectImages } from '@/lib/api/projects';
 import { getProjectAnnotations, importAnnotationsFromJson, type Annotation as APIAnnotation } from '@/lib/api/annotations';
 import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
 import TopBar from '@/components/annotation/TopBar';
@@ -65,10 +64,13 @@ export default function AnnotationPage() {
     setError,
     setProject,
     images,
+    totalImages,
     setImages,
+    loadMoreImages,
     setAnnotations,
     loadPreferences,
     currentImage,
+    currentIndex,
     currentTask,
     preferences,
   } = useAnnotationStore();
@@ -157,49 +159,29 @@ export default function AnnotationPage() {
         useAnnotationStore.setState({ currentTask: initialTask });
       }
 
-      // Load images using dataset_id from project
+      // Phase 2.12: Performance Optimization - Load only first 50 images
       if (projectData.dataset_id) {
-        const imagesData = await getDatasetImages(projectData.dataset_id, 1000);
+        const imageResponse = await getProjectImages(projectId, 50, 0);
 
-        // Load all annotations for the project to count per image
-        const allAnnotations = await getProjectAnnotations(projectId);
+        // Phase 2.12: Store total image count for progress bar
+        useAnnotationStore.setState({ totalImages: imageResponse.total });
 
-        // Count annotations per image (filtered by initial task)
-        const annotationCountMap = new Map<string, number>();
-
-        allAnnotations.forEach((ann: any) => {
-          const imageId = ann.image_id || ann.imageId;
-          const annType = ann.annotation_type;
-
-          // Phase 2.9: Only count annotations for the current task
-          // no_object is filtered by its task_type attribute
-          if (annType === 'no_object') {
-            const noObjectTaskType = ann.attributes?.task_type;
-            if (noObjectTaskType === initialTask) {
-              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
-            }
-          } else {
-            const annTaskType = getTaskTypeForAnnotation(annType);
-            if (!initialTask || annTaskType === initialTask) {
-              annotationCountMap.set(imageId, (annotationCountMap.get(imageId) || 0) + 1);
-            }
-          }
-        });
-
-        // Phase 2.7/2.9: Load image statuses (filtered by initial task)
-        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined);
+        // Phase 2.12: Load image statuses for annotation counts (paginated)
+        // (No longer loading all annotations upfront - lazy loading instead)
+        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined, 50, 0);
         const imageStatusMap = new Map(
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );
 
-        // Convert DatasetImage[] to ImageData[] (number id -> string id) and add annotation counts + status
-        const convertedImages = imagesData.map(img => {
+        // Convert ImageListResponse to ImageData[] with status info
+        const convertedImages = imageResponse.images.map(img => {
           const imgId = String(img.id);
           const status = imageStatusMap.get(imgId);
           return {
             ...img,
             id: imgId,
-            annotation_count: annotationCountMap.get(imgId) || 0,
+            // Phase 2.12: Use annotation count from status (more efficient)
+            annotation_count: status?.total_annotations || 0,
             // Phase 2.7: Add status info
             is_confirmed: status?.is_image_confirmed || false,
             status: status?.status || 'not-started',
@@ -211,12 +193,15 @@ export default function AnnotationPage() {
 
         setImages(convertedImages || []);
 
-        // Load annotations for first image if available
+        // Phase 2.12: Load annotations only for first image (lazy loading)
         if (convertedImages && convertedImages.length > 0) {
           const firstImageId = convertedImages[0].id;
-          const firstImageAnnotations = allAnnotations
-            .filter((ann: any) => (ann.image_id || ann.imageId) === firstImageId)
-            // Phase 2.9: Filter by initial task type
+
+          // Fetch annotations for first image only
+          const imageAnnotations = await getProjectAnnotations(projectId, firstImageId);
+
+          // Filter by task type
+          const filteredAnnotations = imageAnnotations
             .filter((ann: any) => {
               // no_object is filtered by its task_type attribute
               if (ann.annotation_type === 'no_object') {
@@ -226,7 +211,8 @@ export default function AnnotationPage() {
               return !initialTask || annTaskType === initialTask;
             })
             .map(convertAPIAnnotationToStore);
-          setAnnotations(firstImageAnnotations || []);
+
+          setAnnotations(filteredAnnotations || []);
         }
       }
 
@@ -320,6 +306,66 @@ export default function AnnotationPage() {
 
     reloadImageStatuses();
   }, [projectId, currentTask]); // Reload when task changes
+
+  // Phase 2.12: Auto-load more images when navigating near the end
+  const { backgroundLoading, setBackgroundLoading } = useAnnotationStore();
+  const isLoadingMoreRef = useRef(false);
+  useEffect(() => {
+    // Check if user is within 10 images of the end of loaded images
+    const threshold = 10;
+    const isNearEnd = currentIndex >= images.length - threshold;
+    const hasMoreImages = images.length < totalImages;
+    const shouldLoadMore = isNearEnd && hasMoreImages && !isLoadingMoreRef.current;
+
+    if (shouldLoadMore && projectId) {
+      isLoadingMoreRef.current = true;
+      setBackgroundLoading(true);
+
+      const loadMore = async () => {
+        try {
+          const offset = images.length;
+          const limit = 50;
+
+          console.log(`[Auto-load] Loading more images at index ${currentIndex}, offset ${offset}`);
+
+          // Fetch next batch of images
+          const imageResponse = await getProjectImages(projectId, limit, offset);
+
+          // Fetch image statuses for the new images
+          const imageStatusesResponse = await getProjectImageStatuses(projectId, currentTask || undefined, limit, offset);
+          const imageStatusMap = new Map(
+            imageStatusesResponse.statuses.map(s => [s.image_id, s])
+          );
+
+          // Convert to ImageData format with status info
+          const convertedImages = imageResponse.images.map(img => {
+            const imgId = String(img.id);
+            const status = imageStatusMap.get(imgId);
+            return {
+              ...img,
+              id: imgId,
+              annotation_count: status?.total_annotations || 0,
+              is_confirmed: status?.is_image_confirmed || false,
+              status: status?.status || 'not-started',
+              confirmed_at: status?.confirmed_at,
+              has_no_object: status?.has_no_object || false,
+            };
+          });
+
+          // Append new images
+          loadMoreImages(convertedImages);
+          console.log(`[Auto-load] Loaded ${convertedImages.length} more images`);
+        } catch (error) {
+          console.error('[Auto-load] Failed to load more images:', error);
+        } finally {
+          isLoadingMoreRef.current = false;
+          setBackgroundLoading(false);
+        }
+      };
+
+      loadMore();
+    }
+  }, [currentIndex, images.length, totalImages, projectId, currentTask, loadMoreImages, setBackgroundLoading]);
 
   if (authLoading || loading) {
     return (
