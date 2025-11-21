@@ -11,7 +11,7 @@
 | Phase | Status | Progress | Completion |
 |-------|--------|----------|------------|
 | Phase 1: Core Canvas | ✅ Complete | 44/45 (98%) | 2025-11-14 |
-| Phase 2: Advanced Features | ✅ Complete | 100% | 2025-11-18 |
+| **Phase 2: Advanced Features** | **🔄 In Progress** | **85%** | **Phase 2.10 pending** |
 | Phase 3: Multi-Task Tools | 🔄 In Progress | 17/29 (59%) | - |
 | Phase 4: Confirmation & Versioning | ✅ Complete | 100% | 2025-11-19 |
 | Phase 5: Dataset Management | ✅ Complete | 100% | 2025-11-20 |
@@ -21,8 +21,11 @@
 | Phase 9: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 10: Polish & Optimization | ⏸️ Pending | 0% | - |
 
-**Current Focus**: Phase 7 (Performance Optimization) - Thumbnail integration ✅, File management pending
-**Next Up**: Phase 7 completion → Phase 8 (Collaboration)
+**Current Focus**:
+- Phase 2.10: Canvas Enhancements (Undo/Redo UI, Magnifier, Minimap) ⏸️
+- Phase 7: Performance Optimization - Thumbnail integration ✅, File management pending
+
+**Next Up**: Complete Phase 2.10 → Phase 7 completion → Phase 8 (Collaboration)
 
 ---
 
@@ -43,19 +46,60 @@
 
 ---
 
-## Phase 2: Advanced Features ✅ COMPLETE
+## Phase 2: Advanced Features 🔄 IN PROGRESS
 
 **Duration**: Weeks 2-6 (2025-11-15 to 2025-11-18)
-**Status**: Complete (100%)
+**Status**: In Progress (Phase 2.10 pending)
 
-### Key Features
+### Key Features (Completed)
 - [x] 2.1 Keyboard shortcuts
-- [x] 2.2 Undo/Redo system
+- [x] 2.2 Undo/Redo system (backend only)
 - [x] 2.3 Annotations list panel
 - [x] 2.4 Attributes panel
-- [x] 2.5 Minimap
 - [x] 2.6 Smart features (auto-save, tooltips)
 - [x] 2.9 Settings panel
+
+### Phase 2.10: Canvas Enhancements ⏸️ PENDING
+
+**Goal**: Add UI for undo/redo, minimap navigation, and magnifier for precision
+**Estimate**: 16-21 hours
+**Plan**: `docs/implementation-plan-minimap-undo-magnifier.md`
+
+#### 2.10.1 Undo/Redo UI (3-4h) ⭐ High Priority
+- [ ] Add undo/redo buttons to zoom toolbar (bottom-left)
+- [ ] Icon-only buttons (ArrowUturnLeft, ArrowUturnRight)
+- [ ] Keyboard shortcuts (Ctrl+Z, Ctrl+Y)
+- [ ] Toast notifications on undo/redo
+- [ ] Verify recordSnapshot coverage
+
+**Location**: Canvas.tsx line ~3280 (zoom toolbar)
+**Design**: `[↶] [↷] | [−] [100%] [+] | [Fit]`
+
+#### 2.10.2 Magnifier / Zoom Lens (7-9h) ⭐ High Priority
+- [ ] Magnifier component (circular, 200px diameter)
+- [ ] Manual activation: Z key (press and hold)
+- [ ] Auto activation: Show in drawing tools (bbox, polygon, polyline, circle)
+- [ ] Following mode: Follow cursor with edge detection
+- [ ] Fixed mode: Top-right corner position
+- [ ] Adjustable magnification (2x-8x) via scroll
+- [ ] Crosshair and coordinates display
+- [ ] Mode toggle setting
+
+**Use Cases**: Pixel-perfect annotation, small object detection
+**Position**: Following (offset from cursor) or Fixed (top-right)
+
+#### 2.10.3 Minimap (6-8h) 🔵 Medium Priority
+- [ ] Minimap component (200x150px, bottom-right)
+- [ ] Show entire image scaled
+- [ ] Render all annotations (simplified)
+- [ ] Red viewport rectangle indicator
+- [ ] Click to navigate
+- [ ] Drag viewport for panning
+- [ ] Toggle visibility (M key)
+
+**Files**:
+- New: `Magnifier.tsx`, `Minimap.tsx`
+- Modified: `Canvas.tsx`, `annotationStore.ts` (magnifier preferences)
 
 ---
 
@@ -334,7 +378,39 @@
 
 ## Session Notes (Recent)
 
-### 2025-11-22: Phase 7 Thumbnail Integration ✅
+### 2025-11-22 (PM): Phase 2.10 Canvas Enhancements Planning 📋
+
+**Task**: Plan implementation for Minimap, Undo/Redo UI, and Magnifier features
+
+**Requirements Gathered**:
+1. **Undo/Redo UI**:
+   - Position: Bottom-left zoom toolbar (NOT top toolbar)
+   - Icon-only buttons (no text)
+   - Integrated with existing zoom controls: `[↶] [↷] | [−] [100%] [+] | [Fit]`
+
+2. **Magnifier (NEW feature)**:
+   - Manual activation: Z key (press and hold)
+   - Auto activation: Show when entering drawing tools (bbox, polygon, polyline, circle)
+   - Two positioning modes: Following cursor OR Fixed position (test both)
+   - Adjustable magnification: 2x-8x via scroll
+
+3. **Minimap**:
+   - Standard implementation as originally planned
+
+**Documents Created**:
+- `docs/implementation-plan-minimap-undo-magnifier.md` (detailed 1000+ line plan)
+- Updated `docs/ANNOTATION_IMPLEMENTATION_TODO.md` (added Phase 2.10)
+
+**Total Estimate**: 16-21 hours
+- Undo/Redo UI: 3-4h (reduced - simple integration)
+- Magnifier: 7-9h (increased - auto-activation + dual modes)
+- Minimap: 6-8h (unchanged)
+
+**Implementation Order**: Undo/Redo → Magnifier → Minimap
+
+**Next Steps**: Begin implementation starting with Undo/Redo UI
+
+### 2025-11-22 (AM): Phase 7 Thumbnail Integration ✅
 
 **Completed**:
 1. Added `thumbnail_url` to API schema and responses
