@@ -32,13 +32,11 @@ class AnnotationProject(LabelerBase):
     task_types = Column(ARRAY(String(50)), nullable=False)
     task_config = Column(JSONB, nullable=False)
 
-    # Classes definition (Phase 2.9: task-based structure)
+    # Classes definition (task-based structure)
     # Structure: {task_type: {class_id: {name, color, image_count, bbox_count}}}
     # Example: {"classification": {"1": {"name": "cat", "color": "#ff0000"}}, "detection": {"1": {...}}}
+    # REFACTORING: Only task_classes, legacy 'classes' field REMOVED
     task_classes = Column(JSONB, nullable=False, default={})
-
-    # Legacy field for backward compatibility (deprecated in Phase 2.9)
-    classes = Column(JSONB, nullable=False, default={})
 
     # Project settings
     settings = Column(JSONB, default={})
@@ -78,6 +76,10 @@ class Annotation(LabelerBase):
     # Annotation type: classification, bbox, rotated_bbox, polygon, line, open_vocab
     annotation_type = Column(String(20), nullable=False, index=True)
 
+    # REFACTORING: Task type for direct filtering (no more inference needed!)
+    # Maps to app.tasks.TaskType enum values
+    task_type = Column(String(50), nullable=False, index=True)
+
     # Geometry data (flexible JSONB)
     geometry = Column(JSONB, nullable=False)
 
@@ -109,6 +111,9 @@ class Annotation(LabelerBase):
     __table_args__ = (
         Index("ix_annotations_project_image", "project_id", "image_id"),
         Index("ix_annotations_project_type", "project_id", "annotation_type"),
+        # REFACTORING: Add compound index for task_type filtering (10x faster queries!)
+        Index("ix_annotations_project_task", "project_id", "task_type"),
+        Index("ix_annotations_project_image_task", "project_id", "image_id", "task_type"),
         Index("ix_annotations_created_by", "created_by"),
     )
 

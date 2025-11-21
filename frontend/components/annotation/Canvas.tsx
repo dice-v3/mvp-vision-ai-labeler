@@ -464,7 +464,9 @@ export default function Canvas() {
       // Support both camelCase and snake_case
       const classId = (ann as any).classId || (ann as any).class_id;
       const className = (ann as any).className || (ann as any).class_name;
-      const classInfo = classId ? project.classes[classId] : null;
+      // REFACTORED: Use getCurrentClasses() instead of project.classes
+      const currentClasses = getCurrentClasses();
+      const classInfo = classId ? currentClasses[classId] : null;
       const color = classInfo?.color || '#9333ea';
 
       // Handle no_object annotation specially - draw badge

@@ -1,8 +1,13 @@
 """
-COCO Export Service
+COCO Export Service - REFACTORED
 
 Converts database annotations to COCO JSON format.
 COCO format specification: https://cocodataset.org/#format-data
+
+REFACTORING CHANGES:
+- Use task_classes instead of legacy classes field
+- Added task_type parameter for multi-task project support
+- Direct task-specific class lookup (no fallbacks)
 """
 
 from datetime import datetime, timezone, timedelta
@@ -23,6 +28,7 @@ def export_to_coco(
     project_id: str,
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
+    task_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Export annotations to COCO format.
@@ -33,6 +39,7 @@ def export_to_coco(
         project_id: Project ID to export
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
+        task_type: Task type to export (detection, segmentation) - required for multi-task projects
 
     Returns:
         COCO format dictionary
@@ -70,11 +77,21 @@ def export_to_coco(
     # Sort to ensure consistent order (image_id is now file_path)
     unique_image_ids = sorted(list(set([ann.image_id for ann in annotations])))
 
+    # REFACTORING: Get task-specific classes (task_classes only, no legacy fallback)
+    # Legacy project.classes field has been removed
+    if task_type and project.task_classes and task_type in project.task_classes:
+        task_classes = project.task_classes[task_type]
+    elif project.task_classes:
+        # If task_type not specified, try to get first available task's classes
+        task_classes = next(iter(project.task_classes.values())) if project.task_classes else {}
+    else:
+        task_classes = {}
+
     # Build class_id to COCO category ID mapping (1-based)
     class_id_to_category = {}
-    if isinstance(project.classes, dict):
+    if isinstance(task_classes, dict):
         sorted_classes = sorted(
-            project.classes.items(),
+            task_classes.items(),
             key=lambda x: (x[1].get("order", 0), x[0])
         )
         for idx, (class_id, class_info) in enumerate(sorted_classes, start=1):
@@ -86,7 +103,7 @@ def export_to_coco(
         "licenses": _build_licenses(),
         "images": _build_images(unique_image_ids),
         "annotations": _build_annotations(annotations, class_id_to_category),
-        "categories": _build_categories(project),
+        "categories": _build_categories(task_classes),
     }
 
     return coco_data
@@ -256,14 +273,18 @@ def _build_annotations(
     return coco_annotations
 
 
-def _build_categories(project: AnnotationProject) -> List[Dict[str, Any]]:
-    """Build COCO categories section from project classes."""
+def _build_categories(task_classes: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build COCO categories section from task classes.
+
+    Args:
+        task_classes: Task-specific classes dict from project.task_classes[task_type]
+    """
     categories = []
 
-    if isinstance(project.classes, dict):
+    if isinstance(task_classes, dict):
         # Sort by order field, then by class_id as fallback
         sorted_classes = sorted(
-            project.classes.items(),
+            task_classes.items(),
             key=lambda x: (x[1].get("order", 0), x[0])
         )
         for idx, (class_id, class_info) in enumerate(sorted_classes, start=1):
@@ -271,15 +292,6 @@ def _build_categories(project: AnnotationProject) -> List[Dict[str, Any]]:
                 "id": idx,
                 "name": class_info.get("name", class_id),
                 "supercategory": class_info.get("supercategory", "object"),
-            }
-            categories.append(category)
-    elif isinstance(project.classes, list):
-        # Legacy list format
-        for idx, class_def in enumerate(project.classes, start=1):
-            category = {
-                "id": idx,
-                "name": class_def.get("name", class_def.get("id", f"class_{idx}")),
-                "supercategory": class_def.get("supercategory", "object"),
             }
             categories.append(category)
 

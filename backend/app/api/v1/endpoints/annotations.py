@@ -25,19 +25,16 @@ from app.schemas.annotation import (
     ConfirmResponse,
     BulkConfirmResponse,
 )
-from app.services.image_status_service import update_image_status, ANNOTATION_TYPE_TO_TASK
+from app.services.image_status_service import update_image_status
+# REFACTORING: Use task registry instead of hardcoded mapping
+from app.tasks import task_registry, TaskType, AnnotationType
 
 router = APIRouter()
 
 
-def get_task_type_from_annotation(annotation) -> Optional[str]:
-    """Get task_type from annotation based on annotation_type or attributes."""
-    if annotation.annotation_type == 'no_object':
-        # For no_object, get task_type from attributes
-        if annotation.attributes and 'task_type' in annotation.attributes:
-            return annotation.attributes['task_type']
-        return None
-    return ANNOTATION_TYPE_TO_TASK.get(annotation.annotation_type)
+# REFACTORING: Removed get_task_type_from_annotation()
+# Task type is now stored directly in annotation.task_type column
+# No more inference needed!
 
 
 async def create_history_entry(
@@ -127,6 +124,34 @@ async def create_annotation(
             detail=f"Project {annotation.project_id} not found",
         )
 
+    # REFACTORING: Infer and store task_type using task registry
+    # This is done ONCE at creation time, not on every query!
+    if annotation.annotation_type == 'no_object':
+        # For no_object, get task_type from attributes
+        task_type_str = (annotation.attributes or {}).get('task_type')
+        if not task_type_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="no_object annotation requires task_type in attributes",
+            )
+    else:
+        # Use task registry for reverse lookup
+        try:
+            ann_type = AnnotationType(annotation.annotation_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown annotation_type: {annotation.annotation_type}",
+            )
+
+        task_type_enum = task_registry.get_task_for_annotation_type(ann_type)
+        if not task_type_enum:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No task type found for annotation_type: {annotation.annotation_type}",
+            )
+        task_type_str = task_type_enum.value
+
     # Create annotation
     # no_object annotations are automatically confirmed since they represent
     # an explicit decision that the image has no objects
@@ -136,6 +161,7 @@ async def create_annotation(
         project_id=annotation.project_id,
         image_id=annotation.image_id,
         annotation_type=annotation.annotation_type,
+        task_type=task_type_str,  # REFACTORING: Store task_type directly!
         geometry=annotation.geometry,
         class_id=annotation.class_id,
         class_name=annotation.class_name,
@@ -158,6 +184,7 @@ async def create_annotation(
         action="create",
         new_state={
             "annotation_type": annotation.annotation_type,
+            "task_type": task_type_str,  # Include task_type in history
             "geometry": annotation.geometry,
             "class_id": annotation.class_id,
             "class_name": annotation.class_name,
@@ -172,13 +199,13 @@ async def create_annotation(
         user_id=current_user.id,
     )
 
-    # Phase 2.7: Update image annotation status
-    task_type = get_task_type_from_annotation(new_annotation)
+    # REFACTORING: Update image annotation status with task_type
+    # No more inference - task_type is already stored!
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
         image_id=annotation.image_id,
-        task_type=task_type,
+        task_type=task_type_str,
     )
 
     labeler_db.commit()
@@ -310,7 +337,7 @@ async def update_annotation(
     )
 
     # Phase 2.7: Update image annotation status
-    task_type = get_task_type_from_annotation(annotation)
+    task_type = annotation.task_type
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
@@ -365,7 +392,7 @@ async def delete_annotation(
 
     project_id = annotation.project_id
     image_id = annotation.image_id  # Phase 2.7: Store image_id before deletion
-    task_type = get_task_type_from_annotation(annotation)  # Store task_type before deletion
+    task_type = annotation.task_type  # Store task_type before deletion
 
     # Store state before deletion
     previous_state = {
@@ -681,7 +708,7 @@ async def confirm_annotation(
     )
 
     # Phase 2.7: Update image annotation status
-    task_type = get_task_type_from_annotation(annotation)
+    task_type = annotation.task_type
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
@@ -743,7 +770,7 @@ async def unconfirm_annotation(
     )
 
     # Phase 2.7: Update image annotation status
-    task_type = get_task_type_from_annotation(annotation)
+    task_type = annotation.task_type
     await update_image_status(
         db=labeler_db,
         project_id=annotation.project_id,
@@ -812,7 +839,7 @@ async def bulk_confirm_annotations(
             )
 
             # Phase 2.7: Track affected image for status update
-            task_type = get_task_type_from_annotation(annotation)
+            task_type = annotation.task_type
             affected_images.add((annotation.project_id, annotation.image_id, task_type))
 
             confirmed_count += 1

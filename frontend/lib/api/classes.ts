@@ -1,5 +1,10 @@
 /**
- * Class management API client functions
+ * Class management API client functions - REFACTORED
+ *
+ * REFACTORING CHANGES:
+ * - All class operations now require task_type parameter
+ * - Classes are task-specific (no more project-wide classes)
+ * - Matches backend refactoring (task_classes only)
  */
 
 import { apiClient } from './client';
@@ -42,51 +47,59 @@ export interface ClassResponse {
 }
 
 /**
- * Add a new class to a project
+ * Add a new class to a project's task
+ *
+ * REFACTORED: task_type is now required (classes are task-specific)
  */
 export async function addClass(
   projectId: string,
   classData: ClassCreateRequest,
-  taskType?: string
+  taskType: string
 ): Promise<ClassResponse> {
-  const url = taskType
-    ? `/api/v1/projects/${projectId}/classes?task_type=${taskType}`
-    : `/api/v1/projects/${projectId}/classes`;
+  const url = `/api/v1/projects/${projectId}/classes?task_type=${encodeURIComponent(taskType)}`;
   return apiClient.post<ClassResponse>(url, classData);
 }
 
 /**
- * Update an existing class
+ * Update an existing class in a task
+ *
+ * REFACTORED: task_type is now required (classes are task-specific)
  */
 export async function updateClass(
   projectId: string,
   classId: string,
-  classData: ClassUpdateRequest
+  classData: ClassUpdateRequest,
+  taskType: string
 ): Promise<ClassResponse> {
-  return apiClient.patch<ClassResponse>(`/api/v1/projects/${projectId}/classes/${classId}`, classData);
+  const url = `/api/v1/projects/${projectId}/classes/${classId}?task_type=${encodeURIComponent(taskType)}`;
+  return apiClient.patch<ClassResponse>(url, classData);
 }
 
 /**
- * Delete a class
+ * Delete a class from a task
+ *
+ * REFACTORED: task_type is now required (classes are task-specific)
  */
 export async function deleteClass(
   projectId: string,
-  classId: string
+  classId: string,
+  taskType: string
 ): Promise<void> {
-  return apiClient.delete<void>(`/api/v1/projects/${projectId}/classes/${classId}`);
+  const url = `/api/v1/projects/${projectId}/classes/${classId}?task_type=${encodeURIComponent(taskType)}`;
+  return apiClient.delete<void>(url);
 }
 
 /**
- * Reorder classes
+ * Reorder classes in a task
+ *
+ * REFACTORED: task_type is now required (classes are task-specific)
  */
 export async function reorderClasses(
   projectId: string,
   classIds: string[],
-  taskType?: string
+  taskType: string
 ): Promise<ClassResponse[]> {
-  const url = taskType
-    ? `/api/v1/projects/${projectId}/classes/reorder?task_type=${taskType}`
-    : `/api/v1/projects/${projectId}/classes/reorder`;
+  const url = `/api/v1/projects/${projectId}/classes/reorder?task_type=${encodeURIComponent(taskType)}`;
   return apiClient.put<ClassResponse[]>(url, {
     class_ids: classIds
   });
