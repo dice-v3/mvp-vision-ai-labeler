@@ -392,6 +392,7 @@ export default function ImageList() {
               disabled={loadingMore || backgroundLoading}
               className={`
                 w-10 h-10 flex items-center justify-center rounded-full transition-all relative
+                border-2 border-dashed border-gray-300 dark:border-gray-600
                 ${(loadingMore || backgroundLoading)
                   ? 'cursor-not-allowed'
                   : 'hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer'
@@ -399,24 +400,16 @@ export default function ImageList() {
               `}
               title={`Load More (${images.length} / ${totalImages})`}
             >
-              {/* Circular border - becomes spinner when loading */}
-              <div
-                className={`
-                  absolute inset-0 rounded-full border-2
-                  ${(loadingMore || backgroundLoading)
-                    ? 'border-t-gray-400 dark:border-t-gray-500 border-r-transparent border-b-transparent border-l-transparent animate-spin'
-                    : 'border-dashed border-gray-300 dark:border-gray-600'
-                  }
-                `}
-                style={{
-                  transition: 'border-style 0.2s ease'
-                }}
-              />
-
-              {/* Center icon - only show + when not loading */}
-              {!(loadingMore || backgroundLoading) && (
+              {(loadingMore || backgroundLoading) ? (
+                /* Standard spinner matching other spinners in the app */
+                <svg className="animate-spin h-4 w-4 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                /* + icon matching border color and standard size */
                 <svg
-                  className="w-6 h-6 text-gray-500 dark:text-gray-400 relative z-10"
+                  className="w-4 h-4 text-gray-300 dark:text-gray-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
