@@ -1,9 +1,10 @@
-"""Dataset endpoints (read-only from Platform DB)."""
+"""Dataset endpoints - MIGRATED to Labeler DB (2025-11-21)."""
 
 import uuid
 import json
 import boto3
 from botocore.client import Config
+from datetime import datetime
 from typing import List, Optional, Dict, Set
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,19 +14,28 @@ from pydantic import BaseModel
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
-from app.db.models.platform import Dataset, User
-from app.db.models.labeler import AnnotationProject, Annotation
+from app.db.models.platform import User
+from app.db.models.labeler import Dataset, DatasetPermission, AnnotationProject, Annotation
 from app.schemas.dataset import (
+    DatasetCreate,
+    DatasetUpdate,
     DatasetResponse,
     DeleteDatasetRequest,
     DeleteDatasetResponse,
     DeletionImpactResponse,
+)
+from app.schemas.permission import (
+    PermissionInviteRequest,
+    PermissionResponse,
+    PermissionUpdateRequest,
+    TransferOwnershipRequest,
 )
 from app.schemas.project import ProjectResponse
 from app.services.dataset_delete_service import (
     calculate_deletion_impact,
     delete_dataset_complete,
 )
+from app.core.security import require_dataset_permission
 
 router = APIRouter()
 
@@ -131,88 +141,257 @@ def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str
     return result
 
 
+@router.post("", response_model=DatasetResponse, tags=["Datasets"], status_code=status.HTTP_201_CREATED)
+async def create_dataset(
+    dataset: DatasetCreate,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create new empty dataset in Labeler DB.
+
+    This endpoint creates:
+    1. Dataset record in Labeler DB
+    2. Owner permission for the current user
+    3. Annotation project linked to the dataset
+
+    All operations are performed in a single transaction for consistency.
+
+    - **name**: Dataset name
+    - **description**: Optional dataset description
+    - **task_types**: List of task types (e.g., ['detection', 'classification'])
+    """
+    # Generate dataset ID
+    dataset_id = f"ds_{uuid.uuid4().hex[:16]}"
+
+    # Define storage path
+    storage_path = f"datasets/{dataset_id}/"
+
+    # Create dataset record in Labeler DB
+    db_dataset = Dataset(
+        id=dataset_id,
+        name=dataset.name,
+        description=dataset.description,
+        owner_id=current_user.id,
+        storage_path=storage_path,
+        storage_type="s3",
+        format="images",
+        labeled=False,
+        num_images=0,
+        visibility=dataset.visibility or "private",
+        status="active",
+        integrity_status="valid",
+        version=1,
+        is_snapshot=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_dataset)
+
+    # Create owner permission record (SAME TRANSACTION)
+    db_permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_permission)
+
+    # Create annotation project (SAME TRANSACTION)
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+
+    # Build task_config based on task_types (handle None and empty list)
+    task_types = dataset.task_types or []
+    task_config = {}
+    for task_type in task_types:
+        if task_type == "detection":
+            task_config["detection"] = {"type": "bbox"}
+        elif task_type == "segmentation":
+            task_config["segmentation"] = {"type": "polygon"}
+        elif task_type == "classification":
+            task_config["classification"] = {"type": "single"}
+        elif task_type == "geometry":
+            task_config["geometry"] = {"type": "line"}
+
+    db_project = AnnotationProject(
+        id=project_id,
+        name=dataset.name,
+        description=dataset.description or f"Annotation project for {dataset.name}",
+        dataset_id=dataset_id,
+        owner_id=current_user.id,
+        task_types=task_types,
+        task_config=task_config,
+        task_classes={},  # Empty classes - to be added later
+        settings={},
+        total_images=0,
+        annotated_images=0,
+        total_annotations=0,
+        status="active",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        last_updated_by=current_user.id,
+    )
+    labeler_db.add(db_project)
+
+    # Commit all changes in single transaction
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(db_dataset)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create dataset: {str(e)}"
+        )
+
+    # Build response with owner information
+    dataset_dict = {
+        **db_dataset.__dict__,
+        "num_items": db_dataset.num_images,
+        "source": db_dataset.storage_type,
+        "owner_name": current_user.full_name,
+        "owner_email": current_user.email,
+        "owner_badge_color": current_user.badge_color,
+    }
+
+    return DatasetResponse.model_validate(dataset_dict)
+
+
 @router.get("", response_model=List[DatasetResponse], tags=["Datasets"])
 async def list_datasets(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_platform_db),
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get list of datasets from Platform database.
+    Get list of datasets from Labeler database.
 
     - **skip**: Number of records to skip (pagination)
     - **limit**: Maximum number of records to return (max 100)
     """
-    # Query datasets with owner information
+    # Query datasets from Labeler DB
     datasets = (
-        db.query(
-            Dataset,
-            User.full_name.label("owner_name"),
-            User.email.label("owner_email"),
-            User.badge_color.label("owner_badge_color"),
-        )
-        .join(User, Dataset.owner_id == User.id)
+        labeler_db.query(Dataset)
         .offset(skip)
         .limit(min(limit, 100))
         .all()
     )
 
-    # Convert to response format
+    # Convert to response format with owner information from Platform DB
     result = []
-    for dataset, owner_name, owner_email, owner_badge_color in datasets:
+    for dataset in datasets:
+        # Get owner info from Platform DB
+        owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+
         dataset_dict = {
             **dataset.__dict__,
-            "num_items": dataset.num_images or 0,  # Use num_images for Platform DB
-            "source": dataset.storage_type or "upload",  # Use storage_type for Platform DB
-            "owner_name": owner_name,
-            "owner_email": owner_email,
-            "owner_badge_color": owner_badge_color,
+            "num_items": dataset.num_images or 0,
+            "source": dataset.storage_type or "upload",
+            "owner_name": owner.full_name if owner else None,
+            "owner_email": owner.email if owner else None,
+            "owner_badge_color": owner.badge_color if owner else None,
         }
         result.append(DatasetResponse.model_validate(dataset_dict))
 
     return result
 
 
-@router.get("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
-async def get_dataset(
+@router.put("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
+async def update_dataset(
     dataset_id: str,
-    db: Session = Depends(get_platform_db),
+    dataset_update: DatasetUpdate,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
+    permission = Depends(require_dataset_permission("owner")),
 ):
     """
-    Get dataset by ID from Platform database.
+    Update dataset information.
+
+    Only owners can update dataset information.
 
     - **dataset_id**: Dataset ID
+    - **name**: New dataset name
+    - **description**: New dataset description
+    - **visibility**: New visibility setting (private or public)
     """
-    # Query dataset with owner information
-    result = (
-        db.query(
-            Dataset,
-            User.full_name.label("owner_name"),
-            User.email.label("owner_email"),
-            User.badge_color.label("owner_badge_color"),
-        )
-        .join(User, Dataset.owner_id == User.id)
-        .filter(Dataset.id == dataset_id)
-        .first()
-    )
+    # Query dataset from Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
 
-    if not result:
+    if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Dataset {dataset_id} not found",
         )
 
-    dataset, owner_name, owner_email, owner_badge_color = result
+    # Update fields
+    dataset.name = dataset_update.name
+    dataset.description = dataset_update.description
+    if dataset_update.visibility:
+        dataset.visibility = dataset_update.visibility
+    dataset.updated_at = datetime.utcnow()
+
+    # Commit changes
+    try:
+        labeler_db.commit()
+        labeler_db.refresh(dataset)
+    except Exception as e:
+        labeler_db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update dataset: {str(e)}"
+        )
+
+    # Get owner info from Platform DB
+    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
 
     dataset_dict = {
         **dataset.__dict__,
-        "num_items": dataset.num_images or 0,  # Use num_images for Platform DB
-        "source": dataset.storage_type or "upload",  # Use storage_type for Platform DB
-        "owner_name": owner_name,
-        "owner_email": owner_email,
-        "owner_badge_color": owner_badge_color,
+        "num_items": dataset.num_images or 0,
+        "source": dataset.storage_type or "upload",
+        "owner_name": owner.full_name if owner else None,
+        "owner_email": owner.email if owner else None,
+        "owner_badge_color": owner.badge_color if owner else None,
+    }
+
+    return DatasetResponse.model_validate(dataset_dict)
+
+
+@router.get("/{dataset_id}", response_model=DatasetResponse, tags=["Datasets"])
+async def get_dataset(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get dataset by ID from Labeler database.
+
+    - **dataset_id**: Dataset ID
+    """
+    # Query dataset from Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Get owner info from Platform DB
+    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+
+    dataset_dict = {
+        **dataset.__dict__,
+        "num_items": dataset.num_images or 0,
+        "source": dataset.storage_type or "upload",
+        "owner_name": owner.full_name if owner else None,
+        "owner_email": owner.email if owner else None,
+        "owner_badge_color": owner.badge_color if owner else None,
     }
 
     return DatasetResponse.model_validate(dataset_dict)
@@ -234,8 +413,8 @@ async def get_or_create_project_for_dataset(
 
     - **dataset_id**: Dataset ID
     """
-    # First, verify dataset exists in Platform DB
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # First, verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -392,7 +571,7 @@ async def get_or_create_project_for_dataset(
 async def list_dataset_images(
     dataset_id: str,
     limit: int = 12,
-    platform_db: Session = Depends(get_platform_db),
+    labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -401,8 +580,8 @@ async def list_dataset_images(
     - **dataset_id**: Dataset ID
     - **limit**: Maximum number of images to return (default 12)
     """
-    # Verify dataset exists
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # Verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -580,7 +759,7 @@ async def delete_dataset(
     3. Delete all image annotation statuses
     4. Delete all export versions
     5. Delete all S3 files (images, annotations, exports)
-    6. Delete the dataset record from Platform DB
+    6. Delete the dataset record from Labeler DB
 
     **IMPORTANT**: This is a destructive operation and cannot be undone.
     You must confirm by providing the exact dataset name.
@@ -588,8 +767,8 @@ async def delete_dataset(
     - **dataset_id**: Dataset ID
     - **request**: Deletion request with confirmation
     """
-    # Verify dataset exists
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    # Verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -626,3 +805,335 @@ async def delete_dataset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete dataset: {str(e)}"
         )
+
+
+# =============================================================================
+# Dataset Permission Management (Phase 2.10.2)
+# =============================================================================
+
+@router.post("/{dataset_id}/permissions/invite", response_model=PermissionResponse, tags=["Permissions"])
+async def invite_user_to_dataset(
+    dataset_id: str,
+    request: PermissionInviteRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Invite a user to dataset (owner only).
+
+    - **user_email**: Email of user to invite
+    - **role**: Role to grant ('owner' or 'member')
+    """
+    # Validate role
+    if request.role not in ['owner', 'member']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'owner' or 'member'"
+        )
+
+    # Find user by email in Platform DB
+    user = platform_db.query(User).filter(User.email == request.user_email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email {request.user_email} not found"
+        )
+
+    # Check if permission already exists
+    existing = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user.id,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User {request.user_email} already has access to this dataset"
+        )
+
+    # Create permission
+    permission = DatasetPermission(
+        dataset_id=dataset_id,
+        user_id=user.id,
+        role=request.role,
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(permission)
+    labeler_db.commit()
+    labeler_db.refresh(permission)
+
+    # Get granted_by user info
+    granted_by_user = platform_db.query(User).filter(User.id == current_user.id).first()
+
+    # Build response
+    response_dict = {
+        **permission.__dict__,
+        "user_name": user.full_name,
+        "user_email": user.email,
+        "user_badge_color": user.badge_color,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)
+
+
+@router.get("/{dataset_id}/permissions", response_model=List[PermissionResponse], tags=["Permissions"])
+async def list_dataset_permissions(
+    dataset_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("member")),
+):
+    """
+    List all permissions for a dataset (members can view).
+
+    - **dataset_id**: Dataset ID
+    """
+    # Get all permissions for this dataset
+    permissions = (
+        labeler_db.query(DatasetPermission)
+        .filter(DatasetPermission.dataset_id == dataset_id)
+        .all()
+    )
+
+    # Build response with user information
+    result = []
+    for perm in permissions:
+        # Get user info from Platform DB
+        user = platform_db.query(User).filter(User.id == perm.user_id).first()
+        granted_by_user = platform_db.query(User).filter(User.id == perm.granted_by).first()
+
+        response_dict = {
+            **perm.__dict__,
+            "user_name": user.full_name if user else None,
+            "user_email": user.email if user else None,
+            "user_badge_color": user.badge_color if user else None,
+            "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+            "granted_by_email": granted_by_user.email if granted_by_user else None,
+        }
+        result.append(PermissionResponse.model_validate(response_dict))
+
+    return result
+
+
+@router.put("/{dataset_id}/permissions/{user_id}", response_model=PermissionResponse, tags=["Permissions"])
+async def update_user_permission(
+    dataset_id: str,
+    user_id: int,
+    request: PermissionUpdateRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Update a user's permission role (owner only).
+
+    - **dataset_id**: Dataset ID
+    - **user_id**: User ID to update
+    - **role**: New role ('owner' or 'member')
+    """
+    # Validate role
+    if request.role not in ['owner', 'member']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'owner' or 'member'"
+        )
+
+    # Find permission
+    permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user_id,
+        )
+        .first()
+    )
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission not found for user {user_id}"
+        )
+
+    # Can't change own permission
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own permission"
+        )
+
+    # Update role
+    permission.role = request.role
+    labeler_db.commit()
+    labeler_db.refresh(permission)
+
+    # Get user info
+    user = platform_db.query(User).filter(User.id == user_id).first()
+    granted_by_user = platform_db.query(User).filter(User.id == permission.granted_by).first()
+
+    response_dict = {
+        **permission.__dict__,
+        "user_name": user.full_name if user else None,
+        "user_email": user.email if user else None,
+        "user_badge_color": user.badge_color if user else None,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)
+
+
+@router.delete("/{dataset_id}/permissions/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Permissions"])
+async def remove_user_permission(
+    dataset_id: str,
+    user_id: int,
+    labeler_db: Session = Depends(get_labeler_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Remove a user's permission from dataset (owner only).
+
+    - **dataset_id**: Dataset ID
+    - **user_id**: User ID to remove
+    """
+    # Find permission
+    permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user_id,
+        )
+        .first()
+    )
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission not found for user {user_id}"
+        )
+
+    # Can't remove own permission
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove your own permission"
+        )
+
+    # Ensure at least one owner remains
+    owner_count = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.role == "owner",
+        )
+        .count()
+    )
+
+    if permission.role == "owner" and owner_count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove the last owner. Transfer ownership first."
+        )
+
+    # Delete permission
+    labeler_db.delete(permission)
+    labeler_db.commit()
+
+    return None
+
+
+@router.post("/{dataset_id}/permissions/transfer-owner", response_model=PermissionResponse, tags=["Permissions"])
+async def transfer_dataset_ownership(
+    dataset_id: str,
+    request: TransferOwnershipRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    platform_db: Session = Depends(get_platform_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_dataset_permission("owner")),
+):
+    """
+    Transfer dataset ownership to another user (owner only).
+
+    This will:
+    1. Change the new user's role to 'owner'
+    2. Change the current owner's role to 'member'
+    3. Update dataset.owner_id
+
+    - **dataset_id**: Dataset ID
+    - **new_owner_user_id**: User ID of new owner
+    """
+    # Find new owner's permission
+    new_owner_permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == request.new_owner_user_id,
+        )
+        .first()
+    )
+
+    if not new_owner_permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User {request.new_owner_user_id} doesn't have access to this dataset"
+        )
+
+    # Can't transfer to yourself
+    if request.new_owner_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are already the owner"
+        )
+
+    # Get current owner permission
+    current_owner_permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    # Get dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Transfer ownership
+    new_owner_permission.role = "owner"
+    if current_owner_permission:
+        current_owner_permission.role = "member"
+    dataset.owner_id = request.new_owner_user_id
+
+    labeler_db.commit()
+    labeler_db.refresh(new_owner_permission)
+
+    # Get user info
+    user = platform_db.query(User).filter(User.id == request.new_owner_user_id).first()
+    granted_by_user = platform_db.query(User).filter(User.id == new_owner_permission.granted_by).first()
+
+    response_dict = {
+        **new_owner_permission.__dict__,
+        "user_name": user.full_name if user else None,
+        "user_email": user.email if user else None,
+        "user_badge_color": user.badge_color if user else None,
+        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
+        "granted_by_email": granted_by_user.email if granted_by_user else None,
+    }
+
+    return PermissionResponse.model_validate(response_dict)

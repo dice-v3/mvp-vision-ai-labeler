@@ -15,8 +15,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from app.db.models.labeler import Annotation, AnnotationProject
-from app.db.models.platform import Dataset
+from app.db.models.labeler import Dataset, Annotation, AnnotationProject
 
 # Korea Standard Time (UTC+9)
 KST = timezone(timedelta(hours=9))
@@ -52,8 +51,8 @@ def export_to_coco(
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    # Get dataset
-    dataset = platform_db.query(Dataset).filter(
+    # Get dataset from Labeler DB
+    dataset = db.query(Dataset).filter(
         Dataset.id == project.dataset_id
     ).first()
 

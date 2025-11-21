@@ -15,7 +15,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_platform_db
+from app.core.database import get_platform_db, get_labeler_db
 
 
 # Password hashing
@@ -184,3 +184,74 @@ async def get_current_admin_user(
             detail="Admin privileges required",
         )
     return current_user
+
+
+# =============================================================================
+# Dataset Permission Middleware (2025-11-21)
+# =============================================================================
+
+def require_dataset_permission(required_role: str = "member"):
+    """
+    Dependency factory to check dataset permissions.
+
+    Args:
+        required_role: Required permission role ('owner' or 'member')
+                      - 'owner': Only dataset owner can access
+                      - 'member': Dataset owner or members can access
+
+    Returns:
+        Dependency function that validates dataset access
+
+    Usage:
+        @router.delete("/datasets/{dataset_id}")
+        async def delete_dataset(
+            dataset_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_dataset_permission("owner")),
+        ):
+            # Only owners can delete
+            pass
+
+        @router.get("/datasets/{dataset_id}/images")
+        async def list_images(
+            dataset_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_dataset_permission("member")),
+        ):
+            # Owners and members can view
+            pass
+    """
+    async def check_permission(
+        dataset_id: str,
+        current_user = Depends(get_current_user),
+        labeler_db: Session = Depends(get_labeler_db),
+    ):
+        # Import here to avoid circular imports
+        from app.db.models.labeler import DatasetPermission
+
+        # Check if user has permission
+        permission = (
+            labeler_db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.dataset_id == dataset_id,
+                DatasetPermission.user_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to dataset {dataset_id}",
+            )
+
+        # Check role requirement
+        if required_role == "owner" and permission.role != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Owner permission required",
+            )
+
+        return permission
+
+    return check_permission

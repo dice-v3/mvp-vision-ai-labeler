@@ -17,13 +17,13 @@ import boto3
 from botocore.exceptions import ClientError
 
 from app.db.models.labeler import (
+    Dataset,
     AnnotationProject,
     Annotation,
     ImageAnnotationStatus,
     AnnotationVersion,
     AnnotationSnapshot
 )
-from app.db.models.platform import Dataset
 from app.core.storage import storage_client
 from app.services.dice_export_service import export_to_dice
 import json
@@ -90,7 +90,7 @@ def calculate_deletion_impact(
     impact = DeletionImpact()
 
     # Get dataset from Platform DB
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
@@ -445,7 +445,7 @@ def delete_dataset_complete(
     s3_counts = delete_s3_data(dataset_id, project_ids)
 
     # Delete Platform dataset record
-    dataset = platform_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if dataset:
         platform_db.delete(dataset)
         platform_db.commit()

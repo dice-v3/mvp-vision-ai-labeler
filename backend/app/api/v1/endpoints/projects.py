@@ -10,8 +10,8 @@ from sqlalchemy import func
 from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.storage import storage_client
-from app.db.models.platform import User, Dataset
-from app.db.models.labeler import AnnotationProject, ImageAnnotationStatus, Annotation
+from app.db.models.platform import User
+from app.db.models.labeler import Dataset, AnnotationProject, ImageAnnotationStatus, Annotation
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, AddTaskTypeRequest
 # REFACTORING: Import task registry for task type validation
 from app.tasks import task_registry, TaskType
@@ -49,8 +49,8 @@ async def create_project(
     - **task_config**: Task-specific configuration
     - **classes**: Class definitions
     """
-    # Verify dataset exists in Platform DB
-    dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+    # Verify dataset exists in Labeler DB
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -112,7 +112,7 @@ async def list_projects(
     # Get dataset information for each project
     result = []
     for project in projects:
-        dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+        dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
         response_dict = {
             **project.__dict__,
@@ -209,7 +209,7 @@ async def get_project(
         )
 
     # Get dataset information
-    dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
     response_dict = {
         **project.__dict__,
@@ -257,7 +257,7 @@ async def update_project(
     labeler_db.refresh(project)
 
     # Get dataset information
-    dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
     response_dict = {
         **project.__dict__,
@@ -400,7 +400,7 @@ async def add_task_type(
     labeler_db.refresh(project)
 
     # Get dataset information
-    dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
     # Get user information
     user = platform_db.query(User).filter(User.id == project.last_updated_by).first()

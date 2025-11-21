@@ -2,8 +2,42 @@
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from decimal import Decimal
+
+
+class DatasetCreate(BaseModel):
+    """Schema for creating a new dataset."""
+    name: str = Field(..., min_length=1, max_length=200, description="Dataset name")
+    description: Optional[str] = Field(None, description="Dataset description")
+    task_types: Optional[List[str]] = Field(default=[], description="Task types (e.g., ['detection', 'classification']). Can be empty and added later.")
+    visibility: Optional[str] = Field(default="private", description="Dataset visibility (private or public)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "My Dataset",
+                "description": "A dataset for object detection",
+                "task_types": [],
+                "visibility": "private"
+            }
+        }
+
+
+class DatasetUpdate(BaseModel):
+    """Schema for updating dataset information."""
+    name: str = Field(..., min_length=1, max_length=200, description="Dataset name")
+    description: Optional[str] = Field(None, description="Dataset description")
+    visibility: Optional[str] = Field(None, description="Dataset visibility (private or public)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "Updated Dataset Name",
+                "description": "Updated description",
+                "visibility": "private"
+            }
+        }
 
 
 class DatasetResponse(BaseModel):

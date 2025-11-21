@@ -1,11 +1,38 @@
 /**
  * Dataset API
  *
- * Platform DB에서 데이터셋 조회
+ * Dataset management (Labeler DB)
  */
 
 import { apiClient } from './client';
 import type { Dataset, Project } from '../types';
+
+export interface CreateDatasetRequest {
+  name: string;
+  description?: string;
+  task_types?: string[];
+  visibility?: 'private' | 'public';
+}
+
+export interface UpdateDatasetRequest {
+  name: string;
+  description?: string;
+  visibility?: 'private' | 'public';
+}
+
+/**
+ * Create new dataset
+ */
+export async function createDataset(request: CreateDatasetRequest): Promise<Dataset> {
+  return apiClient.post<Dataset>('/api/v1/datasets', request);
+}
+
+/**
+ * Update dataset information
+ */
+export async function updateDataset(datasetId: string, request: UpdateDatasetRequest): Promise<Dataset> {
+  return apiClient.put<Dataset>(`/api/v1/datasets/${datasetId}`, request);
+}
 
 /**
  * Get list of datasets

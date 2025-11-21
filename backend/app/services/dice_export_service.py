@@ -50,8 +50,8 @@ def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(KST).isoformat()
 
-from app.db.models.labeler import Annotation, AnnotationProject, ImageAnnotationStatus
-from app.db.models.platform import Dataset, User
+from app.db.models.labeler import Dataset, Annotation, AnnotationProject, ImageAnnotationStatus
+from app.db.models.platform import User
 from app.core.storage import storage_client
 
 
@@ -85,8 +85,8 @@ def export_to_dice(
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    # Get dataset
-    dataset = platform_db.query(Dataset).filter(
+    # Get dataset from Labeler DB
+    dataset = db.query(Dataset).filter(
         Dataset.id == project.dataset_id
     ).first()
 

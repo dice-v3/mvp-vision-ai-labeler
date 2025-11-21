@@ -3,6 +3,11 @@ Labeler Database Models (Read-Write)
 
 These models represent tables in the Labeler database.
 Labeler has FULL access to these tables.
+
+IMPORTANT (2025-11-21):
+- Dataset and DatasetPermission tables MOVED from Platform DB to Labeler DB
+- Labeler now fully owns dataset management
+- Platform DB only used for users table (read-only)
 """
 
 from datetime import datetime
@@ -10,11 +15,123 @@ from typing import Dict, List
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Integer, String, Text, ARRAY,
-    BigInteger, Index, JSON
+    BigInteger, Index, JSON, ForeignKey, UniqueConstraint, CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.database import LabelerBase
+
+
+class Dataset(LabelerBase):
+    """
+    Dataset model - MOVED from Platform DB to Labeler DB (2025-11-21).
+
+    Labeler now fully owns dataset management.
+    """
+
+    __tablename__ = "datasets"
+
+    # Primary key
+    id = Column(String(100), primary_key=True)
+
+    # Basic info
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    owner_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+
+    # Dataset configuration
+    visibility = Column(String(20), nullable=False, default="private")
+    tags = Column(Text)  # JSON stored as Text
+
+    # Storage information
+    storage_path = Column(String(500), nullable=False)
+    storage_type = Column(String(20), nullable=False, default="s3")
+
+    # Dataset format and content
+    format = Column(String(50), nullable=False, default="images")
+    labeled = Column(Boolean, nullable=False, default=False)
+    annotation_path = Column(String(500))
+
+    # Statistics
+    num_classes = Column(Integer)
+    num_images = Column(Integer, nullable=False, default=0)
+    class_names = Column(Text)  # JSON stored as Text
+
+    # Snapshot info
+    is_snapshot = Column(Boolean, nullable=False, default=False)
+    parent_dataset_id = Column(String(100))
+    snapshot_created_at = Column(DateTime)
+    version_tag = Column(String(50))
+
+    # Status and integrity
+    status = Column(String(20), nullable=False, default="active")
+    integrity_status = Column(String(20), nullable=False, default="valid")
+
+    # Versioning
+    version = Column(Integer, nullable=False, default=1)
+    content_hash = Column(String(64))
+    last_modified_at = Column(DateTime)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Split configuration
+    split_config = Column(Text)  # JSON stored as Text
+
+    __table_args__ = (
+        Index("ix_datasets_owner_id_created_at", "owner_id", "created_at"),
+    )
+
+    # Compatibility properties for existing code
+    @property
+    def num_items(self) -> int:
+        """Alias for num_images."""
+        return self.num_images or 0
+
+    @property
+    def source(self) -> str:
+        """Map storage_type to source."""
+        return self.storage_type or "upload"
+
+    def __repr__(self):
+        return f"<Dataset(id='{self.id}', name='{self.name}')>"
+
+
+class DatasetPermission(LabelerBase):
+    """
+    Dataset permission model - MOVED from Platform DB to Labeler DB (2025-11-21).
+
+    Manages dataset access control (owner/member roles).
+    """
+
+    __tablename__ = "dataset_permissions"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign keys
+    dataset_id = Column(
+        String(100),
+        ForeignKey('datasets.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    user_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+
+    # Permission info
+    role = Column(String(20), nullable=False)  # 'owner' or 'member'
+    granted_by = Column(Integer, nullable=False)  # User ID who granted this permission
+    granted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('dataset_id', 'user_id', name='uq_dataset_user'),
+        CheckConstraint("role IN ('owner', 'member')", name='ck_dataset_permissions_role'),
+        Index("ix_dataset_permissions_dataset_user", "dataset_id", "user_id"),
+    )
+
+    def __repr__(self):
+        return f"<DatasetPermission(dataset_id='{self.dataset_id}', user_id={self.user_id}, role='{self.role}')>"
 
 
 class AnnotationProject(LabelerBase):
