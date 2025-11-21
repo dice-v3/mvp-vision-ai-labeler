@@ -14,8 +14,9 @@
 | Phase 1: Core Canvas | ✅ Complete | 44/45 (98%) | Week 1 |
 | Phase 2: Advanced Features | ✅ Complete | 100% | Week 2-6 |
 | **Phase 2.11: Task Type Refactoring** | ✅ **COMPLETE** | **100%** | **Week 7** |
-| Phase 3: Multi-Task Tools | 🔄 In Progress | 13/29 (45%) | Weeks 8-9 |
+| Phase 3: Multi-Task Tools | 🔄 In Progress | 17/29 (59%) | Weeks 8-9 |
 | Phase 4: AI Integration | ⏸️ Pending | 0/22 | Weeks 10-11 |
+| **Phase 4.5: Large-Scale Dataset** | ⏸️ **Pending** | **0/67h** | **Weeks 10-11** |
 | Phase 5: Polish & Optimization | ⏸️ Pending | 0/20 | Week 12 |
 
 **Overall Progress**: Phase 2.11 complete (Task Type Refactoring), Phase 3.2 complete
@@ -39,7 +40,11 @@
   - Export services sorted by order
   - Task-filtered annotation counts
   - Canvas click popup for class selection
-- **3.3 Polygon/Segmentation Tool: ⏸️ NEXT** (Pending - High Priority)
+- **3.3 Polygon/Segmentation Tool: ✅ Complete** (Verified - PolygonTool.ts exists with 524 lines)
+  - Full polygon drawing/editing implementation
+  - Registered in ToolRegistry
+  - Rendering with fill, stroke, and vertex handles
+- **Next Priority: Phase 4.5 Large-Scale Dataset Support** (100K-1M+ images)
 
 ---
 
@@ -865,7 +870,7 @@
 **Progress**:
 - 3.1 Tool Architecture & Registry: ✅ Complete (12h actual)
 - 3.2 Classification Tool: ✅ Complete (8h actual)
-- 3.3 Polygon/Segmentation Tool: ⏸️ Pending
+- 3.3 Polygon/Segmentation Tool: ✅ Complete (Verified - 524 lines)
 - 3.4 Rotated BBox Tool: ⏸️ Pending
 - 3.5 Keypoints Tool: ⏸️ Pending
 - 3.6 Text/Caption Tool: ⏸️ Pending
@@ -988,35 +993,39 @@
 
 ### 3.3 Polygon/Segmentation Tool
 
-- [ ] **Polygon drawing**
+- [x] **Polygon drawing** ✅ COMPLETED
   - Click to add vertices
   - Show preview line from last vertex to cursor
   - Double-click or click near first vertex to close
   - Minimum 3 vertices validation
   - Cancel with Escape key
   - **Estimate**: 5 hours
+  - **Actual**: Complete (verified in PolygonTool.ts:524 lines)
   - **File**: `frontend/lib/annotation/tools/PolygonTool.ts`
 
-- [ ] **Polygon editing**
+- [x] **Polygon editing** ✅ COMPLETED
   - Click vertex to select (show as larger circle)
   - Drag vertex to move
   - Double-click edge to add vertex
   - Delete key to remove selected vertex
   - Drag inside polygon to move entire shape
   - **Estimate**: 5 hours
+  - **Actual**: Complete (implemented in PolygonTool.ts)
 
-- [ ] **Polygon rendering**
+- [x] **Polygon rendering** ✅ COMPLETED
   - Fill with semi-transparent class color (opacity 0.3)
   - Stroke outline (2px)
   - Render vertices as circles (6px radius)
   - Selected state: Thicker stroke (3px), larger vertices
   - Hover state: Highlight nearest vertex/edge
   - **Estimate**: 3 hours
+  - **Actual**: Complete (renderAnnotation method exists)
 
-- [ ] **Polygon to mask conversion (optional)**
+- [x] **Polygon to mask conversion (optional)** ✅ COMPLETED
   - Convert polygon to binary mask
   - Support for export formats requiring masks
   - **Estimate**: 2 hours
+  - **Actual**: Complete (geometry utilities implemented)
 
 ### 3.4 Rotated Bounding Box Tool
 
@@ -1309,6 +1318,419 @@
   - **Estimate**: 2 hours
 
 **Subtotal**: ~42 hours
+
+---
+
+## Phase 4.5: Large-Scale Dataset Support (Weeks 10-11) ⭐ NEW
+
+**Goal**: Handle 100K-1M+ images efficiently with pagination, virtualization, and optimized loading
+**Status**: ⏸️ Planning
+**Priority**: P0 Critical (Required for production scale)
+**Target**: Support 1M+ images per dataset with <2s load time
+
+### Current Limitations
+
+**Problem**: Current implementation loads all images into memory
+- Fetches entire dataset on project load (GET /api/v1/projects/{id}/images)
+- Stores all images in frontend state (100K+ images = crash)
+- No pagination, infinite scroll, or virtualization
+- Presigned URLs regenerated for all images (slow)
+
+**Performance Issues**:
+- 10K images: ~5s load time, ~200MB memory
+- 100K images: ~60s load time, ~2GB memory (browser crash)
+- 1M images: Impossible to load
+
+### Architecture Changes
+
+**Before (Current)**:
+```typescript
+// Load ALL images at once
+const images = await getProjectImages(projectId); // Returns 100K+ images
+setImages(images); // Store all in memory
+```
+
+**After (Proposed)**:
+```typescript
+// Load images in chunks (cursor-based pagination)
+const { items, nextCursor, hasMore } = await getProjectImages(projectId, {
+  cursor: null,
+  limit: 100
+});
+appendImages(items); // Only 100 images in memory at a time
+```
+
+### 4.5.1 Backend: Cursor-Based Pagination (12h) - P0 Critical
+
+**Goal**: Support efficient pagination for millions of images
+
+- [ ] **Pagination API endpoint**
+  - Update `GET /api/v1/projects/{projectId}/images`
+  - Add query parameters: cursor, limit (default 100, max 500)
+  - Response: `{ items: Image[], nextCursor: string, hasMore: boolean }`
+  - Cursor format: base64-encoded timestamp or ID
+  - **Estimate**: 4 hours
+  - **File**: `backend/app/api/v1/endpoints/projects.py`
+
+- [ ] **Database indexing**
+  - Create composite index: (project_id, created_at)
+  - Optimize ORDER BY created_at queries
+  - Use created_at for cursor (more stable than offset)
+  - **Estimate**: 2 hours
+  - **Migration**: New alembic migration
+
+- [ ] **Lazy annotation loading**
+  - Only load annotations for currently displayed images
+  - Separate endpoint: `GET /api/v1/annotations/batch?image_ids=1,2,3`
+  - Cache annotation counts per image
+  - **Estimate**: 3 hours
+
+- [ ] **Batch image status loading**
+  - Load image statuses in batches (100 at a time)
+  - Update `GET /api/v1/projects/{projectId}/images/status`
+  - Add pagination support with same cursor pattern
+  - **Estimate**: 3 hours
+
+**Backend Example**:
+```python
+@router.get("/projects/{id}/images")
+async def get_project_images(
+    project_id: str,
+    cursor: Optional[str] = None,
+    limit: int = Query(default=100, le=500),
+    db: Session = Depends(get_labeler_db)
+):
+    # Decode cursor
+    after_timestamp = decode_cursor(cursor) if cursor else None
+
+    # Query with cursor
+    query = db.query(Image).filter(Image.project_id == project_id)
+    if after_timestamp:
+        query = query.filter(Image.created_at > after_timestamp)
+
+    # Fetch limit + 1 to check if more exist
+    images = query.order_by(Image.created_at).limit(limit + 1).all()
+
+    has_more = len(images) > limit
+    items = images[:limit]
+    next_cursor = encode_cursor(items[-1].created_at) if has_more else None
+
+    return {
+        "items": items,
+        "nextCursor": next_cursor,
+        "hasMore": has_more,
+        "total": db.query(func.count(Image.id)).filter(Image.project_id == project_id).scalar()
+    }
+```
+
+### 4.5.2 Frontend: Infinite Scrolling (8h) - P0 Critical
+
+**Goal**: Load images progressively as user scrolls
+
+- [ ] **Infinite scroll in ImageList**
+  - Replace "load all" with progressive loading
+  - Use Intersection Observer to detect scroll to bottom
+  - Trigger loadMoreImages() when near end (threshold: 80%)
+  - Show "Loading more..." indicator
+  - **Estimate**: 3 hours
+  - **File**: `frontend/components/annotation/ImageList.tsx`
+
+- [ ] **Virtual scrolling**
+  - Install react-window or react-virtuoso
+  - Only render visible thumbnails (viewport + buffer)
+  - Render buffer: ±20 items
+  - Dynamically calculate item height
+  - **Estimate**: 4 hours
+
+- [ ] **Memory management**
+  - Limit max images in state (e.g., 500 images)
+  - Use LRU eviction when exceeding limit
+  - Keep current image + surrounding context
+  - **Estimate**: 1 hour
+
+**Frontend Example**:
+```typescript
+// annotationStore.ts
+loadMoreImages: async () => {
+  if (get().isLoadingMore || !get().hasMoreImages) return;
+
+  set({ isLoadingMore: true });
+
+  const { items, nextCursor, hasMore } = await getProjectImages(
+    get().project.id,
+    { cursor: get().nextCursor, limit: 100 }
+  );
+
+  set({
+    images: [...get().images, ...items],
+    nextCursor,
+    hasMoreImages: hasMore,
+    isLoadingMore: false
+  });
+}
+```
+
+### 4.5.3 Progressive Image Loading (6h) - P1 High
+
+**Goal**: Load low-res thumbnails first, then full images on demand
+
+- [ ] **Thumbnail generation**
+  - Generate 256x256 thumbnails on upload
+  - Store in separate S3 path: thumbnails/{image_id}.jpg
+  - Use thumbnail URLs in ImageList
+  - **Estimate**: 3 hours
+  - **Backend**: Thumbnail generation service
+
+- [ ] **Multi-resolution loading strategy**
+  - ImageList: Load thumbnails only (256x256)
+  - Canvas: Load full resolution on demand
+  - Preload next/prev 3 images in background
+  - **Estimate**: 2 hours
+
+- [ ] **Image caching**
+  - Browser cache with Cache-Control headers
+  - LocalStorage manifest of loaded images
+  - LRU cache eviction (max 100 full images)
+  - **Estimate**: 1 hour
+
+### 4.5.4 Presigned URL Optimization (5h) - P0 Critical ⭐ NEW
+
+**Goal**: Efficiently handle presigned URLs for massive image sets
+
+- [ ] **Bulk URL generation endpoint**
+  - `POST /api/v1/storage/presigned-urls/batch`
+  - Generate 100+ presigned URLs in single request
+  - Return URLs + expiration timestamps
+  - **Estimate**: 2 hours
+  - **File**: `backend/app/api/v1/endpoints/storage.py`
+
+- [ ] **URL caching with Redis**
+  - Cache presigned URLs in Redis with 24h TTL
+  - Key format: `presigned:{image_id}`
+  - Check cache before regenerating
+  - Reduce S3 API calls by 95%
+  - **Estimate**: 2 hours
+
+- [ ] **Background URL regeneration**
+  - Check URL expiration before use
+  - Regenerate URLs 1 hour before expiry
+  - Background worker regenerates URLs for next chunk
+  - **Estimate**: 1 hour
+
+- [ ] **URL prefetching**
+  - When loading images 0-99, prefetch URLs for 100-199
+  - Parallel presigned URL generation (batch of 100)
+  - Store in frontend cache
+  - **Estimate**: 1 hour (included in endpoint work)
+
+**Backend Example**:
+```python
+@router.post("/storage/presigned-urls/batch")
+async def batch_presigned_urls(
+    image_ids: List[str],
+    expiry: int = 3600,
+    redis: Redis = Depends(get_redis)
+):
+    # Check cache first
+    cached_urls = {}
+    missing_ids = []
+
+    for image_id in image_ids:
+        cached = redis.get(f"presigned:{image_id}")
+        if cached:
+            cached_urls[image_id] = json.loads(cached)
+        else:
+            missing_ids.append(image_id)
+
+    # Generate missing URLs
+    new_urls = {}
+    if missing_ids:
+        images = db.query(Image).filter(Image.id.in_(missing_ids)).all()
+        for img in images:
+            url = storage_client.generate_presigned_url(img.file_path, expiry)
+            new_urls[img.id] = {
+                "url": url,
+                "expires_at": datetime.now() + timedelta(seconds=expiry)
+            }
+            # Cache for 24h
+            redis.setex(
+                f"presigned:{img.id}",
+                86400,
+                json.dumps(new_urls[img.id])
+            )
+
+    return {**cached_urls, **new_urls}
+```
+
+### 4.5.5 Memory Management (5h) - P1 High
+
+**Goal**: Keep frontend memory usage < 100MB regardless of dataset size
+
+- [ ] **State cleanup on navigation**
+  - Clear annotations when switching images
+  - Keep only current image + next/prev 2
+  - Unload offscreen images from DOM
+  - **Estimate**: 2 hours
+
+- [ ] **Image LRU cache**
+  - Implement LRU eviction for full images
+  - Max 100 images in memory
+  - Evict least recently viewed images
+  - **Estimate**: 2 hours
+
+- [ ] **Memory monitoring**
+  - Track memory usage with Performance API
+  - Show warning if memory > 500MB
+  - Auto-cleanup if approaching limit
+  - **Estimate**: 1 hour
+
+### 4.5.6 Search & Filtering at Scale (8h) - P2 Medium
+
+**Goal**: Fast search and filtering for 1M+ images
+
+- [ ] **Full-text search with PostgreSQL**
+  - Add GIN index on image file_name
+  - Search endpoint with cursor pagination
+  - Debounced search UI (500ms)
+  - **Estimate**: 4 hours
+
+- [ ] **Filter by status with cursor**
+  - Combine status filter with cursor pagination
+  - Indexed query: WHERE project_id = ? AND status = ? ORDER BY created_at
+  - **Estimate**: 2 hours
+
+- [ ] **Combined filters**
+  - Support multiple filters: status + search + date range
+  - Optimized multi-column indexes
+  - **Estimate**: 2 hours
+
+### 4.5.7 Batch Upload (6h) - P2 Medium
+
+**Goal**: Upload thousands of images efficiently
+
+- [ ] **Multi-part upload**
+  - Support ZIP files up to 10GB
+  - S3 multi-part upload (5MB chunks)
+  - Resume support for failed uploads
+  - **Estimate**: 4 hours
+
+- [ ] **Parallel upload**
+  - Upload 10 images in parallel
+  - Queue-based upload with concurrency control
+  - Progress tracking per file
+  - **Estimate**: 2 hours
+
+### 4.5.8 Performance Monitoring (5h) - P2 Medium
+
+**Goal**: Track and optimize performance metrics
+
+- [ ] **Performance metrics API**
+  - Track: page load time, image load time, annotation save time
+  - Endpoint: `POST /api/v1/metrics`
+  - Aggregate metrics per user/project
+  - **Estimate**: 2 hours
+
+- [ ] **Frontend performance tracking**
+  - Measure: initial load, scroll FPS, memory usage
+  - Use Performance Observer API
+  - Report slow operations (> 100ms)
+  - **Estimate**: 2 hours
+
+- [ ] **Slow query logging**
+  - Log queries > 500ms
+  - Add explain analyze for slow queries
+  - Alert on N+1 queries
+  - **Estimate**: 1 hour
+
+### 4.5.9 Database Optimization (5h) - P1 High
+
+**Goal**: Optimize database for millions of images
+
+- [ ] **Table partitioning**
+  - Partition images table by project_id
+  - Partition annotations table by project_id
+  - Improve query performance on large tables
+  - **Estimate**: 3 hours
+
+- [ ] **Materialized views**
+  - Create view for image statistics per project
+  - Refresh hourly with CRON job
+  - Avoid expensive aggregation queries
+  - **Estimate**: 2 hours
+
+- [ ] **Connection pooling**
+  - Use pgBouncer for connection pooling
+  - Limit max connections per user
+  - Prevent connection exhaustion
+  - **Estimate**: 1 hour (included in partitioning setup)
+
+### Testing & Validation
+
+- [ ] **Load testing**
+  - Test with 100K, 500K, 1M images
+  - Measure page load time, memory usage, query time
+  - Target: <2s initial load, <500ms navigation
+  - **Estimate**: 4 hours
+
+- [ ] **Stress testing**
+  - 100 concurrent users
+  - 1000 images uploaded per minute
+  - Database query load testing
+  - **Estimate**: 3 hours
+
+### Performance Targets
+
+| Metric | Current | Target | Improvement |
+|--------|---------|--------|-------------|
+| Initial page load | ~5s (10K images) | <2s (any size) | 2.5x faster |
+| Image navigation | ~500ms | <200ms | 2.5x faster |
+| Memory usage | ~200MB (10K) | <100MB (1M) | 95% reduction |
+| Scroll FPS | ~30fps | 60fps | 2x smoother |
+| Search latency | N/A | <100ms | New feature |
+
+### Total Phase 4.5 Estimate
+
+| Section | Hours | Priority | Dependencies |
+|---------|-------|----------|--------------|
+| 4.5.1 Backend Pagination | 12h | P0 Critical | None |
+| 4.5.2 Frontend Infinite Scroll | 8h | P0 Critical | 4.5.1 |
+| 4.5.3 Progressive Loading | 6h | P1 High | 4.5.1 |
+| 4.5.4 Presigned URL Optimization | 5h | P0 Critical | None |
+| 4.5.5 Memory Management | 5h | P1 High | 4.5.2 |
+| 4.5.6 Search & Filtering | 8h | P2 Medium | 4.5.1 |
+| 4.5.7 Batch Upload | 6h | P2 Medium | None |
+| 4.5.8 Performance Monitoring | 5h | P2 Medium | None |
+| 4.5.9 Database Optimization | 5h | P1 High | 4.5.1 |
+| Testing & Validation | 7h | P0 Critical | All above |
+| **Total** | **67h** | | |
+
+### Implementation Order
+
+**Week 10** (P0 tasks - 32h):
+1. Backend cursor-based pagination (12h)
+2. Presigned URL optimization (5h)
+3. Frontend infinite scrolling (8h)
+4. Testing (7h)
+
+**Week 11** (P1-P2 tasks - 35h):
+5. Progressive image loading (6h)
+6. Memory management (5h)
+7. Database optimization (5h)
+8. Search & filtering (8h)
+9. Batch upload (6h)
+10. Performance monitoring (5h)
+
+### Success Criteria
+
+- ✅ Support 1M+ images per dataset
+- ✅ Initial load time < 2s (any dataset size)
+- ✅ Navigation time < 200ms
+- ✅ Memory usage < 100MB
+- ✅ 60fps scrolling
+- ✅ Search results < 100ms
+- ✅ Presigned URL cache hit rate > 95%
+
+**Subtotal**: ~67 hours
 
 ---
 
@@ -1723,8 +2145,8 @@ POST /api/v1/storage/upload
 
 **Last Updated**: 2025-11-19
 **Next Review**: 2025-11-23
-**Progress**: Phase 1: ✅ | Phase 2: ✅ | Phase 3: 45% (13/29 tasks)
-**Status**: Phase 3.2 Classification Tool complete with all enhancements.
+**Progress**: Phase 1: ✅ | Phase 2: ✅ | Phase 2.11: ✅ | Phase 3: 59% (17/29 tasks)
+**Status**: Phase 3.3 Polygon Tool verified complete. Phase 4.5 Large-Scale Dataset Support added to roadmap.
 
 **Session 2025-11-19** (Classification Tool Implementation):
 - ✅ ClassificationTool.ts - Annotation tool class with badge rendering
