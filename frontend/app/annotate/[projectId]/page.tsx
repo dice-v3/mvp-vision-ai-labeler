@@ -12,8 +12,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import type { Annotation as StoreAnnotation } from '@/lib/stores/annotationStore';
-import { getProjectById, getProjectImageStatuses } from '@/lib/api/projects';
-import { getDatasetImages } from '@/lib/api/datasets';
+import { getProjectById, getProjectImageStatuses, getProjectImages } from '@/lib/api/projects';
 import { getProjectAnnotations, importAnnotationsFromJson, type Annotation as APIAnnotation } from '@/lib/api/annotations';
 import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts';
 import TopBar from '@/components/annotation/TopBar';
@@ -159,7 +158,10 @@ export default function AnnotationPage() {
 
       // Phase 2.12: Performance Optimization - Load only first 50 images
       if (projectData.dataset_id) {
-        const imagesData = await getDatasetImages(projectData.dataset_id, 50, 0);
+        const imageResponse = await getProjectImages(projectId, 50, 0);
+
+        // Phase 2.12: Store total image count for progress bar
+        useAnnotationStore.setState({ totalImages: imageResponse.total });
 
         // Phase 2.12: Load image statuses for annotation counts (paginated)
         // (No longer loading all annotations upfront - lazy loading instead)
@@ -168,8 +170,8 @@ export default function AnnotationPage() {
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );
 
-        // Convert DatasetImage[] to ImageData[] with status info
-        const convertedImages = imagesData.map(img => {
+        // Convert ImageListResponse to ImageData[] with status info
+        const convertedImages = imageResponse.images.map(img => {
           const imgId = String(img.id);
           const status = imageStatusMap.get(imgId);
           return {

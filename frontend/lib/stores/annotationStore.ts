@@ -153,6 +153,7 @@ interface AnnotationState {
   // Project & Images
   project: Project | null;
   images: ImageData[];
+  totalImages: number;  // Phase 2.12: Total image count for pagination
   currentIndex: number;
   currentImage: ImageData | null;
 
@@ -308,6 +309,7 @@ const DEFAULT_PREFERENCES: Preferences = {
 const initialState = {
   project: null,
   images: [],
+  totalImages: 0,  // Phase 2.12: Total image count for pagination
   currentIndex: 0,
   currentImage: null,
   currentTask: null,  // Phase 2.9: Current task context
