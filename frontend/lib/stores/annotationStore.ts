@@ -191,6 +191,7 @@ interface AnnotationState {
   saveStatus: SaveStatus;
   lastSaved: Date | null;
   loading: boolean;
+  backgroundLoading: boolean;  // Phase 2.12: Background pagination loading
   error: string | null;
 
   // Last selected class (for auto-select)
@@ -268,6 +269,7 @@ interface AnnotationState {
   // Network
   setSaveStatus: (status: SaveStatus) => void;
   setLoading: (loading: boolean) => void;
+  setBackgroundLoading: (loading: boolean) => void;  // Phase 2.12: Background loading
   setError: (error: string | null) => void;
 
   // Class Selection
@@ -341,6 +343,7 @@ const initialState = {
   saveStatus: 'saved' as SaveStatus,
   lastSaved: null,
   loading: false,
+  backgroundLoading: false,  // Phase 2.12: Background pagination loading
   error: null,
   lastSelectedClassId: null,
   hiddenAnnotationIds: new Set<string>(),
@@ -748,6 +751,7 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       setLoading: (loading) => set({ loading }),
+      setBackgroundLoading: (loading) => set({ backgroundLoading: loading }),
       setError: (error) => set({ error }),
 
       // ======================================================================

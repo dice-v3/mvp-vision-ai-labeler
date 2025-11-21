@@ -308,6 +308,7 @@ export default function AnnotationPage() {
   }, [projectId, currentTask]); // Reload when task changes
 
   // Phase 2.12: Auto-load more images when navigating near the end
+  const { backgroundLoading, setBackgroundLoading } = useAnnotationStore();
   const isLoadingMoreRef = useRef(false);
   useEffect(() => {
     // Check if user is within 10 images of the end of loaded images
@@ -318,6 +319,7 @@ export default function AnnotationPage() {
 
     if (shouldLoadMore && projectId) {
       isLoadingMoreRef.current = true;
+      setBackgroundLoading(true);
 
       const loadMore = async () => {
         try {
@@ -357,12 +359,13 @@ export default function AnnotationPage() {
           console.error('[Auto-load] Failed to load more images:', error);
         } finally {
           isLoadingMoreRef.current = false;
+          setBackgroundLoading(false);
         }
       };
 
       loadMore();
     }
-  }, [currentIndex, images.length, totalImages, projectId, currentTask, loadMoreImages]);
+  }, [currentIndex, images.length, totalImages, projectId, currentTask, loadMoreImages, setBackgroundLoading]);
 
   if (authLoading || loading) {
     return (
