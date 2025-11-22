@@ -2,8 +2,10 @@
 
 **Project**: Vision AI Labeler - Collaboration System
 **Created**: 2025-11-22
+**Updated**: 2025-11-22
 **Estimated Duration**: 76 hours (9-10 weeks part-time)
-**Status**: Planning
+**Status**: In Progress - Phase 8.5
+**Architecture**: See `docs/architecture-decision-records.md`
 
 ---
 
@@ -37,15 +39,25 @@ Phase 8 transforms the Vision AI Labeler from a single-user tool into a **collab
 
 ### Scope
 
-| Component | Effort | Status |
-|-----------|--------|--------|
-| 8.1 RBAC & User Management | 18h | Pending |
-| 8.2 Task Assignment | 18h | Pending |
-| 8.3 Review & Approval | 17h | Pending |
-| 8.4 Activity Logging | 9h | Pending |
-| 8.5 Concurrent Handling | 14h | Pending |
-| **Total Core Features** | **76h** | **Pending** |
-| Real-time Presence (Optional) | 8h | Deferred |
+**Implementation Order** (Updated 2025-11-22):
+
+| Component | Effort | Priority | Status |
+|-----------|--------|----------|--------|
+| **0. Architecture Decisions** | **1-2h** | **✅ Complete** | **Done** |
+| **8.5 Concurrent Handling** | **14h** | **🔥 Phase 1** | **⬅️ Current** |
+| 8.1 RBAC & User Management | 18h | Phase 2 | Pending |
+| 8.2 Task Assignment | 18h | Phase 3 | Pending |
+| 8.3 Review & Approval | 17h | Phase 4 | Pending |
+| 8.4 Activity Logging | 9h | Phase 5 | Pending |
+| **Total Core Features** | **76h** | | |
+| Real-time Presence (Optional) | 8h | Deferred | Deferred |
+
+**Rationale for Phase 8.5 First**:
+- ✅ Zero dependencies (no RBAC/tasks/reviews needed)
+- ✅ Immediate value (concurrent editing protection)
+- ✅ Simpler to implement (14h vs 18h for RBAC)
+- ✅ Lower risk (well-isolated feature)
+- ✅ Team needs it NOW (multiple users editing)
 
 ### Dependencies
 
@@ -2615,40 +2627,67 @@ async def lock_heartbeat(
 
 ## Implementation Timeline
 
-### Week 1-2: Phase 8.1 (RBAC & User Management)
-- Database migration for project_permissions
+**Updated Order** (2025-11-22): Phase 8.5 → 8.1 → 8.2 → 8.3 → 8.4
+
+### Week 0: Architecture Decisions ✅ COMPLETE
+- ✅ ADR-001: Dataset-Project 1:1 relationship
+- ✅ ADR-002: Permission system unification (ProjectPermission)
+- ✅ ADR-003: Phase 8.5 first implementation
+- ✅ Document: `docs/architecture-decision-records.md`
+
+### Week 1-2: Phase 8.5 (Concurrent Handling) ⬅️ CURRENT
+**Goal**: Prevent data loss from concurrent editing
+
+**8.5.1 Optimistic Locking** (6h):
+- Add `version` field to Annotation table
+- Database migration
+- Update annotation update logic with version check
+- Return 409 Conflict on version mismatch
+- Frontend: Handle version in update requests
+
+**8.5.2 Annotation Locks** (8h):
+- Create AnnotationLock table
+- Lock service (acquire, release, heartbeat)
+- Lock APIs (POST/DELETE/heartbeat)
+- Lock cleanup (expired locks)
+- Frontend: Lock indicators and heartbeat
+- Frontend: Conflict resolution UI
+
+**Deliverables**:
+- ✅ Concurrent editing protection
+- ✅ Lock indicators in UI
+- ✅ Conflict detection and resolution
+
+### Week 3-4: Phase 8.1 (RBAC & User Management)
+**Note**: Updated to use ProjectPermission instead of DatasetPermission
+
+- Database migration for project_permissions (5 roles)
+- Migrate existing DatasetPermission → ProjectPermission
 - Backend permission checking system
 - API endpoints for permission management
 - Frontend member management UI
 - Retrofit existing APIs with new permissions
 
-### Week 3-4: Phase 8.2 (Task Assignment)
+### Week 5-6: Phase 8.2 (Task Assignment)
 - Enhance AnnotationTask model
 - Task CRUD APIs
 - Assignment strategies (round-robin, workload)
 - Frontend task management dashboard
 - Auto-assignment UI
 
-### Week 5-6: Phase 8.3 (Review & Approval)
+### Week 7-8: Phase 8.3 (Review & Approval)
 - ReviewRequest table and model
 - Review submission and approval APIs
 - Review queue backend logic
 - Frontend review queue component
 - Notification system (email + in-app)
 
-### Week 7: Phase 8.4 (Activity Logging)
+### Week 9: Phase 8.4 (Activity Logging)
 - ActivityLog table and model
 - Activity logging service
 - Activity feed APIs
 - Frontend activity feed component
 - Export functionality
-
-### Week 8-9: Phase 8.5 (Concurrent Handling)
-- Optimistic locking (version field)
-- AnnotationLock table and service
-- Lock acquisition/release APIs
-- Frontend lock indicators
-- Conflict resolution UI
 
 ### Week 10: Integration & Testing
 - End-to-end testing
