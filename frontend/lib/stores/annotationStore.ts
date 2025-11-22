@@ -32,6 +32,7 @@ export interface ImageData {
   file_name: string;
   folder_path?: string;  // Folder path for folder-structured datasets
   url: string;
+  thumbnail_url?: string;  // Phase 2.12: Thumbnail for performance
   width?: number;
   height?: number;
   annotated?: boolean;
@@ -41,6 +42,9 @@ export interface ImageData {
   is_confirmed?: boolean;
   status?: string;  // not-started, in-progress, completed
   confirmed_at?: string;
+
+  // Phase 2.12: Track if no_object annotation exists for current task
+  has_no_object?: boolean;
 }
 
 export interface BboxGeometry {
@@ -134,6 +138,11 @@ export interface Preferences {
   darkMode: boolean;
   autoSelectClass: boolean;
   imageListView: 'grid' | 'list';
+  // Phase 2.10.2: Magnifier settings
+  autoMagnifier: boolean; // Auto-show in drawing tools
+  magnifierMode: 'following' | 'fixed'; // Position mode
+  magnifierSize: number; // Diameter in pixels
+  magnificationLevel: number; // Default zoom level
 }
 
 export interface AnnotationSnapshot {
@@ -307,6 +316,11 @@ const DEFAULT_PREFERENCES: Preferences = {
   darkMode: true,
   autoSelectClass: true,
   imageListView: 'grid',
+  // Phase 2.10.2: Magnifier defaults
+  autoMagnifier: true, // Auto-show in drawing tools
+  magnifierMode: 'following', // Follow cursor by default
+  magnifierSize: 200, // 200px diameter
+  magnificationLevel: 3.0, // 3x zoom
 };
 
 const initialState = {

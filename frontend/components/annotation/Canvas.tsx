@@ -17,6 +17,9 @@ import type { CanvasRenderContext } from '@/lib/annotation';
 import { Circle3pTool } from '@/lib/annotation/tools/Circle3pTool';
 import { toast } from '@/lib/stores/toastStore';
 import { confirm } from '@/lib/stores/confirmStore';
+import { ArrowUturnLeftIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
+import Magnifier from './Magnifier';
+import Minimap from './Minimap';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,6 +58,11 @@ export default function Canvas() {
     getCurrentClasses, // Phase 2.9: Get task-specific classes
     selectedVertexIndex, // Polygon vertex editing
     selectedBboxHandle, // Bbox handle editing
+    // Phase 2.10: Undo/Redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -86,8 +94,16 @@ export default function Canvas() {
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
   const [circleDragStart, setCircleDragStart] = useState<{ x: number; y: number; center: [number, number] } | null>(null);
   const [isResizingCircle, setIsResizingCircle] = useState(false);
+
+  // Phase 2.10.2: Magnifier state
+  const [manualMagnifierActive, setManualMagnifierActive] = useState(false);
+  const [magnification, setMagnification] = useState(preferences.magnificationLevel);
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [circleResizeStart, setCircleResizeStart] = useState<{ x: number; y: number; radius: number; handle: string } | null>(null);
   const [selectedCircleHandle, setSelectedCircleHandle] = useState<string | null>(null);
+
+  // Phase 2.10.3: Minimap state
+  const [showMinimap, setShowMinimap] = useState(true);
 
   // Helper to set selectedVertexIndex in store
   const setSelectedVertexIndex = (index: number | null) => {
@@ -97,6 +113,22 @@ export default function Canvas() {
   // Helper to set selectedBboxHandle in store
   const setSelectedBboxHandle = (handle: string | null) => {
     useAnnotationStore.setState({ selectedBboxHandle: handle });
+  };
+
+  // Phase 2.10.2: Helper to check if current tool is a drawing tool
+  const isDrawingTool = (toolName: string | null) => {
+    if (!toolName) return false;
+    return ['detection', 'polygon', 'polyline', 'circle', 'circle3p'].includes(toolName);
+  };
+
+  // Phase 2.10.2: Determine if magnifier should be shown
+  const shouldShowMagnifier =
+    manualMagnifierActive || // Z key pressed
+    (isDrawingTool(tool) && preferences.autoMagnifier); // Auto mode
+
+  // Phase 2.10.3: Minimap viewport change handler
+  const handleMinimapViewportChange = (x: number, y: number) => {
+    setPan({ x, y });
   };
 
   // Phase 2.7: Calculate draft annotation count
@@ -1229,6 +1261,9 @@ export default function Canvas() {
 
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    // Phase 2.10.2: Update cursor position for magnifier
+    setCursorPos({ x, y });
 
     // Update cursor style based on position (before setCursor to avoid render race)
     if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
@@ -2606,6 +2641,40 @@ export default function Canvas() {
         return;
       }
 
+      // Phase 2.10.2: Magnifier manual activation (Z key without Ctrl/Cmd)
+      if (e.key === 'z' && !e.ctrlKey && !e.metaKey) {
+        setManualMagnifierActive(true);
+        return;
+      }
+
+      // Phase 2.10.3: Minimap toggle (M key)
+      if (e.key === 'm' && !e.ctrlKey && !e.metaKey) {
+        setShowMinimap((prev) => !prev);
+        toast.success(`Minimap ${!showMinimap ? 'shown' : 'hidden'}`);
+        return;
+      }
+
+      // Phase 2.10: Undo/Redo shortcuts
+      // Ctrl+Z / Cmd+Z: Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) {
+          undo();
+          toast.success('Undone');
+        }
+        return;
+      }
+
+      // Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z: Redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+          toast.success('Redone');
+        }
+        return;
+      }
+
       // Enter: Close polygon (if drawing)
       if (e.key === 'Enter' && tool === 'polygon' && polygonVertices.length >= 3 && image) {
         e.preventDefault();
@@ -3122,7 +3191,19 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, selectedBboxHandle, selectedCircleHandle, polylineVertices, circleCenter, circle3pPoints]);
+  }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, selectedBboxHandle, selectedCircleHandle, polylineVertices, circleCenter, circle3pPoints, undo, redo, canUndo, canRedo]);
+
+  // Phase 2.10.2: Z key release handler for magnifier
+  useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'z') {
+        setManualMagnifierActive(false);
+      }
+    };
+
+    window.addEventListener('keyup', handleKeyUp);
+    return () => window.removeEventListener('keyup', handleKeyUp);
+  }, []);
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -3278,6 +3359,52 @@ export default function Canvas() {
 
       {/* Zoom controls */}
       <div className="absolute bottom-4 left-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-2 flex items-center gap-2 shadow-lg">
+        {/* Undo button */}
+        <button
+          onClick={() => {
+            if (canUndo()) {
+              undo();
+              toast.success('Undone');
+            }
+          }}
+          disabled={!canUndo()}
+          className={`
+            w-8 h-8 flex items-center justify-center rounded transition-colors
+            ${canUndo()
+              ? 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white'
+              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+            }
+          `}
+          title="Undo (Ctrl+Z)"
+        >
+          <ArrowUturnLeftIcon className="w-4 h-4" />
+        </button>
+
+        {/* Redo button */}
+        <button
+          onClick={() => {
+            if (canRedo()) {
+              redo();
+              toast.success('Redone');
+            }
+          }}
+          disabled={!canRedo()}
+          className={`
+            w-8 h-8 flex items-center justify-center rounded transition-colors
+            ${canRedo()
+              ? 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white'
+              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+            }
+          `}
+          title="Redo (Ctrl+Y)"
+        >
+          <ArrowUturnRightIcon className="w-4 h-4" />
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1"></div>
+
+        {/* Zoom out button */}
         <button
           onClick={() => setZoom(canvasState.zoom - 0.25)}
           className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-900 dark:text-white"
@@ -3477,6 +3604,32 @@ export default function Canvas() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Phase 2.10.2: Magnifier */}
+      {shouldShowMagnifier && (
+        <Magnifier
+          canvasRef={canvasRef}
+          cursorPosition={cursorPos}
+          magnification={magnification}
+          mode={preferences.magnifierMode}
+          size={preferences.magnifierSize}
+        />
+      )}
+
+      {/* Phase 2.10.3: Minimap */}
+      {showMinimap && image && (
+        <Minimap
+          canvasRef={canvasRef}
+          imageRef={imageRef}
+          annotations={annotations}
+          viewport={{
+            x: canvasState.pan.x,
+            y: canvasState.pan.y,
+            scale: canvasState.zoom,
+          }}
+          onViewportChange={handleMinimapViewportChange}
+        />
       )}
 
       {/* Class Selector Modal */}
