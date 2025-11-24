@@ -98,6 +98,12 @@ export interface Annotation {
   createdAt?: Date;
   updatedAt?: Date;
 
+  // Phase 2.7: Confirmation fields
+  annotation_state?: string;  // 'draft', 'confirmed', 'verified'
+  confirmed_at?: string;
+  confirmed_by?: number;
+  confirmed_by_name?: string;
+
   // Phase 8.5.1: Optimistic locking
   version?: number;
 }
@@ -216,6 +222,18 @@ interface AnnotationState {
   // Multi-image selection
   selectedImageIds: string[];
   lastClickedImageIndex: number | null;
+
+  // Phase 2.10.3: Canvas refs and Minimap state
+  canvasRef: React.RefObject<HTMLCanvasElement> | null;
+  imageRef: React.RefObject<HTMLImageElement> | null;
+  showMinimap: boolean;
+
+  // Phase 8.5: Image locks
+  projectLocks?: any[]; // Lock info array
+
+  // Undo/Redo operation flags (prevent concurrent operations)
+  isUndoing: boolean;
+  isRedoing: boolean;
 
   // ========================================================================
   // Actions
@@ -367,6 +385,12 @@ const initialState = {
   showAllAnnotations: true,
   selectedImageIds: [],
   lastClickedImageIndex: null,
+  canvasRef: null,
+  imageRef: null,
+  showMinimap: true,
+  projectLocks: [],
+  isUndoing: false,
+  isRedoing: false,
 };
 
 // ============================================================================
@@ -532,10 +556,10 @@ export const useAnnotationStore = create<AnnotationState>()(
           annotation.classId = lastSelectedClassId;
         }
 
-        set({ annotations: [...annotations, annotation] });
-
-        // Record for undo
+        // Record BEFORE changing state
         get().recordSnapshot('create', [annotation.id]);
+
+        set({ annotations: [...annotations, annotation] });
 
         // Update last selected class
         if (annotation.classId) {
@@ -544,19 +568,23 @@ export const useAnnotationStore = create<AnnotationState>()(
       },
 
       updateAnnotation: (id, updates) => {
+        // Record BEFORE changing state
+        get().recordSnapshot('update', [id]);
+
         const { annotations } = get();
         const updatedAnnotations = annotations.map((ann) =>
           ann.id === id ? { ...ann, ...updates } : ann
         );
         set({ annotations: updatedAnnotations });
-        get().recordSnapshot('update', [id]);
       },
 
       deleteAnnotation: (id) => {
+        // Record BEFORE changing state
+        get().recordSnapshot('delete', [id]);
+
         const { annotations } = get();
         const filtered = annotations.filter((ann) => ann.id !== id);
         set({ annotations: filtered, selectedAnnotationId: null });
-        get().recordSnapshot('delete', [id]);
       },
 
       selectAnnotation: (id) => set({ selectedAnnotationId: id }),
@@ -726,50 +754,232 @@ export const useAnnotationStore = create<AnnotationState>()(
         });
       },
 
-      undo: () => {
-        const { history, annotations } = get();
-        if (history.past.length === 0) return;
+      undo: async () => {
+        const state = get();
 
-        const previous = history.past[history.past.length - 1];
-        const newPast = history.past.slice(0, -1);
+        // Prevent concurrent undo operations
+        if (state.isUndoing) {
+          return;
+        }
 
-        const currentSnapshot: AnnotationSnapshot = {
-          timestamp: new Date(),
-          annotations: JSON.parse(JSON.stringify(annotations)),
-          action: 'undo',
-          affectedIds: [],
-        };
+        const { history, annotations, project, currentImage } = state;
+        if (history.past.length === 0) {
+          return;
+        }
 
-        set({
-          annotations: previous.annotations,
-          history: {
-            past: newPast,
-            future: [currentSnapshot, ...history.future],
-          },
-        });
+        // Set undoing flag
+        set({ isUndoing: true });
+
+        try {
+          const previous = history.past[history.past.length - 1];
+          const newPast = history.past.slice(0, -1);
+
+          const currentSnapshot: AnnotationSnapshot = {
+            timestamp: new Date(),
+            annotations: JSON.parse(JSON.stringify(annotations)),
+            action: 'undo',
+            affectedIds: [],
+          };
+
+          // Phase 8.5.2: Try to acquire lock for undo (will fail if locked by another user)
+          if (project && currentImage) {
+            try {
+              const { imageLockAPI } = await import('@/lib/api/image-locks');
+              const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
+
+              // Accept: 'acquired', 'already_acquired', 'refreshed'
+              if (acquireResult.status === 'already_locked') {
+                const { toast } = await import('@/lib/stores/toastStore');
+                toast.error('Cannot undo: Image is locked by another user');
+                set({ isUndoing: false });
+                return;
+              }
+
+              // Update lock state if newly acquired
+              if (acquireResult.status === 'acquired' && acquireResult.lock) {
+                set((state) => {
+                  const existingLocks = state.projectLocks || [];
+                  const updatedLocks = existingLocks.filter(lock => lock.image_id !== currentImage.id);
+                  return { projectLocks: [...updatedLocks, acquireResult.lock!] };
+                });
+              }
+            } catch (error) {
+              console.error('[Undo] Failed to acquire lock:', error);
+              const { toast } = await import('@/lib/stores/toastStore');
+              toast.error('Cannot undo: Failed to acquire image lock');
+              set({ isUndoing: false });
+              return;
+            }
+          }
+
+          // Sync with backend: compare current and previous annotations
+          try {
+            const { createAnnotation, updateAnnotation, deleteAnnotation } = await import('@/lib/api/annotations');
+
+            const currentIds = new Set(annotations.map(a => a.id));
+            const previousIds = new Set(previous.annotations.map(a => a.id));
+
+            const toDelete = annotations.filter(a => !previousIds.has(a.id));
+            const toCreate = previous.annotations.filter(a => !currentIds.has(a.id));
+            const toUpdate = previous.annotations.filter(prevAnn => {
+              const currAnn = annotations.find(a => a.id === prevAnn.id);
+              return currAnn && JSON.stringify(prevAnn.geometry) !== JSON.stringify(currAnn.geometry);
+            });
+
+            // Annotations that exist in current but not in previous → were added → delete them
+            for (const ann of toDelete) {
+              await deleteAnnotation(ann.id);
+            }
+
+            // Annotations that exist in previous but not in current → were deleted → recreate them
+            for (const ann of toCreate) {
+              const annotationData = {
+                project_id: ann.projectId,
+                image_id: ann.imageId,
+                annotation_type: ann.annotationType,
+                geometry: ann.geometry,
+                class_id: ann.classId || null,
+                class_name: ann.className || null,
+              };
+              await createAnnotation(annotationData);
+            }
+
+            // Annotations that exist in both but with different content → update them
+            for (const prevAnn of toUpdate) {
+              await updateAnnotation(prevAnn.id, {
+                geometry: prevAnn.geometry,
+              });
+            }
+          } catch (error) {
+            console.error('[Undo] Failed to sync with backend:', error);
+            const { toast } = await import('@/lib/stores/toastStore');
+            toast.error('Undo completed locally but failed to sync with backend');
+          }
+
+          set({
+            annotations: previous.annotations,
+            history: {
+              past: newPast,
+              future: [currentSnapshot, ...history.future],
+            },
+          });
+        } finally {
+          set({ isUndoing: false });
+        }
       },
 
-      redo: () => {
-        const { history, annotations } = get();
-        if (history.future.length === 0) return;
+      redo: async () => {
+        const state = get();
 
-        const next = history.future[0];
-        const newFuture = history.future.slice(1);
+        // Prevent concurrent redo operations
+        if (state.isRedoing) {
+          return;
+        }
 
-        const currentSnapshot: AnnotationSnapshot = {
-          timestamp: new Date(),
-          annotations: JSON.parse(JSON.stringify(annotations)),
-          action: 'redo',
-          affectedIds: [],
-        };
+        const { history, annotations, project, currentImage } = state;
+        if (history.future.length === 0) {
+          return;
+        }
 
-        set({
-          annotations: next.annotations,
-          history: {
-            past: [...history.past, currentSnapshot],
-            future: newFuture,
-          },
-        });
+        // Set redoing flag
+        set({ isRedoing: true });
+
+        try {
+          const next = history.future[0];
+          const newFuture = history.future.slice(1);
+
+          const currentSnapshot: AnnotationSnapshot = {
+            timestamp: new Date(),
+            annotations: JSON.parse(JSON.stringify(annotations)),
+            action: 'redo',
+            affectedIds: [],
+          };
+
+          // Phase 8.5.2: Try to acquire lock for redo (will fail if locked by another user)
+          if (project && currentImage) {
+            try {
+              const { imageLockAPI } = await import('@/lib/api/image-locks');
+              const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
+
+              // Accept: 'acquired', 'already_acquired', 'refreshed'
+              if (acquireResult.status === 'already_locked') {
+                const { toast } = await import('@/lib/stores/toastStore');
+                toast.error('Cannot redo: Image is locked by another user');
+                set({ isRedoing: false });
+                return;
+              }
+
+              // Update lock state if newly acquired
+              if (acquireResult.status === 'acquired' && acquireResult.lock) {
+                set((state) => {
+                  const existingLocks = state.projectLocks || [];
+                  const updatedLocks = existingLocks.filter(lock => lock.image_id !== currentImage.id);
+                  return { projectLocks: [...updatedLocks, acquireResult.lock!] };
+                });
+              }
+            } catch (error) {
+              console.error('[Redo] Failed to acquire lock:', error);
+              const { toast } = await import('@/lib/stores/toastStore');
+              toast.error('Cannot redo: Failed to acquire image lock');
+              set({ isRedoing: false });
+              return;
+            }
+          }
+
+          // Sync with backend: compare current and next annotations
+          try {
+            const { createAnnotation, updateAnnotation, deleteAnnotation } = await import('@/lib/api/annotations');
+
+            const currentIds = new Set(annotations.map(a => a.id));
+            const nextIds = new Set(next.annotations.map(a => a.id));
+
+            // Annotations that exist in current but not in next → were added → delete them
+            for (const ann of annotations) {
+              if (!nextIds.has(ann.id)) {
+                await deleteAnnotation(ann.id);
+              }
+            }
+
+            // Annotations that exist in next but not in current → were deleted → recreate them
+            for (const ann of next.annotations) {
+              if (!currentIds.has(ann.id)) {
+                const annotationData = {
+                  project_id: ann.projectId,
+                  image_id: ann.imageId,
+                  annotation_type: ann.annotationType,
+                  geometry: ann.geometry,
+                  class_id: ann.classId || null,
+                  class_name: ann.className || null,
+                };
+                await createAnnotation(annotationData);
+              }
+            }
+
+            // Annotations that exist in both but with different content → update them
+            for (const nextAnn of next.annotations) {
+              const currAnn = annotations.find(a => a.id === nextAnn.id);
+              if (currAnn && JSON.stringify(nextAnn.geometry) !== JSON.stringify(currAnn.geometry)) {
+                await updateAnnotation(nextAnn.id, {
+                  geometry: nextAnn.geometry,
+                });
+              }
+            }
+          } catch (error) {
+            console.error('[Redo] Failed to sync with backend:', error);
+            const { toast } = await import('@/lib/stores/toastStore');
+            toast.error('Redo completed locally but failed to sync with backend');
+          }
+
+          set({
+            annotations: next.annotations,
+            history: {
+              past: [...history.past, currentSnapshot],
+              future: newFuture,
+            },
+          });
+        } finally {
+          set({ isRedoing: false });
+        }
       },
 
       canUndo: () => get().history.past.length > 0,
