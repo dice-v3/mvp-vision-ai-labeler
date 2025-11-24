@@ -9,15 +9,15 @@ from datetime import datetime
 from typing import List, Optional, Dict, Set, Any
 from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from app.core.database import get_platform_db, get_labeler_db
+from app.core.database import get_platform_db, get_user_db, get_labeler_db
 from app.core.security import get_current_user
 from app.core.config import settings
-from app.db.models.platform import User
+from app.db.models.user import User
 from app.db.models.labeler import Dataset, DatasetPermission, AnnotationProject, Annotation
 from app.schemas.dataset import (
     DatasetCreate,
@@ -166,6 +166,7 @@ async def create_dataset(
     dataset: DatasetCreate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -285,17 +286,42 @@ async def list_datasets(
     limit: int = 100,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Get list of datasets from Labeler database.
 
+    Returns datasets that the user has access to:
+    - Datasets owned by the user
+    - Datasets where the user has explicit permissions
+    - Public datasets
+
     - **skip**: Number of records to skip (pagination)
     - **limit**: Maximum number of records to return (max 100)
     """
-    # Query datasets from Labeler DB
+    # Get dataset IDs where user has explicit permissions
+    user_dataset_permissions = (
+        labeler_db.query(DatasetPermission.dataset_id)
+        .filter(DatasetPermission.user_id == current_user.id)
+        .all()
+    )
+    permitted_dataset_ids = [perm.dataset_id for perm in user_dataset_permissions]
+
+    # Build filter conditions
+    filter_conditions = [
+        Dataset.owner_id == current_user.id,  # User owns the dataset
+        Dataset.visibility == 'public'  # Dataset is public
+    ]
+
+    # Only add permission filter if user has explicit permissions
+    if permitted_dataset_ids:
+        filter_conditions.append(Dataset.id.in_(permitted_dataset_ids))
+
+    # Query datasets from Labeler DB with permission filtering
     datasets = (
         labeler_db.query(Dataset)
+        .filter(or_(*filter_conditions))
         .offset(skip)
         .limit(min(limit, 100))
         .all()
@@ -305,7 +331,7 @@ async def list_datasets(
     result = []
     for dataset in datasets:
         # Get owner info from Platform DB
-        owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+        owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
 
         dataset_dict = {
             **dataset.__dict__,
@@ -326,6 +352,7 @@ async def update_dataset(
     dataset_update: DatasetUpdate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     permission = Depends(require_dataset_permission("owner")),
 ):
@@ -367,7 +394,7 @@ async def update_dataset(
         )
 
     # Get owner info from Platform DB
-    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+    owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
 
     dataset_dict = {
         **dataset.__dict__,
@@ -386,6 +413,7 @@ async def get_dataset(
     dataset_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -403,7 +431,7 @@ async def get_dataset(
         )
 
     # Get owner info from Platform DB
-    owner = platform_db.query(User).filter(User.id == dataset.owner_id).first()
+    owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
 
     dataset_dict = {
         **dataset.__dict__,
@@ -421,6 +449,7 @@ async def get_dataset(
 async def get_or_create_project_for_dataset(
     dataset_id: str,
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -557,7 +586,7 @@ async def get_or_create_project_for_dataset(
     last_updated_by_name = None
     last_updated_by_email = None
     if project.last_updated_by:
-        user = platform_db.query(User).filter(User.id == project.last_updated_by).first()
+        user = user_db.query(User).filter(User.id == project.last_updated_by).first()
         if user:
             last_updated_by_name = user.full_name
             last_updated_by_email = user.email
@@ -738,6 +767,7 @@ async def get_dataset_size(
 async def get_deletion_impact(
     dataset_id: str,
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -773,6 +803,7 @@ async def delete_dataset(
     dataset_id: str,
     request: DeleteDatasetRequest,
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -843,6 +874,7 @@ async def invite_user_to_dataset(
     request: PermissionInviteRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     _permission = Depends(require_dataset_permission("owner")),
 ):
@@ -860,7 +892,7 @@ async def invite_user_to_dataset(
         )
 
     # Find user by email in Platform DB
-    user = platform_db.query(User).filter(User.email == request.user_email).first()
+    user = user_db.query(User).filter(User.email == request.user_email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -896,7 +928,7 @@ async def invite_user_to_dataset(
     labeler_db.refresh(permission)
 
     # Get granted_by user info
-    granted_by_user = platform_db.query(User).filter(User.id == current_user.id).first()
+    granted_by_user = user_db.query(User).filter(User.id == current_user.id).first()
 
     # Build response
     response_dict = {
@@ -916,6 +948,7 @@ async def list_dataset_permissions(
     dataset_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     _permission = Depends(require_dataset_permission("member")),
 ):
@@ -935,8 +968,8 @@ async def list_dataset_permissions(
     result = []
     for perm in permissions:
         # Get user info from Platform DB
-        user = platform_db.query(User).filter(User.id == perm.user_id).first()
-        granted_by_user = platform_db.query(User).filter(User.id == perm.granted_by).first()
+        user = user_db.query(User).filter(User.id == perm.user_id).first()
+        granted_by_user = user_db.query(User).filter(User.id == perm.granted_by).first()
 
         response_dict = {
             **perm.__dict__,
@@ -958,6 +991,7 @@ async def update_user_permission(
     request: PermissionUpdateRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     _permission = Depends(require_dataset_permission("owner")),
 ):
@@ -1004,8 +1038,8 @@ async def update_user_permission(
     labeler_db.refresh(permission)
 
     # Get user info
-    user = platform_db.query(User).filter(User.id == user_id).first()
-    granted_by_user = platform_db.query(User).filter(User.id == permission.granted_by).first()
+    user = user_db.query(User).filter(User.id == user_id).first()
+    granted_by_user = user_db.query(User).filter(User.id == permission.granted_by).first()
 
     response_dict = {
         **permission.__dict__,
@@ -1085,6 +1119,7 @@ async def transfer_dataset_ownership(
     request: TransferOwnershipRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     _permission = Depends(require_dataset_permission("owner")),
 ):
@@ -1150,8 +1185,8 @@ async def transfer_dataset_ownership(
     labeler_db.refresh(new_owner_permission)
 
     # Get user info
-    user = platform_db.query(User).filter(User.id == request.new_owner_user_id).first()
-    granted_by_user = platform_db.query(User).filter(User.id == new_owner_permission.granted_by).first()
+    user = user_db.query(User).filter(User.id == request.new_owner_user_id).first()
+    granted_by_user = user_db.query(User).filter(User.id == new_owner_permission.granted_by).first()
 
     response_dict = {
         **new_owner_permission.__dict__,
@@ -1175,6 +1210,7 @@ async def upload_dataset(
     annotation_file: Optional[UploadFile] = File(None),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -1363,6 +1399,7 @@ async def add_images_to_dataset(
     annotation_file: Optional[UploadFile] = File(None),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
     permission = Depends(require_dataset_permission("member")),
 ):

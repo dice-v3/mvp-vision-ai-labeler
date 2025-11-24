@@ -9,10 +9,16 @@
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { useState, useEffect, useRef } from 'react';
 import { getProjectImages, getProjectImageStatuses } from '@/lib/api/projects';
+import { useAuth } from '@/lib/auth/context';
+// Phase 8.5.2: Image Locks
+import { imageLockAPI } from '@/lib/api/image-locks';
+import type { LockInfo } from '@/lib/api/image-locks';
+import { LockClosedIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 
 type FilterType = 'all' | 'not-started' | 'in-progress' | 'completed';
 
 export default function ImageList() {
+  const { user } = useAuth();
   const {
     project,
     images,
@@ -38,6 +44,10 @@ export default function ImageList() {
   const [loadingMore, setLoadingMore] = useState(false);  // Phase 2.12: Loading state for pagination
   const currentImageRef = useRef<HTMLDivElement | HTMLTableRowElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Phase 8.5.2: Image locks state
+  const [projectLocks, setProjectLocks] = useState<Record<string, LockInfo>>({});
+  const [locksLoading, setLocksLoading] = useState(false);
 
   // Phase 2.7: Get image status from real data
   // Phase 2.9: TODO - Filter status by currentTask
@@ -167,6 +177,37 @@ export default function ImageList() {
     }
   };
 
+  // Phase 8.5.2: Load project locks
+  useEffect(() => {
+    if (!project?.id) return;
+
+    const loadProjectLocks = async () => {
+      try {
+        setLocksLoading(true);
+        const locks = await imageLockAPI.getProjectLocks(project.id);
+
+        // Convert array to map for easy lookup
+        const lockMap: Record<string, LockInfo> = {};
+        locks.forEach(lock => {
+          lockMap[lock.image_id] = lock;
+        });
+
+        setProjectLocks(lockMap);
+      } catch (error) {
+        console.error('[ImageList] Failed to load project locks:', error);
+      } finally {
+        setLocksLoading(false);
+      }
+    };
+
+    loadProjectLocks();
+
+    // Phase 8.5.2: Refresh locks every 5 seconds (improved real-time responsiveness)
+    const interval = setInterval(loadProjectLocks, 5 * 1000);
+
+    return () => clearInterval(interval);
+  }, [project?.id]);
+
   // Auto-scroll to current image
   useEffect(() => {
     if (currentImageRef.current && containerRef.current) {
@@ -260,6 +301,11 @@ export default function ImageList() {
               const isSelected = isImageSelected(img.id);
               const status = getImageStatus(img);
 
+              // Phase 8.5.2: Get lock info for this image
+              const lock = projectLocks[img.id];
+              const isLocked = !!lock;
+              const isMyLock = lock?.user_id === user?.id;
+
               return (
                 <div
                   key={img.id}
@@ -306,6 +352,22 @@ export default function ImageList() {
 
                   {/* Status indicator */}
                   <div className="absolute top-1 right-1 flex items-center gap-1">
+                    {/* Phase 8.5.2: Lock indicator */}
+                    {isLocked ? (
+                      <div
+                        className={`rounded-full w-5 h-5 flex items-center justify-center shadow-sm ${
+                          isMyLock ? 'bg-green-600' : 'bg-red-600'
+                        }`}
+                        title={isMyLock ? 'Locked by you' : `Locked by ${lock.user_name}`}
+                      >
+                        <LockClosedIcon className="w-3 h-3 text-white" />
+                      </div>
+                    ) : (
+                      <div className="bg-gray-400 rounded-full w-5 h-5 flex items-center justify-center shadow-sm opacity-40" title="Available">
+                        <LockOpenIcon className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+
                     {/* No Object indicator */}
                     {(img as any).has_no_object && (
                       <div className="bg-gray-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm" title="No Object">
@@ -345,6 +407,11 @@ export default function ImageList() {
                   const annCount = img.annotation_count || 0;
                   const status = getImageStatus(img);
 
+                  // Phase 8.5.2: Get lock info for this image
+                  const lock = projectLocks[img.id];
+                  const isLocked = !!lock;
+                  const isMyLock = lock?.user_id === user?.id;
+
                   return (
                     <tr
                       key={img.id}
@@ -370,6 +437,22 @@ export default function ImageList() {
                       </td>
                       <td className="py-1.5 px-2">
                         <div className="flex justify-center items-center gap-1">
+                          {/* Phase 8.5.2: Lock indicator */}
+                          {isLocked ? (
+                            <div
+                              className={`rounded-full w-4 h-4 flex items-center justify-center ${
+                                isMyLock ? 'bg-green-600' : 'bg-red-600'
+                              }`}
+                              title={isMyLock ? 'Locked by you' : `Locked by ${lock.user_name}`}
+                            >
+                              <LockClosedIcon className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          ) : (
+                            <div className="bg-gray-400 rounded-full w-4 h-4 flex items-center justify-center opacity-40" title="Available">
+                              <LockOpenIcon className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+
                           {/* No Object indicator */}
                           {(img as any).has_no_object && (
                             <div className="bg-gray-600 rounded-full w-4 h-4 flex items-center justify-center" title="No Object">

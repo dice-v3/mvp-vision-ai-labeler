@@ -1,16 +1,17 @@
 /**
- * Dataset Permission API
+ * Project Permission API (Phase 8.1)
  *
- * Permission management for datasets
+ * Permission management for projects (formerly datasets)
+ * Note: datasetId parameter is actually used as projectId
  */
 
 import { apiClient } from './client';
 
 export interface Permission {
   id: number;
-  dataset_id: string;
+  project_id: string;
   user_id: number;
-  role: 'owner' | 'member';
+  role: 'owner' | 'admin' | 'reviewer' | 'annotator' | 'viewer';
   granted_by: number;
   granted_at: string;
   user_name: string;
@@ -22,11 +23,11 @@ export interface Permission {
 
 export interface InviteRequest {
   user_email: string;
-  role: 'owner' | 'member';
+  role: 'admin' | 'reviewer' | 'annotator' | 'viewer';
 }
 
 export interface UpdateRoleRequest {
-  role: 'owner' | 'member';
+  role: 'admin' | 'reviewer' | 'annotator' | 'viewer';
 }
 
 export interface TransferOwnershipRequest {
@@ -34,20 +35,21 @@ export interface TransferOwnershipRequest {
 }
 
 /**
- * Get list of permissions for a dataset
+ * Get list of permissions for a project
+ * @param datasetId - Actually the project_id (same as dataset_id in current system)
  */
 export async function listPermissions(datasetId: string): Promise<Permission[]> {
-  return apiClient.get<Permission[]>(`/api/v1/datasets/${datasetId}/permissions`);
+  return apiClient.get<Permission[]>(`/api/v1/projects/${datasetId}/permissions`);
 }
 
 /**
- * Invite a user to dataset
+ * Invite a user to project
  */
 export async function inviteUser(
   datasetId: string,
   request: InviteRequest
 ): Promise<Permission> {
-  return apiClient.post<Permission>(`/api/v1/datasets/${datasetId}/permissions/invite`, request);
+  return apiClient.post<Permission>(`/api/v1/projects/${datasetId}/permissions`, request);
 }
 
 /**
@@ -58,22 +60,22 @@ export async function updateUserRole(
   userId: number,
   request: UpdateRoleRequest
 ): Promise<Permission> {
-  return apiClient.put<Permission>(`/api/v1/datasets/${datasetId}/permissions/${userId}`, request);
+  return apiClient.patch<Permission>(`/api/v1/projects/${datasetId}/permissions/${userId}`, request);
 }
 
 /**
- * Remove user from dataset
+ * Remove user from project
  */
 export async function removeUser(datasetId: string, userId: number): Promise<void> {
-  return apiClient.delete(`/api/v1/datasets/${datasetId}/permissions/${userId}`, undefined);
+  return apiClient.delete(`/api/v1/projects/${datasetId}/permissions/${userId}`, undefined);
 }
 
 /**
- * Transfer dataset ownership
+ * Transfer project ownership
  */
 export async function transferOwnership(
   datasetId: string,
   request: TransferOwnershipRequest
-): Promise<Permission> {
-  return apiClient.post<Permission>(`/api/v1/datasets/${datasetId}/permissions/transfer-owner`, request);
+): Promise<void> {
+  return apiClient.post<void>(`/api/v1/projects/${datasetId}/transfer-ownership`, request);
 }

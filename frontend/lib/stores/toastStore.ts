@@ -52,18 +52,34 @@ export const useToastStore = create<ToastState>((set) => ({
   },
 }));
 
-// Helper functions for convenience
+// Helper functions for convenience with type-specific default durations
 export const toast = {
   success: (message: string, duration?: number) => {
-    useToastStore.getState().addToast({ type: 'success', message, duration });
+    useToastStore.getState().addToast({
+      type: 'success',
+      message,
+      duration: duration ?? 2000  // Default: 2 seconds
+    });
   },
   error: (message: string, duration?: number) => {
-    useToastStore.getState().addToast({ type: 'error', message, duration });
+    useToastStore.getState().addToast({
+      type: 'error',
+      message,
+      duration: duration ?? 5000  // Default: 5 seconds
+    });
   },
   warning: (message: string, duration?: number) => {
-    useToastStore.getState().addToast({ type: 'warning', message, duration });
+    useToastStore.getState().addToast({
+      type: 'warning',
+      message,
+      duration: duration ?? 3000  // Default: 3 seconds
+    });
   },
   info: (message: string, duration?: number) => {
-    useToastStore.getState().addToast({ type: 'info', message, duration });
+    useToastStore.getState().addToast({
+      type: 'info',
+      message,
+      duration: duration ?? 2000  // Default: 2 seconds
+    });
   },
 };

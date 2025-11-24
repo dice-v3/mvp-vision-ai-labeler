@@ -134,6 +134,51 @@ class DatasetPermission(LabelerBase):
         return f"<DatasetPermission(dataset_id='{self.dataset_id}', user_id={self.user_id}, role='{self.role}')>"
 
 
+# Phase 8.1: Project-based Permission System (unified RBAC)
+class ProjectPermission(LabelerBase):
+    """
+    Project permission model - Unified permission system (Phase 8.1).
+
+    Replaces DatasetPermission with 5-role RBAC system.
+    Since Dataset ↔ Project is 1:1, project-level permissions are the single source of truth.
+
+    Roles (hierarchy: owner > admin > reviewer > annotator > viewer):
+    - owner: Full control (can delete project/dataset, manage all)
+    - admin: Manage members, classes, review (cannot delete dataset)
+    - reviewer: Annotate + review others' work
+    - annotator: Annotate own work only
+    - viewer: Read-only access
+    """
+
+    __tablename__ = "project_permissions"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign keys
+    project_id = Column(
+        String(50),
+        ForeignKey('annotation_projects.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    user_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+
+    # Permission info
+    role = Column(String(20), nullable=False)  # 'owner', 'admin', 'reviewer', 'annotator', 'viewer'
+    granted_by = Column(Integer, nullable=False)  # User ID who granted this permission
+    granted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('project_id', 'user_id', name='uq_project_user'),
+        CheckConstraint("role IN ('owner', 'admin', 'reviewer', 'annotator', 'viewer')", name='ck_project_permissions_role'),
+        Index("ix_project_permissions_project_user", "project_id", "user_id"),
+    )
+
+    def __repr__(self):
+        return f"<ProjectPermission(project_id='{self.project_id}', user_id={self.user_id}, role='{self.role}')>"
+
+
 # Phase 2.12: Performance Optimization - Image Metadata Table
 class ImageMetadata(LabelerBase):
     """
@@ -258,6 +303,9 @@ class Annotation(LabelerBase):
 
     # Confidence/score (for AI-assisted annotations)
     confidence = Column(Integer)  # 0-100
+
+    # Phase 8.5.1: Optimistic locking
+    version = Column(Integer, nullable=False, default=1, index=True)
 
     # Metadata
     created_by = Column(Integer, nullable=False)
@@ -491,3 +539,60 @@ class AnnotationSnapshot(LabelerBase):
 
     def __repr__(self):
         return f"<AnnotationSnapshot(id={self.id}, version_id={self.version_id}, annotation_id={self.annotation_id})>"
+
+
+class ImageLock(LabelerBase):
+    """Phase 8.5.2: Image locks for concurrent editing protection."""
+
+    __tablename__ = "image_locks"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(String(50), nullable=False, index=True)
+    image_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+
+    locked_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    heartbeat_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('project_id', 'image_id', name='uq_project_image_lock'),
+    )
+
+    def __repr__(self):
+        return f"<ImageLock(id={self.id}, project_id='{self.project_id}', image_id='{self.image_id}', user_id={self.user_id})>"
+
+
+class Invitation(LabelerBase):
+    """
+    Project invitation model (Phase 8.2).
+
+    Manages project invitations independently from Platform.
+    Supports 5-role RBAC system with token-based invitation workflow.
+    """
+
+    __tablename__ = "invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(255), nullable=False, unique=True, index=True)
+    project_id = Column(String(50), nullable=False, index=True)
+    inviter_id = Column(Integer, nullable=False, index=True)  # User DB user.id
+    invitee_id = Column(Integer, nullable=False, index=True)  # User DB user.id
+    invitee_email = Column(String(255), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # owner/admin/reviewer/annotator/viewer
+    status = Column(String(20), nullable=False, index=True)  # pending/accepted/expired/cancelled
+    message = Column(Text)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    accepted_at = Column(DateTime)
+    cancelled_at = Column(DateTime)
+
+    def __repr__(self):
+        return f"<Invitation(id={self.id}, project_id='{self.project_id}', status='{self.status}')>"
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if invitation is still valid."""
+        if self.status != "pending":
+            return False
+        return datetime.utcnow() < self.expires_at

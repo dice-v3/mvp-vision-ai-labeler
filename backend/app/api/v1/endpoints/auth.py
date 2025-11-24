@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_platform_db
+from app.core.database import get_user_db
 from app.core.security import verify_password, create_access_token, get_current_user
-from app.db.models.platform import User
+from app.db.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
 
 router = APIRouter()
@@ -14,11 +14,12 @@ router = APIRouter()
 @router.post("/login", response_model=TokenResponse, tags=["Authentication"])
 async def login(
     credentials: LoginRequest,
-    db: Session = Depends(get_platform_db),
+    db: Session = Depends(get_user_db),
 ):
     """
     Login with email and password.
 
+    Phase 9: Authenticates against User database (PostgreSQL).
     Returns JWT access token for accessing protected endpoints.
     """
     # Find user by email
