@@ -15,7 +15,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_platform_db, get_labeler_db
+from app.core.database import get_platform_db, get_user_db, get_labeler_db
 
 
 # Password hashing
@@ -104,12 +104,12 @@ def decode_access_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_platform_db),
+    db: Session = Depends(get_user_db),
 ):
     """
     Dependency to get current authenticated user.
 
-    Validates JWT token and retrieves user from Platform database.
+    Phase 9: Validates JWT token and retrieves user from User database (PostgreSQL).
 
     Usage:
         @app.get("/me")
@@ -128,7 +128,7 @@ async def get_current_user(
         )
 
     # Import here to avoid circular imports
-    from app.db.models.platform import User
+    from app.db.models.user import User
 
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
@@ -250,6 +250,108 @@ def require_dataset_permission(required_role: str = "member"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Owner permission required",
+            )
+
+        return permission
+
+    return check_permission
+
+
+# =============================================================================
+# Project Permission Middleware (Phase 8.1 - 2025-11-23)
+# =============================================================================
+
+# Role hierarchy: owner > admin > reviewer > annotator > viewer
+ROLE_HIERARCHY = {
+    'owner': 5,
+    'admin': 4,
+    'reviewer': 3,
+    'annotator': 2,
+    'viewer': 1,
+}
+
+
+def require_project_permission(required_role: str = "viewer"):
+    """
+    Dependency factory to check project permissions with role hierarchy.
+
+    Args:
+        required_role: Minimum required permission role
+                      - 'owner': Full control (delete dataset, manage all)
+                      - 'admin': Manage members, classes, review
+                      - 'reviewer': Annotate + review others' work
+                      - 'annotator': Annotate own work only
+                      - 'viewer': Read-only access
+
+    Role hierarchy: owner > admin > reviewer > annotator > viewer
+    Higher roles automatically have lower role permissions.
+
+    Returns:
+        Dependency function that validates project access
+
+    Usage:
+        @router.delete("/projects/{project_id}")
+        async def delete_project(
+            project_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_project_permission("owner")),
+        ):
+            # Only owners can delete
+            pass
+
+        @router.post("/projects/{project_id}/annotations")
+        async def create_annotation(
+            project_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_project_permission("annotator")),
+        ):
+            # Annotators and above can create annotations
+            pass
+    """
+    async def check_permission(
+        project_id: str,
+        current_user = Depends(get_current_user),
+        labeler_db: Session = Depends(get_labeler_db),
+    ):
+        # Import here to avoid circular imports
+        from app.db.models.labeler import ProjectPermission, AnnotationProject
+
+        # Support both dataset_id (ds_xxx) and project_id (proj_xxx)
+        # If project_id starts with 'ds_', it's a dataset_id, find the actual project
+        actual_project_id = project_id
+        if project_id.startswith('ds_'):
+            project = (
+                labeler_db.query(AnnotationProject)
+                .filter(AnnotationProject.dataset_id == project_id)
+                .first()
+            )
+            if project:
+                actual_project_id = project.id
+
+        # Check if user has permission
+        permission = (
+            labeler_db.query(ProjectPermission)
+            .filter(
+                ProjectPermission.project_id == actual_project_id,
+                ProjectPermission.user_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to project {project_id}",
+            )
+
+        # Check role hierarchy
+        user_role_level = ROLE_HIERARCHY.get(permission.role, 0)
+        required_role_level = ROLE_HIERARCHY.get(required_role, 0)
+
+        if user_role_level < required_role_level:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required role: {required_role}, your role: {permission.role}",
             )
 
         return permission

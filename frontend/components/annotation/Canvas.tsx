@@ -20,10 +20,17 @@ import { confirm } from '@/lib/stores/confirmStore';
 import { ArrowUturnLeftIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 import Magnifier from './Magnifier';
 import Minimap from './Minimap';
+// Phase 8.5.2: Image Locks
+import { imageLockAPI } from '@/lib/api/image-locks';
+import type { LockAcquireResponse } from '@/lib/api/image-locks';
+// Phase 8.5.1: Conflict Dialog
+import { AnnotationConflictDialog } from '../annotations/AnnotationConflictDialog';
+import type { ConflictInfo } from '../annotations/AnnotationConflictDialog';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   const {
     currentImage,
@@ -98,6 +105,20 @@ export default function Canvas() {
   // Phase 2.10.2: Magnifier state
   const [manualMagnifierActive, setManualMagnifierActive] = useState(false);
   const [magnification, setMagnification] = useState(preferences.magnificationLevel);
+
+  // Phase 8.5.2: Image Lock state
+  const [heartbeatInterval, setHeartbeatInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isImageLocked, setIsImageLocked] = useState(false);
+  const [lockedByUser, setLockedByUser] = useState<string | null>(null);
+  const [showLockedDialog, setShowLockedDialog] = useState(false);
+
+  // Phase 8.5.1: Version Conflict state
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
+  const [pendingAnnotationUpdate, setPendingAnnotationUpdate] = useState<{
+    annotationId: string;
+    data: any;
+  } | null>(null);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [circleResizeStart, setCircleResizeStart] = useState<{ x: number; y: number; radius: number; handle: string } | null>(null);
   const [selectedCircleHandle, setSelectedCircleHandle] = useState<string | null>(null);
@@ -138,6 +159,45 @@ export default function Canvas() {
   });
   const draftCount = draftAnnotations.length;
   const isImageConfirmed = currentImage ? (currentImage as any).is_confirmed : false;
+
+  // Phase 8.5.1: Helper function to update annotation with version check
+  const updateAnnotationWithVersionCheck = async (annotationId: string, updateData: AnnotationUpdateRequest) => {
+    try {
+      // Find annotation in store to get current version
+      const annotation = annotations.find(ann => ann.id === annotationId);
+
+      // Include version in update request
+      const dataWithVersion = {
+        ...updateData,
+        version: annotation?.version,
+      };
+
+      await updateAnnotation(annotationId, dataWithVersion);
+
+    } catch (error: any) {
+      // Handle version conflict (409 Conflict)
+      if (error.response?.status === 409) {
+        const detail = error.response.data.detail;
+
+        setConflictInfo({
+          annotationId,
+          currentVersion: detail.current_version,
+          yourVersion: detail.your_version,
+          lastUpdatedBy: detail.last_updated_by,
+          lastUpdatedAt: detail.last_updated_at,
+          message: detail.message,
+        });
+
+        setPendingAnnotationUpdate({ annotationId, data: updateData });
+        setConflictDialogOpen(true);
+
+        throw error; // Re-throw so caller knows it failed
+      } else {
+        // Other error
+        throw error;
+      }
+    }
+  };
 
   // Helper function to check if mouse is over a handle
   const getHandleAtPosition = (
@@ -250,18 +310,99 @@ export default function Canvas() {
     }
   }, [tool]);
 
-  // Load image when currentImage changes
+  // Phase 8.5.2: Acquire image lock and load image when currentImage changes
   useEffect(() => {
-    if (!currentImage?.url) {
+    if (!currentImage?.url || !project?.id) {
       setImage(null);
+      imageRef.current = null;
       setImageLoaded(false);
+      setIsImageLocked(false);
       return;
     }
 
+    // Phase 8.5.2: Capture current image/project IDs for cleanup
+    const capturedImageId = currentImage.id;
+    const capturedProjectId = project.id;
+    let lockAcquired = false;
+
+    // Phase 8.5.2: Acquire lock on image
+    const acquireImageLock = async () => {
+      try {
+        const result: LockAcquireResponse = await imageLockAPI.acquireLock(
+          project.id,
+          currentImage.id
+        );
+
+        if (result.status === 'already_locked' && result.locked_by) {
+          // Image is locked by another user
+          // Phase 8.5.2: Show lock overlay instead of dialog
+          setLockedByUser(result.locked_by.user_name || 'another user');
+          setIsImageLocked(false);
+          lockAcquired = false;
+          return;
+        }
+
+        // Lock acquired or refreshed
+        setIsImageLocked(true);
+        setLockedByUser(null);
+        lockAcquired = true;  // Mark lock as acquired for cleanup
+
+        if (result.status === 'acquired') {
+          // toast.success('Image locked for editing');
+        }
+
+        // Phase 8.5.2: Update project locks immediately for real-time sync
+        if (result.lock) {
+          useAnnotationStore.setState((state) => {
+            const existingLocks = state.projectLocks || [];
+            const updatedLocks = existingLocks.filter(lock => lock.image_id !== currentImage.id);
+            return { projectLocks: [...updatedLocks, result.lock!] };
+          });
+        }
+
+        // Start heartbeat
+        startHeartbeat();
+
+      } catch (error) {
+        console.error('Failed to acquire lock:', error);
+        toast.error('Failed to lock image');
+        setIsImageLocked(false);
+        lockAcquired = false;
+      }
+    };
+
+    // Start heartbeat to keep lock alive (every 2 minutes)
+    const startHeartbeat = () => {
+      // Clear existing interval
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+
+      // Send heartbeat every 2 minutes (lock expires after 5 minutes)
+      const interval = setInterval(async () => {
+        try {
+          await imageLockAPI.sendHeartbeat(project.id, currentImage.id);
+          console.log('[Lock] Heartbeat sent');
+        } catch (error) {
+          console.error('[Lock] Heartbeat failed:', error);
+          toast.error('Lost lock on image');
+          clearInterval(interval);
+          setIsImageLocked(false);
+        }
+      }, 2 * 60 * 1000); // Every 2 minutes
+
+      setHeartbeatInterval(interval);
+    };
+
+    // Acquire lock first
+    acquireImageLock();
+
+    // Load image
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       setImage(img);
+      imageRef.current = img;
       setImageLoaded(true);
     };
     img.onerror = () => {
@@ -269,7 +410,33 @@ export default function Canvas() {
       setImageLoaded(false);
     };
     img.src = currentImage.url;
-  }, [currentImage]);
+
+    // Cleanup: Release lock when unmounting or changing image
+    return () => {
+      // Clear heartbeat
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        setHeartbeatInterval(null);
+      }
+
+      // Phase 8.5.2: Release lock using captured IDs
+      if (lockAcquired) {
+        console.log('[Lock] Releasing lock for image:', capturedImageId);
+        imageLockAPI.releaseLock(capturedProjectId, capturedImageId)
+          .then(() => {
+            // Phase 8.5.2: Update project locks immediately for real-time sync
+            useAnnotationStore.setState((state) => {
+              const existingLocks = state.projectLocks || [];
+              const updatedLocks = existingLocks.filter(lock => lock.image_id !== capturedImageId);
+              return { projectLocks: updatedLocks };
+            });
+          })
+          .catch((error) => {
+            console.error('[Lock] Failed to release:', error);
+          });
+      }
+    };
+  }, [currentImage, project]);
 
   // Render canvas
   useEffect(() => {
@@ -758,6 +925,15 @@ export default function Canvas() {
     const imgX = (rect.width - scaledWidth) / 2 + pan.x;
     const imgY = (rect.height - scaledHeight) / 2 + pan.y;
 
+    // Phase 8.5.2: Block annotation creation without lock (strict lock policy)
+    // Allow pan and selection (read-only), block creation tools
+    const isCreationTool = tool !== 'pan' && tool !== 'select';
+
+    if (!isImageLocked && isCreationTool) {
+      // Lock overlay is already visible, no need for toast
+      return;
+    }
+
     // Only handle selection and resizing in select mode
     if (tool === 'select') {
       // Check if clicking on a handle of the selected annotation
@@ -775,6 +951,10 @@ export default function Canvas() {
 
           const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
           if (handle) {
+            // Phase 8.5.2: Block resize without lock
+            if (!isImageLocked) {
+              return;
+            }
             // Select handle and start resizing
             setSelectedBboxHandle(handle);
             setIsResizing(true);
@@ -798,6 +978,10 @@ export default function Canvas() {
             const dx = x - scaledPx;
             const dy = y - scaledPy;
             if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
+              // Phase 8.5.2: Block vertex drag without lock
+              if (!isImageLocked) {
+                return;
+              }
               // Select and start vertex drag
               setSelectedVertexIndex(i);
               setIsDraggingVertex(true);
@@ -812,6 +996,10 @@ export default function Canvas() {
           const imageY = (y - imgY) / zoom;
           const edgeResult = getPointOnEdge(imageX, imageY, points, vertexThreshold / zoom);
           if (edgeResult && image) {
+            // Phase 8.5.2: Block vertex addition without lock
+            if (!isImageLocked) {
+              return;
+            }
             // Insert new vertex after the edge's first vertex
             const newPoints = [...points];
             newPoints.splice(edgeResult.edgeIndex + 1, 0, edgeResult.point);
@@ -910,6 +1098,10 @@ export default function Canvas() {
           const imageY = (y - imgY) / zoom;
           const edgeResult = getPointOnEdge(imageX, imageY, points, vertexThreshold / zoom);
           if (edgeResult && image) {
+            // Phase 8.5.2: Block vertex addition without lock
+            if (!isImageLocked) {
+              return;
+            }
             // Insert new vertex after the edge's first vertex
             const newPoints = [...points];
             newPoints.splice(edgeResult.edgeIndex + 1, 0, edgeResult.point);
@@ -2444,6 +2636,13 @@ export default function Canvas() {
       return;
     }
 
+    // Phase 8.5.2: Block deletion without lock for single current image
+    const isSingleCurrentImage = targetImageIds.length === 1 && targetImageIds[0] === currentImage?.id;
+    if (isSingleCurrentImage && !isImageLocked) {
+      // Lock overlay is already visible, no need for toast
+      return;
+    }
+
     const isBatch = targetImageIds.length > 1;
 
     const processDelete = async () => {
@@ -2552,14 +2751,14 @@ export default function Canvas() {
             )
           }));
 
-          // If current image was in selection, update its annotations
+          // If current image was in selection, reload its annotations from server
           if (currentImage && targetImageIds.includes(currentImage.id)) {
-            const updatedAnnotations = annotations.map(ann => ({
-              ...ann,
-              annotation_state: 'confirmed',
-              confirmed_at: new Date().toISOString(),
-            }));
-            useAnnotationStore.setState({ annotations: updatedAnnotations });
+            const { getProjectAnnotations } = await import('@/lib/api/annotations');
+            const freshAnnotations = await getProjectAnnotations(
+              project.id,
+              currentImage.id
+            );
+            useAnnotationStore.setState({ annotations: freshAnnotations });
           }
 
           setBatchProgress(null);
@@ -2571,14 +2770,14 @@ export default function Canvas() {
 
         await confirmImage(project.id, currentImage.id, currentTask || undefined);
 
-        // Update local state - mark all annotations as confirmed
-        const updatedAnnotations = annotations.map(ann => ({
-          ...ann,
-          annotation_state: 'confirmed',
-          confirmed_at: new Date().toISOString(),
-        }));
+        // Reload annotations from server to get updated version and confirm info
+        const { getProjectAnnotations } = await import('@/lib/api/annotations');
+        const freshAnnotations = await getProjectAnnotations(
+          project.id,
+          currentImage.id
+        );
 
-        useAnnotationStore.setState({ annotations: updatedAnnotations });
+        useAnnotationStore.setState({ annotations: freshAnnotations });
 
         // Update current image status
         const updatedImages = images.map(img =>
@@ -3638,6 +3837,128 @@ export default function Canvas() {
         onClose={handleClassSelectorClose}
         onSelect={handleClassSelect}
       />
+
+      {/* Phase 8.5.1: Version Conflict Dialog */}
+      <AnnotationConflictDialog
+        isOpen={conflictDialogOpen}
+        conflict={conflictInfo}
+        onReload={async () => {
+          setConflictDialogOpen(false);
+          setPendingAnnotationUpdate(null);
+          setConflictInfo(null);
+          // Reload annotations to get latest version
+          if (project && currentImage) {
+            try {
+              const anns = await getProjectAnnotations(project.id, currentImage.id);
+              // Update store with fresh annotations
+              useAnnotationStore.setState({
+                annotations: anns.map((ann: any) => ({
+                  id: String(ann.id),
+                  projectId: ann.project_id,
+                  imageId: ann.image_id,
+                  annotationType: ann.annotation_type,
+                  geometry: ann.geometry,
+                  classId: ann.class_id,
+                  className: ann.class_name,
+                  attributes: ann.attributes || {},
+                  confidence: ann.confidence,
+                  createdBy: ann.created_by,
+                  version: ann.version, // Phase 8.5.1: Include version
+                })),
+              });
+              toast.info('Reloaded latest version');
+            } catch (error) {
+              console.error('Failed to reload annotations:', error);
+              toast.error('Failed to reload annotations');
+            }
+          }
+        }}
+        onOverwrite={async () => {
+          if (!pendingAnnotationUpdate || !conflictInfo) return;
+
+          try {
+            // Force update with current version
+            await updateAnnotation(pendingAnnotationUpdate.annotationId, {
+              ...pendingAnnotationUpdate.data,
+              version: conflictInfo.currentVersion,
+            });
+
+            setConflictDialogOpen(false);
+            setPendingAnnotationUpdate(null);
+            setConflictInfo(null);
+
+            // Reload annotations
+            if (project && currentImage) {
+              const anns = await getProjectAnnotations(project.id, currentImage.id);
+              useAnnotationStore.setState({
+                annotations: anns.map((ann: any) => ({
+                  id: String(ann.id),
+                  projectId: ann.project_id,
+                  imageId: ann.image_id,
+                  annotationType: ann.annotation_type,
+                  geometry: ann.geometry,
+                  classId: ann.class_id,
+                  className: ann.class_name,
+                  attributes: ann.attributes || {},
+                  confidence: ann.confidence,
+                  createdBy: ann.created_by,
+                  version: ann.version,
+                })),
+              });
+            }
+
+            toast.success('Changes saved');
+          } catch (error) {
+            console.error('Overwrite failed:', error);
+            toast.error('Failed to overwrite changes');
+          }
+        }}
+        onCancel={() => {
+          setConflictDialogOpen(false);
+          setPendingAnnotationUpdate(null);
+          setConflictInfo(null);
+        }}
+      />
+
+      {/* Phase 8.5.2: Lock Status Indicator */}
+      {isImageLocked && (
+        <div className="absolute top-20 left-4 z-10 bg-green-100 text-green-800 px-3 py-1.5 rounded-lg shadow text-sm flex items-center gap-2">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+          </svg>
+          <span>You have exclusive editing access</span>
+        </div>
+      )}
+
+      {/* Phase 8.5.2: Locked Overlay (when lock is not acquired) */}
+      {!isImageLocked && currentImage && (
+        <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-md mx-4 flex flex-col items-center text-center">
+            {/* Lock Icon */}
+            <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <svg className="w-10 h-10 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Image Locked
+            </h3>
+
+            {/* Lock Status */}
+            {lockedByUser ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-800">
+                Currently locked by <span className="font-semibold">{lockedByUser}</span>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">
+                Click the image to acquire lock
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -97,6 +97,9 @@ export interface Annotation {
   createdBy?: number;
   createdAt?: Date;
   updatedAt?: Date;
+
+  // Phase 8.5.1: Optimistic locking
+  version?: number;
 }
 
 export interface Project {

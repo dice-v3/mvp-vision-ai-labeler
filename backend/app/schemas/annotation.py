@@ -28,6 +28,9 @@ class AnnotationUpdate(BaseModel):
     is_verified: Optional[bool] = None
     notes: Optional[str] = None
 
+    # Phase 8.5.1: Optimistic locking
+    version: Optional[int] = None  # Current version for conflict detection
+
 
 class AnnotationResponse(BaseModel):
     """Annotation response."""
@@ -44,6 +47,9 @@ class AnnotationResponse(BaseModel):
     updated_by: Optional[int] = None
     is_verified: bool
     notes: Optional[str] = None
+
+    # Phase 8.5.1: Optimistic locking
+    version: int
 
     # Phase 2.7: Confirmation fields
     annotation_state: str = "draft"  # draft, confirmed, verified

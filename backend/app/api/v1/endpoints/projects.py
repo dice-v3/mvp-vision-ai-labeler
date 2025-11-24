@@ -8,11 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.core.database import get_platform_db, get_labeler_db
-from app.core.security import get_current_user
+from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.security import get_current_user, require_project_permission
 from app.core.storage import storage_client
-from app.db.models.platform import User
-from app.db.models.labeler import Dataset, AnnotationProject, ImageAnnotationStatus, Annotation
+from app.db.models.user import User
+from app.db.models.labeler import Dataset, AnnotationProject, ImageAnnotationStatus, Annotation, ProjectPermission
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, AddTaskTypeRequest
 # REFACTORING: Import task registry for task type validation
 from app.tasks import task_registry, TaskType
@@ -80,6 +80,16 @@ async def create_project(
     labeler_db.commit()
     labeler_db.refresh(db_project)
 
+    # Phase 8.1: Create owner permission for the project creator
+    owner_permission = ProjectPermission(
+        project_id=db_project.id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+    )
+    labeler_db.add(owner_permission)
+    labeler_db.commit()
+
     # Add dataset information
     response_dict = {
         **db_project.__dict__,
@@ -136,9 +146,12 @@ async def list_project_images(
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
 ):
     """
     Get list of images in a project with pagination support.
+
+    Requires: viewer role or higher
 
     Performance optimized:
     - Fetches only requested page of images
@@ -163,13 +176,6 @@ async def list_project_images(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this project",
         )
 
     # Validate pagination params
@@ -265,9 +271,12 @@ async def get_project(
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
 ):
     """
     Get annotation project by ID.
+
+    Requires: viewer role or higher
 
     - **project_id**: Project ID
     """
@@ -277,13 +286,6 @@ async def get_project(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this project",
         )
 
     # Get dataset information
@@ -305,9 +307,12 @@ async def update_project(
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("admin")),
 ):
     """
     Update annotation project.
+
+    Requires: admin role or higher
 
     - **project_id**: Project ID
     """
@@ -317,13 +322,6 @@ async def update_project(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this project",
         )
 
     # Update fields
@@ -351,9 +349,12 @@ async def delete_project(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("owner")),
 ):
     """
     Delete annotation project.
+
+    Requires: owner role
 
     - **project_id**: Project ID
     """
@@ -363,13 +364,6 @@ async def delete_project(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this project",
         )
 
     labeler_db.delete(project)
@@ -384,10 +378,14 @@ async def add_task_type(
     request: AddTaskTypeRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("admin")),
 ):
     """
     Add a new task type to the project.
+
+    Requires: admin role or higher
 
     This endpoint allows users to dynamically add task types (classification, detection, segmentation, etc.)
     to an existing project. When adding a new task type:
@@ -415,13 +413,6 @@ async def add_task_type(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to modify this project",
         )
 
     # Check if task type already exists
@@ -480,8 +471,8 @@ async def add_task_type(
     # Get dataset information
     dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
-    # Get user information
-    user = platform_db.query(User).filter(User.id == project.last_updated_by).first()
+    # Get user information (Phase 9: from User DB)
+    user = user_db.query(User).filter(User.id == project.last_updated_by).first()
 
     response_dict = {
         **project.__dict__,
@@ -503,9 +494,12 @@ async def get_project_image_statuses(
     offset: int = 0,  # Phase 2.12: Pagination
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
 ):
     """
     Get annotation status for images in a project (paginated).
+
+    Requires: viewer role or higher
 
     Phase 2.9: Supports task_type filtering for task-specific status.
     Phase 2.12: Performance - Added pagination support.
@@ -529,13 +523,6 @@ async def get_project_image_statuses(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this project",
         )
 
     # Validate pagination params
@@ -614,9 +601,12 @@ async def get_project_stats(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
 ):
     """
     Get aggregate statistics for a project without loading individual status records.
+
+    Requires: viewer role or higher
 
     Phase 2.12: Optimized endpoint for dashboard to avoid loading thousands of status records.
 
@@ -635,13 +625,6 @@ async def get_project_stats(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership/permission
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this project",
         )
 
     # Get total images from project
@@ -734,9 +717,12 @@ async def confirm_image(
     task_type: Optional[str] = None,  # Phase 2.9: Task type for task-specific confirmation
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("reviewer")),
 ):
     """
     Confirm an image, marking all its annotations as confirmed.
+
+    Requires: reviewer role or higher
 
     Phase 2.9: Supports task_type parameter for task-specific confirmation.
 
@@ -754,13 +740,6 @@ async def confirm_image(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to modify this project",
         )
 
     # REFACTORING: Check if image has any annotations for this task (prevent confirming empty images)
@@ -802,6 +781,8 @@ async def confirm_image(
         annotation.confirmed_at = datetime.utcnow()
         annotation.confirmed_by = current_user.id
         annotation.updated_at = datetime.utcnow()
+        # Phase 8.5.1: Increment version for optimistic locking
+        annotation.version += 1
         confirmed_count += 1
 
     # Phase 2.7/2.9: Use service to update image status (with task_type)
@@ -832,9 +813,12 @@ async def unconfirm_image(
     task_type: Optional[str] = None,  # Phase 2.9: Task type for task-specific unconfirmation
     labeler_db: Session = Depends(get_labeler_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("reviewer")),
 ):
     """
     Unconfirm an image, reverting all its annotations back to draft state.
+
+    Requires: reviewer role or higher
 
     Phase 2.9: Supports task_type parameter for task-specific unconfirmation.
 
@@ -852,13 +836,6 @@ async def unconfirm_image(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to modify this project",
         )
 
     # REFACTORING: Unconfirm all confirmed annotations for this image (filtered by task if provided)
@@ -880,6 +857,8 @@ async def unconfirm_image(
         annotation.confirmed_at = None
         annotation.confirmed_by = None
         annotation.updated_at = datetime.utcnow()
+        # Phase 8.5.1: Increment version for optimistic locking
+        annotation.version += 1
 
     # Phase 2.7/2.9: Use service to update image status (with task_type)
     status_entry = await unconfirm_image_status(

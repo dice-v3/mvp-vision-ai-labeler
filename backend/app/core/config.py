@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     API_WORKERS: int = 1
 
     # CORS
-    CORS_ORIGINS: Union[List[str], str] = "http://localhost:3001,http://localhost:3000"
+    CORS_ORIGINS: Union[List[str], str] = "http://localhost:3001,http://localhost:3000,http://localhost:3010"
 
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
@@ -50,6 +50,22 @@ class Settings(BaseSettings):
             f"@{self.PLATFORM_DB_HOST}:{self.PLATFORM_DB_PORT}/{self.PLATFORM_DB_NAME}"
         )
 
+    # User Database (Read-Only - Phase 9)
+    # PostgreSQL database shared with Platform service
+    USER_DB_HOST: str = "localhost"
+    USER_DB_PORT: int = 5433
+    USER_DB_NAME: str = "users"
+    USER_DB_USER: str = "admin"
+    USER_DB_PASSWORD: str = "devpass"
+
+    @property
+    def USER_DB_URL(self) -> str:
+        """Construct User database URL (PostgreSQL)."""
+        return (
+            f"postgresql://{self.USER_DB_USER}:{self.USER_DB_PASSWORD}"
+            f"@{self.USER_DB_HOST}:{self.USER_DB_PORT}/{self.USER_DB_NAME}"
+        )
+
     # Labeler Database (Full Access)
     LABELER_DB_HOST: str = "localhost"
     LABELER_DB_PORT: int = 5433
@@ -64,6 +80,12 @@ class Settings(BaseSettings):
             f"postgresql://{self.LABELER_DB_USER}:{self.LABELER_DB_PASSWORD}"
             f"@{self.LABELER_DB_HOST}:{self.LABELER_DB_PORT}/{self.LABELER_DB_NAME}"
         )
+
+    # Database Pool Settings (Phase 9 - for Railway deployment)
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 3600  # 1 hour
 
     # Redis
     REDIS_HOST: str = "localhost"
