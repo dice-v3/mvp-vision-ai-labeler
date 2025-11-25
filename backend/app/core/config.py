@@ -100,7 +100,7 @@ class Settings(BaseSettings):
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
-    # S3 / MinIO
+    # S3 / MinIO / R2
     S3_ENDPOINT: str = "http://localhost:9000"
     S3_ACCESS_KEY: str = "minioadmin"
     S3_SECRET_KEY: str = "minioadmin"
@@ -108,6 +108,10 @@ class Settings(BaseSettings):
     S3_BUCKET_ANNOTATIONS: str = "annotations"
     S3_REGION: str = "us-east-1"
     S3_USE_SSL: bool = False
+
+    # R2 Public Development URL (Phase 9.3)
+    # When set, use this for public image URLs instead of presigned URLs
+    R2_PUBLIC_URL: str = ""
 
     # JWT Authentication
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"

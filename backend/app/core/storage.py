@@ -166,7 +166,14 @@ class StorageClient:
         expiration: int = 3600
     ) -> str:
         """
-        Generate a presigned URL for accessing an object.
+        Generate a URL for accessing an object.
+
+        Hybrid approach:
+        - If R2_PUBLIC_URL is set: Use public R2.dev URL (for R2 development)
+        - If R2_PUBLIC_URL is empty: Use presigned URL (for S3/MinIO compatibility)
+
+        This allows the same code to work in both R2 and on-prem S3 environments
+        without any code changes - just configure R2_PUBLIC_URL environment variable.
 
         Args:
             bucket: Bucket name
@@ -174,8 +181,15 @@ class StorageClient:
             expiration: URL expiration time in seconds (default: 1 hour)
 
         Returns:
-            Presigned URL string
+            URL string (either public R2.dev URL or presigned S3 URL)
         """
+        # Check if R2 public URL is configured (for R2 development only)
+        if settings.R2_PUBLIC_URL and bucket == self.datasets_bucket:
+            # Use R2 public development URL
+            # Format: https://pub-xxx.r2.dev/{key}
+            return f"{settings.R2_PUBLIC_URL}/{key}"
+
+        # Fall back to presigned URL (S3/MinIO/on-prem compatible)
         try:
             url = self.s3_client.generate_presigned_url(
                 'get_object',

@@ -94,10 +94,8 @@ export default function DashboardPage() {
       setDatasets(data);
       setError('');
 
-      // Auto-select first dataset
-      if (data.length > 0) {
-        handleDatasetSelect(data[0].id);
-      }
+      // Performance: Don't auto-select - let user explicitly select dataset
+      // This prevents loading 6+ APIs on initial page load
     } catch (err) {
       setError(err instanceof Error ? err.message : '데이터셋을 불러오는데 실패했습니다');
     } finally {
@@ -110,99 +108,96 @@ export default function DashboardPage() {
     const dataset = datasets.find(d => d.id === datasetId);
     setSelectedDataset(dataset || null);
 
-    // Fetch permissions
+    // Performance: Parallelize independent API calls
     setPermissionsLoading(true);
-    try {
-      const perms = await listPermissions(datasetId);
-      setPermissions(perms);
-    } catch (err) {
-      console.error('Failed to fetch permissions:', err);
-      setPermissions([]);
-    } finally {
-      setPermissionsLoading(false);
-    }
-
-    // Fetch project info
     setProjectLoading(true);
+
     try {
-      const projectData = await getProjectForDataset(datasetId);
+      // Phase 1: Fetch permissions and project info in parallel
+      const [perms, projectData] = await Promise.all([
+        listPermissions(datasetId),
+        getProjectForDataset(datasetId)
+      ]);
+
+      setPermissions(perms);
+      setPermissionsLoading(false);
       setProject(projectData);
 
-      // Phase 2.12: Load task-based statistics using optimized endpoint
-      if (projectData.task_types && projectData.task_types.length > 0) {
-        try {
-          const statsResponse = await getProjectStats(projectData.id);
-          const stats: TaskStats[] = [];
-          let maxProgress = -1;
-          let bestTask = projectData.task_types[0];
+      // Phase 2: Parallelize all project-related API calls
+      setHistoryLoading(true);
+      setImagesLoading(true);
 
-          for (const taskStat of statsResponse.task_stats) {
-            const completedCount = taskStat.completed + taskStat.confirmed;
-            const total = taskStat.total_images;
-            const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+      const projectApiCalls = [
+        // Stats (conditionally)
+        projectData.task_types && projectData.task_types.length > 0
+          ? getProjectStats(projectData.id).catch(err => {
+              console.error('Failed to load project stats:', err);
+              return null;
+            })
+          : Promise.resolve(null),
+        // History
+        getProjectHistory(projectData.id, 0, 10).catch(err => {
+          console.error('Failed to fetch history:', err);
+          return [];
+        }),
+        // Images
+        getDatasetImages(datasetId, 8).catch(err => {
+          console.error('Failed to fetch images:', err);
+          return [];
+        }),
+        // Size
+        getDatasetSize(datasetId).catch(err => {
+          console.error('Failed to fetch dataset size:', err);
+          return null;
+        })
+      ];
 
-            stats.push({
-              taskType: taskStat.task_type,
-              completedImages: completedCount,
-              totalImages: total,
-              progressPercent: percent,
-            });
+      const [statsResponse, historyData, imagesData, sizeData] = await Promise.all(projectApiCalls);
 
-            if (completedCount > maxProgress) {
-              maxProgress = completedCount;
-              bestTask = taskStat.task_type;
-            }
+      // Process stats
+      if (statsResponse && projectData.task_types && projectData.task_types.length > 0) {
+        const stats: TaskStats[] = [];
+        let maxProgress = -1;
+        let bestTask = projectData.task_types[0];
+
+        for (const taskStat of statsResponse.task_stats) {
+          const completedCount = taskStat.completed + taskStat.confirmed;
+          const total = taskStat.total_images;
+          const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+          stats.push({
+            taskType: taskStat.task_type,
+            completedImages: completedCount,
+            totalImages: total,
+            progressPercent: percent,
+          });
+
+          if (completedCount > maxProgress) {
+            maxProgress = completedCount;
+            bestTask = taskStat.task_type;
           }
-
-          setTaskStats(stats);
-          setSelectedTask(bestTask);
-          setPrimaryTask(bestTask);
-        } catch (err) {
-          console.error('Failed to load project stats:', err);
-          // Fallback to empty stats
-          setTaskStats([]);
-          setSelectedTask(null);
-          setPrimaryTask(null);
         }
+
+        setTaskStats(stats);
+        setSelectedTask(bestTask);
+        setPrimaryTask(bestTask);
       } else {
         setTaskStats([]);
         setSelectedTask(null);
         setPrimaryTask(null);
       }
 
-      // Fetch annotation history
-      setHistoryLoading(true);
-      try {
-        const historyData = await getProjectHistory(projectData.id, 0, 10);
-        setHistory(historyData);
-      } catch (err) {
-        console.error('Failed to fetch history:', err);
-        setHistory([]);
-      } finally {
-        setHistoryLoading(false);
-      }
+      // Set history
+      setHistory(historyData);
+      setHistoryLoading(false);
 
-      // Fetch dataset images
-      setImagesLoading(true);
-      try {
-        const imagesData = await getDatasetImages(datasetId, 8);
-        console.log('Fetched images:', imagesData);
-        setImages(imagesData);
-      } catch (err) {
-        console.error('Failed to fetch images:', err);
-        setImages([]);
-      } finally {
-        setImagesLoading(false);
-      }
+      // Set images
+      console.log('Fetched images:', imagesData);
+      setImages(imagesData);
+      setImagesLoading(false);
 
-      // Phase 2.12: Fetch dataset size
-      try {
-        const sizeData = await getDatasetSize(datasetId);
-        setDatasetSize(sizeData);
-      } catch (err) {
-        console.error('Failed to fetch dataset size:', err);
-        setDatasetSize(null);
-      }
+      // Set size
+      setDatasetSize(sizeData);
     } catch (err) {
       console.error('Failed to fetch project:', err);
       setProject(null);

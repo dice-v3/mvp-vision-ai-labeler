@@ -6,7 +6,7 @@ Shares JWT secret with the Platform for seamless authentication.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -99,6 +99,34 @@ def decode_access_token(token: str) -> dict:
 
 
 # =============================================================================
+# User Caching for Performance
+# =============================================================================
+
+# In-memory user cache with TTL
+# Format: {user_id: (user_object, expiry_timestamp)}
+_user_cache: Dict[int, Tuple[any, datetime]] = {}
+USER_CACHE_TTL = 30  # seconds
+
+
+def _get_cached_user(user_id: int):
+    """Get user from cache if not expired."""
+    if user_id in _user_cache:
+        user_obj, expiry = _user_cache[user_id]
+        if datetime.utcnow() < expiry:
+            return user_obj
+        else:
+            # Remove expired entry
+            del _user_cache[user_id]
+    return None
+
+
+def _cache_user(user_id: int, user_obj):
+    """Cache user object with TTL."""
+    expiry = datetime.utcnow() + timedelta(seconds=USER_CACHE_TTL)
+    _user_cache[user_id] = (user_obj, expiry)
+
+
+# =============================================================================
 # Authentication Dependencies
 # =============================================================================
 
@@ -110,6 +138,8 @@ async def get_current_user(
     Dependency to get current authenticated user.
 
     Phase 9: Validates JWT token and retrieves user from User database (PostgreSQL).
+
+    Performance: Uses in-memory cache with 30-second TTL to reduce DB queries.
 
     Usage:
         @app.get("/me")
@@ -127,6 +157,11 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Check cache first
+    cached_user = _get_cached_user(user_id)
+    if cached_user is not None:
+        return cached_user
+
     # Import here to avoid circular imports
     from app.db.models.user import User
 
@@ -143,6 +178,9 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
         )
+
+    # Cache user for future requests
+    _cache_user(user_id, user)
 
     return user
 

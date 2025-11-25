@@ -156,6 +156,15 @@ async def startup_event():
     print(f"Environment: {settings.ENVIRONMENT}")
     print(f"API Docs: http://{settings.API_HOST}:{settings.API_PORT}/docs")
 
+    # Debug: Print actual database configuration
+    print("=" * 60)
+    print("DATABASE CONFIGURATION (loaded from .env)")
+    print("=" * 60)
+    print(f"User DB:    {settings.USER_DB_HOST}:{settings.USER_DB_PORT}/{settings.USER_DB_NAME}")
+    print(f"Labeler DB: {settings.LABELER_DB_HOST}:{settings.LABELER_DB_PORT}/{settings.LABELER_DB_NAME}")
+    print(f"Labeler DB URL: {settings.LABELER_DB_URL}")
+    print("=" * 60)
+
 
 # Shutdown event
 @app.on_event("shutdown")

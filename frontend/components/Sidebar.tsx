@@ -81,12 +81,12 @@ export default function Sidebar({
 
   // Fetch pending invitations on mount and every 30 seconds
   useEffect(() => {
-    if (user) {
-      fetchPendingInvitations();
-      const interval = setInterval(fetchPendingInvitations, 30000); // 30 seconds
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+    if (!user) return;
+
+    fetchPendingInvitations();
+    const interval = setInterval(fetchPendingInvitations, 30000); // 30 seconds
+    return () => clearInterval(interval);
+  }, [user?.id]); // Only re-run when user.id changes, not user object reference
 
   // Close menu when clicking outside
   useEffect(() => {
