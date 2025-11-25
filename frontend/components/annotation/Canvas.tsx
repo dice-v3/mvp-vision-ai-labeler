@@ -1460,6 +1460,9 @@ export default function Canvas() {
 
     // Phase 2.10.2: Update cursor position for magnifier
     setCursorPos({ x, y });
+    if (shouldShowMagnifier) {
+      console.log('[Canvas] Mouse moved to:', { x, y });
+    }
 
     // Update cursor style based on position (before setCursor to avoid render race)
     if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
