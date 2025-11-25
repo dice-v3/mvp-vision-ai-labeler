@@ -36,7 +36,7 @@
 - **Phase 9.4: Demo Deployment ✅ Complete** (Cloudflare Tunnel + Railway Frontend)
 - **Phase 10: Application Performance Optimization ✅ Complete** (Quick Wins - 80% latency reduction)
 
-**Next Up**: Phase 8.3 (Real-time Annotation Updates) or Phase 11 (AI Integration)
+**Next Up**: Phase 11 (Version Diff & Comparison) or Phase 8.3 (Real-time Updates)
 
 ---
 
@@ -1016,22 +1016,224 @@ async def get_current_user(...):
 
 ---
 
-## Phase 10: AI Integration ⏸️ PENDING
+## Phase 11: Version Diff & Comparison ⏸️ PENDING
+
+**Duration**: 2-3 days (18-22h)
+**Status**: Pending
+**Goal**: Git-style diff visualization for annotation versions
+
+### Overview
+
+Leverage existing version management system to provide visual comparison between annotation versions, similar to git diff functionality.
+
+**Use Cases**:
+- Review changes between working and published versions
+- Compare different annotators' work on same images
+- Track annotation evolution over time
+- Quality assurance and validation
+- Training data consistency checks
+
+### 11.1 Backend: Version Comparison API (6-8h)
+
+**11.1.1 Diff Calculation Engine** (3-4h)
+- [ ] Implement annotation diff algorithm
+  - Compare two versions by image_id
+  - Categorize annotations: `added`, `removed`, `modified`, `unchanged`
+  - Calculate modification details (bbox moved, class changed, etc.)
+- [ ] Create `AnnotationDiff` model/schema
+  ```python
+  {
+    "image_id": "img_001",
+    "version_a": "v1.0",
+    "version_b": "v2.0",
+    "added": [...],      # New annotations in version_b
+    "removed": [...],    # Deleted from version_a
+    "modified": [...],   # Changed annotations
+    "unchanged": [...]   # No changes
+  }
+  ```
+- [ ] Support multiple diff modes:
+  - Bounding box position changes (threshold: 5px)
+  - Class label changes
+  - Attribute changes
+  - Polygon vertex changes (for segmentation)
+
+**11.1.2 Comparison Endpoints** (2-3h)
+- [ ] `GET /api/v1/versions/{version_a}/compare/{version_b}`
+  - Query params: `image_id` (optional - single image or all)
+  - Response: Diff summary + detailed changes
+- [ ] `GET /api/v1/versions/{version_a}/compare/{version_b}/summary`
+  - Statistics: total added, removed, modified counts
+  - Per-class breakdown
+  - Per-image change counts
+- [ ] Add pagination for large datasets
+
+**11.1.3 Performance Optimization** (1h)
+- [ ] Cache diff results (Redis - 5min TTL)
+- [ ] Batch processing for large version comparisons
+- [ ] Add database indexes on version lookups
+
+### 11.2 Frontend: Diff Visualization (8-10h)
+
+**11.2.1 Version Selector UI** (2h)
+- [ ] Version comparison dropdown (select 2 versions)
+- [ ] Quick shortcuts: "Working vs Latest", "v1.0 vs v2.0"
+- [ ] Show version metadata (created_at, created_by, stats)
+- [ ] Validation: prevent comparing same version
+
+**11.2.2 Diff Summary Panel** (2h)
+- [ ] Overview statistics card
+  - Total changes: Added (+5), Removed (-3), Modified (~7)
+  - Per-class breakdown (color-coded)
+  - Images affected: 12/150
+- [ ] Filter controls
+  - Show only: Added | Removed | Modified | All
+  - Filter by class
+  - Filter by image
+- [ ] Export diff report (CSV/JSON)
+
+**11.2.3 Canvas Diff Overlay** (4-6h)
+- [ ] **Overlay Mode** (default): Show both versions on same canvas
+  - Version A (old): Semi-transparent red (#ff000050)
+  - Version B (new): Semi-transparent green (#00ff0050)
+  - Unchanged: Gray (#80808030)
+  - Modified: Yellow outline (#ffff00)
+- [ ] **Side-by-Side Mode**: Split canvas view
+  - Left: Version A
+  - Right: Version B
+  - Synchronized zoom/pan
+  - Diff highlights on both sides
+- [ ] **Animation Mode**: Toggle between versions
+  - Smooth transition (0.3s fade)
+  - Keyboard shortcut: Space to toggle
+- [ ] Diff legend
+  - Color indicators for each change type
+  - Counts per category
+  - Toggle visibility per category
+
+### 11.3 Advanced Features (4-6h)
+
+**11.3.1 Image-by-Image Navigation** (2h)
+- [ ] Navigate images with changes only
+  - Skip unchanged images
+  - Keyboard: N (next change), P (previous change)
+- [ ] Change summary per image
+  - Show diff count badge on thumbnail
+  - Red badge: has removals/modifications
+  - Green badge: only additions
+
+**11.3.2 Annotation Detail Comparison** (2-3h)
+- [ ] Side-by-side property comparison
+  ```
+  Version A         |  Version B
+  ------------------|------------------
+  Class: "car"      |  Class: "truck"  ✎
+  BBox: [10,20,50]  |  BBox: [12,20,50] ✎
+  Conf: 0.95        |  Conf: 0.95
+  ```
+- [ ] Highlight modified fields
+- [ ] Show old → new values with arrow
+- [ ] Include modification metadata (when, who)
+
+**11.3.3 Bulk Accept/Reject** (1-2h)
+- [ ] Accept all changes from version B → A
+- [ ] Reject specific changes
+- [ ] Create new version from diff selection
+- [ ] Conflict resolution UI (if both versions modified)
+
+### 11.4 Integration & Testing (2h)
+
+- [ ] Add "Compare Versions" button to version history panel
+- [ ] Keyboard shortcut: `Ctrl+D` to toggle diff mode
+- [ ] Toast notifications for diff calculations
+- [ ] Loading states for large diffs
+- [ ] Error handling: version not found, no annotations
+- [ ] E2E test: compare two versions, verify diff accuracy
+
+### Technical Implementation Notes
+
+**Diff Algorithm**:
+```python
+def calculate_diff(version_a, version_b):
+    """
+    Compare annotations by matching logic:
+    1. Same annotation_id → Check for modifications
+    2. Similar bbox (IoU > 0.8) → Mark as modified
+    3. No match → New annotation (added/removed)
+    """
+    added = []
+    removed = []
+    modified = []
+    unchanged = []
+
+    for ann_b in version_b.annotations:
+        match = find_match(ann_b, version_a.annotations)
+        if not match:
+            added.append(ann_b)
+        elif has_changes(match, ann_b):
+            modified.append({"old": match, "new": ann_b})
+        else:
+            unchanged.append(ann_b)
+
+    for ann_a in version_a.annotations:
+        if not find_match(ann_a, version_b.annotations):
+            removed.append(ann_a)
+
+    return {"added": added, "removed": removed, ...}
+```
+
+**Canvas Rendering**:
+```typescript
+// Render diff overlays
+annotations.forEach(ann => {
+  const color = getDiffColor(ann.diffStatus);
+  drawBBox(ann.bbox, color, opacity);
+  if (ann.diffStatus === 'modified') {
+    drawComparisonArrow(ann.oldBbox, ann.newBbox);
+  }
+});
+```
+
+**Performance Considerations**:
+- Lazy load diff data (only calculate when requested)
+- Incremental diff (only compare changed images)
+- Web Worker for diff calculation (large datasets)
+- Virtual scrolling for image list with changes
+
+**Total**: 18-22h
+**Priority**: High (valuable for QA and team collaboration)
+**Dependencies**: Phase 4 (Version Management) complete
+
+**Files to Create**:
+- `backend/app/api/v1/endpoints/version_diff.py`
+- `backend/app/services/diff_service.py`
+- `frontend/components/annotation/VersionDiffPanel.tsx`
+- `frontend/components/annotation/DiffCanvas.tsx`
+- `frontend/lib/utils/diffCalculator.ts`
+
+**Files to Modify**:
+- `frontend/components/annotation/RightPanel.tsx` (add diff tab)
+- `backend/app/api/v1/router.py` (register diff endpoints)
+- `frontend/lib/stores/annotationStore.ts` (add diff state)
+
+---
+
+## Phase 12: AI Integration ⏸️ PENDING
 
 **Duration**: Weeks 13-14 (60h)
 **Status**: Pending
 
-### 10.1 Auto-Annotation (20h)
+### 12.1 Auto-Annotation (20h)
 - [ ] Model integration (YOLOv8, SAM)
 - [ ] Auto-detect objects in image
 - [ ] Confidence scores and filtering
 
-### 10.2 Smart Assist (15h)
+### 12.2 Smart Assist (15h)
 - [ ] Object proposals
 - [ ] Edge snapping
 - [ ] Similar object detection
 
-### 10.3 Model Training (25h)
+### 12.3 Model Training (25h)
 - [ ] Export to training format
 - [ ] Integration with training pipeline
 - [ ] Model versioning
@@ -1040,27 +1242,27 @@ async def get_current_user(...):
 
 ---
 
-## Phase 11: Polish & Optimization ⏸️ PENDING
+## Phase 13: Polish & Optimization ⏸️ PENDING
 
 **Duration**: Week 15 (40h)
 **Status**: Pending
 
-### 11.1 Performance (10h)
+### 13.1 Performance (10h)
 - [ ] Frontend bundle optimization
 - [ ] Lazy loading components
 - [ ] Image preloading
 
-### 11.2 UX Improvements (15h)
+### 13.2 UX Improvements (15h)
 - [ ] Keyboard shortcut guide
 - [ ] Onboarding tour
 - [ ] Error handling polish
 
-### 11.3 Testing & QA (15h)
+### 13.3 Testing & QA (15h)
 - [ ] E2E test coverage
 - [ ] Load testing
 - [ ] Bug fixes
 
-**Dependencies**: Phase 10 completion
+**Dependencies**: Phase 12 completion
 
 ---
 
