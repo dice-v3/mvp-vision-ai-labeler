@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth/context';
 import { listDatasets, updateDataset } from '@/lib/api/datasets';
 import { getProjectForDataset, getDatasetImages, getDatasetSize, type DatasetImage, type DatasetSize } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
-import { getProjectStats } from '@/lib/api/projects';
+import { getProjectStats, type ProjectStats } from '@/lib/api/projects';
 import { listPermissions, inviteUser, updateUserRole, removeUser, type Permission } from '@/lib/api/permissions';
 import type { Dataset, Project } from '@/lib/types';
 import { toast } from '@/lib/stores/toastStore';
@@ -152,7 +152,12 @@ export default function DashboardPage() {
         })
       ];
 
-      const [statsResponse, historyData, imagesData, sizeData] = await Promise.all(projectApiCalls);
+      const [statsResponse, historyData, imagesData, sizeData] = await Promise.all(projectApiCalls) as [
+        ProjectStats | null,
+        AnnotationHistory[],
+        DatasetImage[],
+        DatasetSize | null
+      ];
 
       // Process stats
       if (statsResponse && projectData.task_types && projectData.task_types.length > 0) {
@@ -160,7 +165,7 @@ export default function DashboardPage() {
         let maxProgress = -1;
         let bestTask = projectData.task_types[0];
 
-        for (const taskStat of statsResponse.task_stats) {
+        for (const taskStat of (statsResponse as ProjectStats).task_stats) {
           const completedCount = taskStat.completed + taskStat.confirmed;
           const total = taskStat.total_images;
           const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;

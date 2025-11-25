@@ -116,6 +116,8 @@ export interface Project {
   // REFACTORING: Task-based classes structure (legacy classes field removed)
   taskClasses: Record<string, Record<string, ClassInfo>>;  // {task_type: {class_id: ClassInfo}}
   taskConfig: Record<string, any>;
+  // Backward compatibility: API still returns classes field
+  classes?: Record<string, ClassInfo>;
 }
 
 export interface ClassInfo {
