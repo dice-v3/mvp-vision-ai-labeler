@@ -2,7 +2,7 @@
 
 **Project**: Vision AI Labeler - Annotation Interface
 **Start Date**: 2025-11-14
-**Last Updated**: 2025-11-25
+**Last Updated**: 2025-11-25 (Late Night)
 
 ---
 
@@ -819,10 +819,18 @@ Cloudflare R2 (Image Storage)
 - `docs/deployment/railway_frontend_deployment.md`
 - `docs/deployment/deployment_checklist.md`
 - `frontend/.env.production.template`
+- `backend/check_db.py` (User DB 연결 확인 유틸리티)
+- `backend/init_db.py` (테스트 사용자 초기화 스크립트)
+- `docs/r2-cors-config.json` (R2 CORS 정책 설정 파일)
 
 **Files Modified**:
-- `backend/.env` (CORS origins comment update)
+- `backend/.env` (CORS origins + User DB configuration fix)
 - `frontend/.gitignore` (.env.production added)
+
+**Post-Deployment Issues Fixed** (2025-11-25 Late Night):
+- [x] User DB configuration error (port 5432 → 5433, name platform → users)
+- [x] R2 CORS policy configuration for Railway frontend
+- [x] Database utility scripts for troubleshooting
 
 **Benefits**:
 - ✅ 84% cost reduction (~$40 → ~$6.5/month)
@@ -1079,6 +1087,90 @@ async def get_current_user(...):
 ---
 
 ## Session Notes (Recent)
+
+### 2025-11-25 (Late Night): Phase 9.4 Railway Deployment Troubleshooting & R2 CORS ✅
+
+**Task**: Railway 배포 테스트 및 인증/CORS 문제 해결
+
+**Status**: ✅ Complete (~3 hours implementation time)
+
+**Context**: Phase 9.4 완료 후 Railway 배포 테스트 중 401 인증 오류 및 R2 CORS 문제 발견
+
+**Problems Discovered**:
+1. **401 Authentication Error**: Railway/Local frontend 모두 `admin@example.com / admin123` 로그인 실패
+2. **User DB Configuration Error**: `.env` 파일의 User DB 설정이 잘못됨
+3. **R2 CORS Policy Missing**: Railway frontend에서 R2 이미지 로드 실패 (CORS 차단)
+
+**Root Causes Identified**:
+1. **User DB Port Mismatch**: `.env`에서 port 5432로 설정, 실제 Docker 컨테이너는 port 5433에서 실행
+2. **User DB Name Mismatch**: `.env`에서 "platform" DB, 실제 Docker 컨테이너는 "users" DB 사용
+3. **R2 CORS Not Configured**: Cloudflare R2 버킷에 Railway frontend URL CORS 정책 미설정
+
+**Implementation Summary**:
+
+1. **User DB Configuration Fix** (1h)
+   ```bash
+   # backend/.env
+   USER_DB_PORT=5432 → 5433  # Docker container port mapping
+   USER_DB_NAME=platform → users  # Actual database name in container
+   ```
+   - Docker 컨테이너 확인: `platform-postgres-user-tier0` (port 5433)
+   - Database 확인: `psql -h localhost -p 5433 -U admin -l`
+   - Admin 사용자 확인: `check_db.py` 스크립트로 검증 (5명 사용자 존재)
+
+2. **Database Utilities Created** (1h)
+   - `backend/check_db.py`: User DB 연결 및 사용자 확인 유틸리티
+   - `backend/init_db.py`: 테스트 사용자 초기화 스크립트
+   - 두 스크립트 모두 포트 설정 오류 디버깅에 활용
+
+3. **R2 CORS Configuration** (1h)
+   - `docs/r2-cors-config.json` 생성: Railway frontend URL 포함 CORS 정책
+   ```json
+   {
+     "AllowedOrigins": [
+       "http://localhost:3000",
+       "http://localhost:3001",
+       "http://localhost:3010",
+       "https://mvp-vision-ai-labeler-production.up.railway.app"
+     ],
+     "AllowedMethods": ["GET", "HEAD"],
+     "AllowedHeaders": ["*"],
+     "MaxAgeSeconds": 3600
+   }
+   ```
+   - Cloudflare 대시보드에서 수동 설정 필요 (wrangler CLI 미설치)
+
+4. **Branch Management**
+   - `production` 브랜치에서 변경사항 커밋 및 푸시
+   - `develop` 브랜치로 병합 (91 files changed)
+
+**Files Created**:
+- `backend/check_db.py` (DB 연결 및 사용자 확인 유틸리티)
+- `backend/init_db.py` (테스트 사용자 초기화 스크립트)
+- `docs/r2-cors-config.json` (R2 CORS 정책 설정 파일)
+
+**Files Modified** (`.env` - gitignored):
+- `backend/.env`:
+  - `USER_DB_PORT`: 5432 → 5433
+  - `USER_DB_NAME`: platform → users
+
+**Key Learnings**:
+- Docker 컨테이너 포트 매핑 확인 중요 (host:5433 → container:5432)
+- 데이터베이스 이름은 `docker exec` 명령으로 확인 가능 (`psql -l`)
+- R2 CORS 정책은 프론트엔드 배포 시 반드시 설정 필요
+- Railway 배포 시 환경 변수 검증 스크립트가 유용함
+
+**Next Steps**:
+- Cloudflare 대시보드에서 R2 버킷 CORS 정책 적용
+  - `training-datasets` 버킷
+  - `annotations` 버킷
+- Railway 프론트엔드에서 이미지 로드 테스트
+
+**Phase 9 Progress**: 34/46h = 74% (Phase 9.1, 9.3, 9.4 complete, troubleshooting done)
+
+**Git Commits**:
+- `bad16f4`: Add R2 CORS configuration and database utilities for Railway deployment
+- `bd770be`: Merge production branch to develop
 
 ### 2025-11-25 (PM - Late): Phase 9.5 Railway Performance Optimization ✅
 
