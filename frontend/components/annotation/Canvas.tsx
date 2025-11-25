@@ -19,7 +19,6 @@ import { toast } from '@/lib/stores/toastStore';
 import { confirm } from '@/lib/stores/confirmStore';
 import { ArrowUturnLeftIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 import Magnifier from './Magnifier';
-import Minimap from './Minimap';
 // Phase 8.5.2: Image Locks
 import { imageLockAPI } from '@/lib/api/image-locks';
 import type { LockAcquireResponse } from '@/lib/api/image-locks';
@@ -59,6 +58,7 @@ export default function Canvas() {
     setCurrentIndex,
     currentTask, // Phase 2.9
     deleteAnnotation,
+    updateAnnotation: updateAnnotationStore, // Phase 2.10: For undo/redo history
     // Multi-image selection
     selectedImageIds,
     clearImageSelection,
@@ -70,6 +70,8 @@ export default function Canvas() {
     redo,
     canUndo,
     canRedo,
+    // Phase 2.10.3: Minimap state
+    showMinimap,
   } = useAnnotationStore();
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -123,8 +125,10 @@ export default function Canvas() {
   const [circleResizeStart, setCircleResizeStart] = useState<{ x: number; y: number; radius: number; handle: string } | null>(null);
   const [selectedCircleHandle, setSelectedCircleHandle] = useState<string | null>(null);
 
-  // Phase 2.10.3: Minimap state
-  const [showMinimap, setShowMinimap] = useState(true);
+  // Phase 2.10.3: Store canvas refs for Minimap in RightPanel
+  useEffect(() => {
+    useAnnotationStore.setState({ canvasRef, imageRef });
+  }, []);
 
   // Helper to set selectedVertexIndex in store
   const setSelectedVertexIndex = (index: number | null) => {
@@ -134,6 +138,13 @@ export default function Canvas() {
   // Helper to set selectedBboxHandle in store
   const setSelectedBboxHandle = (handle: string | null) => {
     useAnnotationStore.setState({ selectedBboxHandle: handle });
+  };
+
+  // Phase 2.10: Helper to update annotation with history recording
+  const updateAnnotationWithHistory = async (annotationId: string, updateData: AnnotationUpdateRequest) => {
+    await updateAnnotation(annotationId, updateData);
+    // Update store to trigger history recording
+    updateAnnotationStore(annotationId, { geometry: updateData.geometry });
   };
 
   // Phase 2.10.2: Helper to check if current tool is a drawing tool
@@ -146,11 +157,6 @@ export default function Canvas() {
   const shouldShowMagnifier =
     manualMagnifierActive || // Z key pressed
     (isDrawingTool(tool) && preferences.autoMagnifier); // Auto mode
-
-  // Phase 2.10.3: Minimap viewport change handler
-  const handleMinimapViewportChange = (x: number, y: number) => {
-    setPan({ x, y });
-  };
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -382,7 +388,6 @@ export default function Canvas() {
       const interval = setInterval(async () => {
         try {
           await imageLockAPI.sendHeartbeat(project.id, currentImage.id);
-          console.log('[Lock] Heartbeat sent');
         } catch (error) {
           console.error('[Lock] Heartbeat failed:', error);
           toast.error('Lost lock on image');
@@ -421,7 +426,6 @@ export default function Canvas() {
 
       // Phase 8.5.2: Release lock using captured IDs
       if (lockAcquired) {
-        console.log('[Lock] Releasing lock for image:', capturedImageId);
         imageLockAPI.releaseLock(capturedProjectId, capturedImageId)
           .then(() => {
             // Phase 8.5.2: Update project locks immediately for real-time sync
@@ -1456,6 +1460,9 @@ export default function Canvas() {
 
     // Phase 2.10.2: Update cursor position for magnifier
     setCursorPos({ x, y });
+    if (shouldShowMagnifier) {
+      console.log('[Canvas] Mouse moved to:', { x, y });
+    }
 
     // Update cursor style based on position (before setCursor to avoid render race)
     if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
@@ -2164,10 +2171,7 @@ export default function Canvas() {
 
   // Handle class selection (supports batch operation for classification)
   const handleClassSelect = async (classId: string, className: string) => {
-    console.log('[handleClassSelect] Called with:', classId, className);
-
     if (!project) {
-      console.log('[handleClassSelect] No project - returning early');
       return;
     }
 
@@ -2181,15 +2185,6 @@ export default function Canvas() {
 
     // Check if this is a batch classification operation
     const isBatchClassification = !hasPendingGeometry && selectedImageIds.length > 0;
-
-    console.log('[handleClassSelect] Batch check:', {
-      isBatchClassification,
-      pendingBbox,
-      hasPendingPolygon,
-      hasPendingPolyline,
-      hasPendingCircle,
-      selectedImageIdsLength: selectedImageIds.length
-    });
 
     if (isBatchClassification) {
       // Batch classification for multiple selected images
@@ -2210,12 +2205,10 @@ export default function Canvas() {
           // Delete existing classification annotations for this image
           // Safety: Double-check we're only deleting classification annotations
           const existingAnnotations = await getProjectAnnotations(project.id, imageId);
-          console.log(`[handleClassSelect] Image ${imageId}: Found ${existingAnnotations.length} total annotations`);
 
           const classificationAnnotations = existingAnnotations.filter(
             ann => ann.annotation_type === 'classification'
           );
-          console.log(`[handleClassSelect] Image ${imageId}: Filtering to ${classificationAnnotations.length} classification annotations`);
 
           for (const ann of classificationAnnotations) {
             // Final safety check before delete
@@ -2224,7 +2217,6 @@ export default function Canvas() {
               continue; // Skip this annotation
             }
 
-            console.log(`[handleClassSelect] Deleting classification annotation ${ann.id}`);
             await deleteAnnotationAPI(ann.id);
             if (imageId === currentImage?.id) {
               deleteAnnotation(ann.id);
@@ -2241,38 +2233,45 @@ export default function Canvas() {
             class_name: className,
           };
 
-          const savedAnnotation = await createAnnotation(annotationData);
+          // Phase 8.5.2: Try to create annotation, skip if locked by another user
+          try {
+            const savedAnnotation = await createAnnotation(annotationData);
 
-          // If this is the current image, add to store
-          if (imageId === currentImage?.id) {
-            addAnnotation({
-              id: savedAnnotation.id.toString(),
-              projectId: project.id,
-              imageId: imageId,
-              annotationType: 'classification',
-              classId: classId,
-              className: className,
-              geometry: { type: 'classification' },
-              confidence: savedAnnotation.confidence,
-              attributes: savedAnnotation.attributes,
-              createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
-              updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
-            });
+            // If this is the current image, add to store
+            if (imageId === currentImage?.id) {
+              addAnnotation({
+                id: savedAnnotation.id.toString(),
+                projectId: project.id,
+                imageId: imageId,
+                annotationType: 'classification',
+                classId: classId,
+                className: className,
+                geometry: { type: 'classification' },
+                confidence: savedAnnotation.confidence,
+                attributes: savedAnnotation.attributes,
+                createdAt: savedAnnotation.created_at ? new Date(savedAnnotation.created_at) : undefined,
+                updatedAt: savedAnnotation.updated_at ? new Date(savedAnnotation.updated_at) : undefined,
+              });
+            }
+
+            // Update image status
+            useAnnotationStore.setState((state) => ({
+              images: state.images.map(img =>
+                img.id === imageId
+                  ? {
+                      ...img,
+                      annotation_count: 1,
+                      is_confirmed: false,
+                      status: 'in-progress',
+                    }
+                  : img
+              )
+            }));
+          } catch (lockError: any) {
+            // Image is locked by another user, skip this image
+            console.warn(`Skipping image ${imageId}: ${lockError.message}`);
+            // Don't throw, just continue to next image
           }
-
-          // Update image status
-          useAnnotationStore.setState((state) => ({
-            images: state.images.map(img =>
-              img.id === imageId
-                ? {
-                    ...img,
-                    annotation_count: 1,
-                    is_confirmed: false,
-                    status: 'in-progress',
-                  }
-                : img
-            )
-          }));
         }
 
         setBatchProgress(null);
@@ -2305,13 +2304,6 @@ export default function Canvas() {
       delete (window as any).__pendingPolygon;
       delete (window as any).__pendingPolyline;
       delete (window as any).__pendingCircle;
-
-      console.log('[handleClassSelect] Pending states:', {
-        pendingPolyline,
-        pendingCircle,
-        pendingPolygon,
-        pendingBbox,
-      });
 
       // Check if this is for bbox, polygon, polyline, circle, or classification
       if (pendingPolyline) {
@@ -2433,8 +2425,6 @@ export default function Canvas() {
         const existingClassifications = annotations.filter(
           ann => ann.annotationType === 'classification'
         );
-        console.log(`[handleClassSelect] Single classification: Found ${existingClassifications.length} existing classification annotations`);
-
         for (const ann of existingClassifications) {
           // Final safety check before delete
           if (ann.annotationType !== 'classification') {
@@ -2442,7 +2432,6 @@ export default function Canvas() {
             continue; // Skip this annotation
           }
 
-          console.log(`[handleClassSelect] Deleting single classification annotation ${ann.id}`);
           await deleteAnnotationAPI(ann.id);
           deleteAnnotation(ann.id);
         }
@@ -2457,7 +2446,9 @@ export default function Canvas() {
         class_name: className,
       };
 
-      // Save to backend
+      // Phase 8.5.2: Backend now auto-acquires/refreshes locks
+      // No need for complex retry logic - just save the annotation
+      // Backend will handle lock management automatically
       const savedAnnotation = await createAnnotation(annotationData);
 
       // Add to store (use savedAnnotation data from backend)
@@ -2848,8 +2839,10 @@ export default function Canvas() {
 
       // Phase 2.10.3: Minimap toggle (M key)
       if (e.key === 'm' && !e.ctrlKey && !e.metaKey) {
-        setShowMinimap((prev) => !prev);
-        toast.success(`Minimap ${!showMinimap ? 'shown' : 'hidden'}`);
+        const currentShowMinimap = useAnnotationStore.getState().showMinimap;
+        const newShowMinimap = !currentShowMinimap;
+        useAnnotationStore.setState({ showMinimap: newShowMinimap });
+        toast.success(`Minimap ${newShowMinimap ? 'shown' : 'hidden'}`);
         return;
       }
 
@@ -3035,19 +3028,13 @@ export default function Canvas() {
           newW = Math.round(newW * 100) / 100;
           newH = Math.round(newH * 100) / 100;
 
-          // Update annotation in store
-          useAnnotationStore.setState({
-            annotations: annotations.map(ann =>
-              ann.id === selectedAnnotationId
-                ? {
-                    ...ann,
-                    geometry: {
-                      ...ann.geometry,
-                      bbox: [newX, newY, newW, newH],
-                    },
-                  }
-                : ann
-            ),
+          // Update annotation in store (with history recording)
+          const updatedGeometry = {
+            type: 'bbox' as const,
+            bbox: [newX, newY, newW, newH] as [number, number, number, number],
+          };
+          updateAnnotationStore(selectedAnnotationId, {
+            geometry: updatedGeometry,
           });
 
           // Save to backend
@@ -3145,20 +3132,14 @@ export default function Canvas() {
           center[1] = Math.round(center[1] * 100) / 100;
           radius = Math.round(radius * 100) / 100;
 
-          // Update annotation in store
-          useAnnotationStore.setState({
-            annotations: annotations.map(ann =>
-              ann.id === selectedAnnotationId
-                ? {
-                    ...ann,
-                    geometry: {
-                      ...ann.geometry,
-                      center,
-                      radius,
-                    },
-                  }
-                : ann
-            ),
+          // Update annotation in store (with history recording)
+          const updatedCircleGeometry = {
+            type: 'circle' as const,
+            center: center as [number, number],
+            radius,
+          };
+          updateAnnotationStore(selectedAnnotationId, {
+            geometry: updatedCircleGeometry,
           });
 
           // Save to backend
@@ -3232,22 +3213,16 @@ export default function Canvas() {
               break;
           }
 
-          // Update annotation in store
+          // Update annotation in store (with history recording)
           const newPoints = [...points];
           newPoints[selectedVertexIndex] = [newX, newY];
 
-          useAnnotationStore.setState({
-            annotations: annotations.map(ann =>
-              ann.id === selectedAnnotationId
-                ? {
-                    ...ann,
-                    geometry: {
-                      ...ann.geometry,
-                      points: newPoints,
-                    },
-                  }
-                : ann
-            ),
+          const updatedPolygonGeometry = {
+            type: 'polygon' as const,
+            points: newPoints,
+          };
+          updateAnnotationStore(selectedAnnotationId, {
+            geometry: updatedPolygonGeometry,
           });
 
           // Save to backend (debounced would be better, but for now immediate)
@@ -3309,19 +3284,13 @@ export default function Canvas() {
           // Remove the selected vertex
           const newPoints = points.filter((_, i) => i !== selectedVertexIndex);
 
-          // Update annotation in store
-          useAnnotationStore.setState({
-            annotations: annotations.map(ann =>
-              ann.id === selectedAnnotationId
-                ? {
-                    ...ann,
-                    geometry: {
-                      ...ann.geometry,
-                      points: newPoints,
-                    },
-                  }
-                : ann
-            ),
+          // Update annotation in store (with history recording)
+          const updatedPolyGeometry = {
+            type: geometryType as 'polygon' | 'polyline',
+            points: newPoints,
+          };
+          updateAnnotationStore(selectedAnnotationId, {
+            geometry: updatedPolyGeometry,
           });
 
           // Save to backend
@@ -3816,20 +3785,7 @@ export default function Canvas() {
         />
       )}
 
-      {/* Phase 2.10.3: Minimap */}
-      {showMinimap && image && (
-        <Minimap
-          canvasRef={canvasRef}
-          imageRef={imageRef}
-          annotations={annotations}
-          viewport={{
-            x: canvasState.pan.x,
-            y: canvasState.pan.y,
-            scale: canvasState.zoom,
-          }}
-          onViewportChange={handleMinimapViewportChange}
-        />
-      )}
+      {/* Phase 2.10.3: Minimap moved to RightPanel */}
 
       {/* Class Selector Modal */}
       <ClassSelectorModal

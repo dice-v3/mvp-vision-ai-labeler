@@ -1,6 +1,6 @@
 """Authentication endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_user_db
@@ -9,6 +9,12 @@ from app.db.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
 
 router = APIRouter()
+
+
+@router.options("/login")
+async def login_options():
+    """Handle OPTIONS preflight request for login."""
+    return Response(status_code=200)
 
 
 @router.post("/login", response_model=TokenResponse, tags=["Authentication"])

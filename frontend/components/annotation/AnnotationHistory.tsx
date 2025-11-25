@@ -26,9 +26,6 @@ export default function AnnotationHistory() {
       setLoading(true);
       const result = await listVersions(project.id);
 
-      console.log('[AnnotationHistory] All versions:', result.versions);
-      console.log('[AnnotationHistory] Current task:', currentTask);
-
       // Phase 2.9: Filter versions by current task type
       const publishedVersions = result.versions
         .filter((v) => v.version_type === 'published')
@@ -36,13 +33,11 @@ export default function AnnotationHistory() {
           // Show version if: no task selected OR task matches
           // Note: versions without task_type are legacy and should only show when no task is selected
           const shouldShow = !currentTask || v.task_type === currentTask;
-          console.log(`[AnnotationHistory] Version ${v.version_number}: task_type=${v.task_type}, currentTask=${currentTask}, shouldShow=${shouldShow}`);
           return shouldShow;
         })
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 3); // Show only latest 3
 
-      console.log('[AnnotationHistory] Filtered published versions:', publishedVersions);
       setVersions(publishedVersions);
     } catch (error) {
       console.error('Failed to load versions:', error);

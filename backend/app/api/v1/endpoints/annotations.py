@@ -48,9 +48,18 @@ def check_image_lock(
     """
     Check if user has lock on the image.
 
-    Raises HTTPException if:
-    - Image is locked by another user
-    - Image is not locked at all (strict lock policy)
+    Auto-acquires/refreshes lock if:
+    - No lock exists (user gets the lock automatically)
+    - Lock exists for the same user (auto-refresh)
+
+    Raises HTTPException only if:
+    - Image is locked by a DIFFERENT user
+
+    This ensures smooth single-user workflows while still protecting
+    against concurrent edits by multiple users.
+
+    NOTE: This function will flush changes but NOT commit.
+    The calling endpoint is responsible for committing the transaction.
     """
     # Cleanup expired locks first
     ImageLockService.cleanup_expired_locks(db)
@@ -59,16 +68,37 @@ def check_image_lock(
     lock = ImageLockService.get_lock_status(db, project_id, image_id)
 
     if not lock:
-        raise HTTPException(
-            status_code=status.HTTP_423_LOCKED,
-            detail=f"Image {image_id} is not locked. Please acquire lock before editing.",
-        )
+        # No lock exists - auto-acquire for this user
+        # This prevents usability issues in single-user workflows
+        ImageLockService.acquire_lock(db, project_id, image_id, user_id)
+        db.flush()  # Flush but don't commit - let endpoint handle commit
+        return
 
     if lock['user_id'] != user_id:
+        # Locked by another user - reject the request
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail=f"Image {image_id} is locked by another user. Cannot edit.",
         )
+
+    # Lock exists for the same user - refresh it automatically
+    # Directly update the lock without committing
+    from datetime import datetime, timedelta
+    from app.db.models.labeler import ImageLock
+    from sqlalchemy import and_
+
+    lock_obj = db.query(ImageLock).filter(
+        and_(
+            ImageLock.project_id == project_id,
+            ImageLock.image_id == image_id,
+        )
+    ).first()
+
+    if lock_obj:
+        now = datetime.utcnow()
+        lock_obj.heartbeat_at = now
+        lock_obj.expires_at = now + timedelta(minutes=5)
+        db.flush()  # Flush but don't commit - let endpoint handle commit
 
 
 async def create_history_entry(

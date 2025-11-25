@@ -21,11 +21,12 @@ class CustomRequest(StarletteRequest):
 
     async def form(self) -> FormData:
         """Override form() to increase max_fields limit."""
+        # Skip form parsing for non-multipart requests (like OPTIONS)
+        content_type = self.headers.get("content-type", "")
+        if not ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type):
+            return FormData()
+
         if not hasattr(self, "_form"):
-            assert (
-                "multipart/form-data" in self.headers.get("content-type", "")
-                or "application/x-www-form-urlencoded" in self.headers.get("content-type", "")
-            )
             from starlette.formparsers import MultiPartParser
 
             # Increase max_fields from default 1000 to 50000
@@ -54,18 +55,21 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Override request class
-app.router.request_class = CustomRequest
-
-
-# CORS Configuration
+# CORS Configuration - MUST be added BEFORE request class override
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
+
+# Override request class AFTER adding middleware
+# CustomRequest now properly handles OPTIONS requests
+# TEMPORARY: Disabled due to CORS conflict - investigating alternative solutions
+# app.router.request_class = CustomRequest
 
 
 # Include API routers

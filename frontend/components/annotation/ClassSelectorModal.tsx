@@ -32,8 +32,6 @@ export default function ClassSelectorModal({
   const taskClasses = getCurrentClasses();
   const classes = taskClasses ? Object.entries(taskClasses) : [];
 
-  console.log('[ClassSelectorModal] Task classes:', taskClasses, 'Entries:', classes.length);
-
   // Sort classes by order, then filter by search
   const sortedClasses = [...classes].sort(
     (a, b) => ((a[1] as any).order || 0) - ((b[1] as any).order || 0)
@@ -72,7 +70,6 @@ export default function ClassSelectorModal({
           e.preventDefault();
           if (filteredClasses.length > 0) {
             const [classId, classInfo] = filteredClasses[selectedIndex];
-            console.log('[ClassSelectorModal] onSelect called (Enter):', classId, classInfo.name);
             onSelect(classId, classInfo.name);
           }
           break;
@@ -94,7 +91,6 @@ export default function ClassSelectorModal({
           const index = parseInt(e.key) - 1;
           if (index < filteredClasses.length) {
             const [classId, classInfo] = filteredClasses[index];
-            console.log('[ClassSelectorModal] onSelect called (number key):', classId, classInfo.name);
             onSelect(classId, classInfo.name);
           }
           break;
@@ -189,7 +185,6 @@ export default function ClassSelectorModal({
                   e.stopPropagation();
                   if (filteredClasses.length > 0) {
                     const [classId, classInfo] = filteredClasses[selectedIndex];
-                    console.log('[ClassSelectorModal] onSelect called (Enter in input):', classId, classInfo.name);
                     onSelect(classId, classInfo.name);
                   }
                   break;
@@ -212,7 +207,6 @@ export default function ClassSelectorModal({
                 <button
                   key={classId}
                   onClick={() => {
-                    console.log('[ClassSelectorModal] onSelect called:', classId, classInfo.name);
                     onSelect(classId, classInfo.name);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${

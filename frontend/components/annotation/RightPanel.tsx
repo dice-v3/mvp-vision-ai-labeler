@@ -18,6 +18,7 @@ import AddClassModal from './AddClassModal';
 import AnnotationHistory from './AnnotationHistory';
 import { getProjectById } from '@/lib/api/projects';
 import { reorderClasses } from '@/lib/api/classes';
+import Minimap from './Minimap';
 
 export default function RightPanel() {
   const {
@@ -35,6 +36,13 @@ export default function RightPanel() {
     images,
     getCurrentClasses, // Phase 2.9: Get task-specific classes
     currentTask,
+    // Phase 2.10.3: Minimap support
+    canvasRef,
+    imageRef,
+    canvas: canvasState,
+    setPan,
+    showMinimap,
+    currentImage,
   } = useAnnotationStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -42,6 +50,11 @@ export default function RightPanel() {
   const [classStats, setClassStats] = useState<Record<string, { bboxCount: number; imageCount: number }>>({});
   const [isReordering, setIsReordering] = useState(false);
   const [focusedClassId, setFocusedClassId] = useState<string | null>(null);
+
+  // Phase 2.10.3: Minimap viewport change handler
+  const handleMinimapViewportChange = (x: number, y: number) => {
+    setPan({ x, y });
+  };
 
   // Get sorted classes by order
   const getSortedClasses = () => {
@@ -175,32 +188,75 @@ export default function RightPanel() {
     setConfirmingId(annotationId);
     try {
       const isConfirmed = currentState === 'confirmed';
+      console.log('[handleConfirmToggle] Starting:', { annotationId, currentState, isConfirmed });
 
+      let response;
       if (isConfirmed) {
         // Unconfirm: confirmed → draft
-        await unconfirmAnnotation(annotationId);
+        response = await unconfirmAnnotation(annotationId);
+        console.log('[handleConfirmToggle] Unconfirm response:', response);
       } else {
         // Confirm: draft → confirmed
-        await confirmAnnotation(annotationId);
+        response = await confirmAnnotation(annotationId);
+        console.log('[handleConfirmToggle] Confirm response:', response);
       }
 
-      // Update local state
+      // Update local state with response data
       const updatedAnnotations = annotations.map(ann =>
         ann.id === annotationId
           ? {
               ...ann,
-              annotation_state: isConfirmed ? 'draft' : 'confirmed',
-              confirmed_at: isConfirmed ? undefined : new Date().toISOString(),
+              annotation_state: response.annotation_state,
+              confirmed_at: response.confirmed_at,
+              confirmed_by: response.confirmed_by,
+              confirmed_by_name: response.confirmed_by_name,
             }
           : ann
       );
 
-      // Update store (we'll need to add this function to the store)
+      console.log('[handleConfirmToggle] Updated annotation:', updatedAnnotations.find(a => a.id === annotationId));
+
+      // Update store
       useAnnotationStore.setState({ annotations: updatedAnnotations });
 
-    } catch (err) {
-      console.error('Failed to toggle confirmation:', err);
-      // TODO: Show error toast
+      // Phase 2.7: Update image status in the image list
+      // After confirm/unconfirm, recalculate the current image's status based on updated annotations
+      if (currentImage?.id) {
+        // Check if all annotations for this image are confirmed
+        const imageAnnotations = updatedAnnotations.filter(ann => ann.imageId === currentImage.id);
+        const allConfirmed = imageAnnotations.length > 0 && imageAnnotations.every(ann => (ann as any).annotation_state === 'confirmed');
+        const imageStatus = allConfirmed ? 'completed' : (imageAnnotations.length > 0 ? 'in-progress' : 'not-started');
+
+        console.log('[handleConfirmToggle] Calculated image status:', {
+          imageId: currentImage.id,
+          totalAnnotations: imageAnnotations.length,
+          allConfirmed,
+          imageStatus,
+        });
+
+        // Update the image in the store
+        useAnnotationStore.setState((state) => ({
+          images: state.images.map(img =>
+            img.id === currentImage.id
+              ? {
+                  ...img,
+                  is_confirmed: allConfirmed,
+                  status: imageStatus,
+                  annotation_count: imageAnnotations.length,
+                }
+              : img
+          )
+        }));
+      }
+
+      // Show success toast
+      const { toast } = await import('@/lib/stores/toastStore');
+      toast.success(isConfirmed ? 'Annotation unconfirmed' : 'Annotation confirmed');
+
+    } catch (err: any) {
+      console.error('[handleConfirmToggle] ERROR:', err);
+      const { toast } = await import('@/lib/stores/toastStore');
+      toast.error(`Failed to ${currentState === 'confirmed' ? 'unconfirm' : 'confirm'} annotation: ${err.message || 'Unknown error'}`);
     } finally {
       setConfirmingId(null);
     }
@@ -301,6 +357,17 @@ export default function RightPanel() {
           // Phase 2.7: Get annotation state
           const annotationState = (ann as any).annotation_state || (ann as any).annotationState || 'draft';
           const isConfirmed = annotationState === 'confirmed';
+
+          // Debug log
+          if (ann.id === 2004) {
+            console.log('[RightPanel] Annotation 2004:', {
+              annotation_state: (ann as any).annotation_state,
+              annotationState: (ann as any).annotationState,
+              computed_annotationState: annotationState,
+              isConfirmed,
+              ann
+            });
+          }
 
           return (
             <div
@@ -566,6 +633,25 @@ export default function RightPanel() {
 
       {/* Annotation Versions Section */}
       <AnnotationHistory />
+
+      {/* Phase 2.10.3: Minimap */}
+      {showMinimap && canvasRef && imageRef && currentImage && (
+        <div className="border-t border-gray-300 dark:border-gray-700 p-3">
+          <Minimap
+            canvasRef={canvasRef}
+            imageRef={imageRef}
+            annotations={annotations}
+            viewport={{
+              x: canvasState.pan.x,
+              y: canvasState.pan.y,
+              scale: canvasState.zoom,
+            }}
+            onViewportChange={handleMinimapViewportChange}
+            width={280}
+            height={210}
+          />
+        </div>
+      )}
 
       {/* Add Class Modal */}
       {project && (
