@@ -81,45 +81,46 @@ export default function Minimap({
     const scaleY = drawHeight / image.height;
 
     annotations.forEach((annotation) => {
-      ctx.strokeStyle = annotation.color || '#8b5cf6';
+      ctx.strokeStyle = '#8b5cf6';
       ctx.lineWidth = 1;
       ctx.globalAlpha = 0.7;
 
-      if (annotation.task_type === 'detection' && annotation.bbox) {
-        const [x, y, w, h] = annotation.bbox;
+      if (annotation.geometry.type === 'bbox') {
+        const [x, y, w, h] = annotation.geometry.bbox;
         ctx.strokeRect(
           offsetX + x * scaleX,
           offsetY + y * scaleY,
           w * scaleX,
           h * scaleY
         );
-      } else if (annotation.task_type === 'polygon' && annotation.segmentation) {
-        const points = annotation.segmentation;
-        if (points.length >= 2) {
+      } else if (annotation.geometry.type === 'polygon') {
+        const points = annotation.geometry.points;
+        if (points && points.length >= 2) {
           ctx.beginPath();
-          ctx.moveTo(offsetX + points[0] * scaleX, offsetY + points[1] * scaleY);
-          for (let i = 2; i < points.length; i += 2) {
-            ctx.lineTo(offsetX + points[i] * scaleX, offsetY + points[i + 1] * scaleY);
+          ctx.moveTo(offsetX + points[0][0] * scaleX, offsetY + points[0][1] * scaleY);
+          for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(offsetX + points[i][0] * scaleX, offsetY + points[i][1] * scaleY);
           }
           ctx.closePath();
           ctx.stroke();
         }
-      } else if (annotation.task_type === 'polyline' && annotation.points) {
-        const points = annotation.points;
-        if (points.length >= 2) {
+      } else if (annotation.geometry.type === 'polyline') {
+        const points = annotation.geometry.points;
+        if (points && points.length >= 2) {
           ctx.beginPath();
-          ctx.moveTo(offsetX + points[0] * scaleX, offsetY + points[1] * scaleY);
-          for (let i = 2; i < points.length; i += 2) {
-            ctx.lineTo(offsetX + points[i] * scaleX, offsetY + points[i + 1] * scaleY);
+          ctx.moveTo(offsetX + points[0][0] * scaleX, offsetY + points[0][1] * scaleY);
+          for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(offsetX + points[i][0] * scaleX, offsetY + points[i][1] * scaleY);
           }
           ctx.stroke();
         }
-      } else if (annotation.task_type === 'circle' && annotation.circle) {
-        const { center, radius } = annotation.circle;
+      } else if (annotation.geometry.type === 'circle') {
+        const [cx, cy] = annotation.geometry.center;
+        const radius = annotation.geometry.radius;
         ctx.beginPath();
         ctx.arc(
-          offsetX + center.x * scaleX,
-          offsetY + center.y * scaleY,
+          offsetX + cx * scaleX,
+          offsetY + cy * scaleY,
           radius * Math.min(scaleX, scaleY),
           0,
           Math.PI * 2
@@ -131,12 +132,24 @@ export default function Minimap({
     ctx.globalAlpha = 1.0;
 
     // Draw viewport rectangle
+    // Canvas renders image centered, so viewport calculation must account for this
     const canvasRect = mainCanvas.getBoundingClientRect();
+
+    // Viewport size in image coordinates
     const viewportWidth = canvasRect.width / viewport.scale;
     const viewportHeight = canvasRect.height / viewport.scale;
 
-    const viewportX = offsetX + (-viewport.x / viewport.scale) * scaleX;
-    const viewportY = offsetY + (-viewport.y / viewport.scale) * scaleY;
+    // Viewport center in image coordinates (Canvas centers the image and applies pan)
+    const imageViewportCenterX = image.width / 2 - viewport.x / viewport.scale;
+    const imageViewportCenterY = image.height / 2 - viewport.y / viewport.scale;
+
+    // Viewport top-left in image coordinates
+    const imageViewportLeft = imageViewportCenterX - viewportWidth / 2;
+    const imageViewportTop = imageViewportCenterY - viewportHeight / 2;
+
+    // Convert to minimap coordinates
+    const viewportX = offsetX + imageViewportLeft * scaleX;
+    const viewportY = offsetY + imageViewportTop * scaleY;
     const viewportW = viewportWidth * scaleX;
     const viewportH = viewportHeight * scaleY;
 
@@ -201,30 +214,29 @@ export default function Minimap({
     const imageX = (clickX - offsetX) / scaleX;
     const imageY = (clickY - offsetY) / scaleY;
 
-    // Calculate viewport position to center on click
-    const canvasRect = mainCanvas.getBoundingClientRect();
-    const viewportWidth = canvasRect.width / viewport.scale;
-    const viewportHeight = canvasRect.height / viewport.scale;
-
-    const newX = -(imageX - viewportWidth / 2) * viewport.scale;
-    const newY = -(imageY - viewportHeight / 2) * viewport.scale;
+    // Calculate pan to center clicked position in viewport
+    // Canvas centers the image, so: viewportCenter = image.width/2 - pan.x/zoom
+    // To make imageX the center: image.width/2 - pan.x/zoom = imageX
+    // Therefore: pan.x = (image.width/2 - imageX) * zoom
+    const newX = (image.width / 2 - imageX) * viewport.scale;
+    const newY = (image.height / 2 - imageY) * viewport.scale;
 
     onViewportChange(newX, newY);
   };
 
   return (
-    <div className="absolute bottom-4 right-4 z-40 bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-2 border-2 border-gray-300 dark:border-gray-700">
+    <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 border border-gray-300 dark:border-gray-700">
       <canvas
         ref={minimapRef}
         width={width}
         height={height}
-        className="cursor-pointer"
+        className="cursor-pointer w-full"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       />
-      <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-2 py-1 rounded pointer-events-none">
+      <div className="absolute top-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded pointer-events-none">
         Minimap
       </div>
     </div>
