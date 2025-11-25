@@ -1,10 +1,13 @@
 """Version diff calculation service."""
 
+import json
+import boto3
+from botocore.config import Config
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 
-from app.db.models.labeler import AnnotationVersion, AnnotationSnapshot
+from app.db.models.labeler import AnnotationVersion
+from app.core.config import settings
 
 
 class VersionDiffService:
@@ -225,41 +228,64 @@ class VersionDiffService:
         }
 
     @staticmethod
-    def get_version_snapshots(
-        db: Session,
-        version_id: int
+    def get_version_annotations_from_r2(
+        project_id: str,
+        task_type: str,
+        version_number: str
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get all snapshots for a version, grouped by image_id.
+        Get annotations for a version from R2 storage, grouped by image_id.
+
+        R2 path: annotations/exports/{project_id}/{task_type}/{version_number}/annotations.json
 
         Args:
-            db: Database session
-            version_id: Version ID
+            project_id: Project ID
+            task_type: Task type (detection, classification, etc.)
+            version_number: Version number (e.g., 'v1.0')
 
         Returns:
-            Dict mapping image_id to list of snapshots
+            Dict mapping image_id to list of annotations
         """
-        # Get all snapshots for this version
-        snapshots = db.execute(
-            select(AnnotationSnapshot)
-            .where(AnnotationSnapshot.version_id == version_id)
-        ).scalars().all()
+        # Initialize S3 client for R2
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=settings.S3_ENDPOINT,
+            aws_access_key_id=settings.S3_ACCESS_KEY,
+            aws_secret_access_key=settings.S3_SECRET_KEY,
+            region_name=settings.S3_REGION,
+            config=Config(signature_version='s3v4')
+        )
 
-        # Group by image_id
-        grouped = {}
-        for snapshot in snapshots:
-            data = snapshot.snapshot_data
-            image_id = data.get('image_id')
+        # Construct R2 key
+        s3_key = f"exports/{project_id}/{task_type}/{version_number}/annotations.json"
 
-            if not image_id:
-                continue
+        try:
+            # Download annotations.json from R2
+            response = s3_client.get_object(
+                Bucket='annotations',
+                Key=s3_key
+            )
 
-            if image_id not in grouped:
-                grouped[image_id] = []
+            # Parse JSON
+            annotations_data = json.loads(response['Body'].read().decode('utf-8'))
 
-            grouped[image_id].append(data)
+            # Group by image_id
+            grouped = {}
+            for ann in annotations_data:
+                image_id = ann.get('image_id')
 
-        return grouped
+                if not image_id:
+                    continue
+
+                if image_id not in grouped:
+                    grouped[image_id] = []
+
+                grouped[image_id].append(ann)
+
+            return grouped
+
+        except Exception as e:
+            raise ValueError(f"Failed to load version {version_number} from R2: {str(e)}")
 
     @staticmethod
     def calculate_version_diff(
@@ -293,9 +319,17 @@ class VersionDiffService:
         if version_a.task_type != version_b.task_type:
             raise ValueError("Versions must have the same task type")
 
-        # Get snapshots
-        snapshots_a = VersionDiffService.get_version_snapshots(db, version_a_id)
-        snapshots_b = VersionDiffService.get_version_snapshots(db, version_b_id)
+        # Get annotations from R2
+        snapshots_a = VersionDiffService.get_version_annotations_from_r2(
+            version_a.project_id,
+            version_a.task_type,
+            version_a.version_number
+        )
+        snapshots_b = VersionDiffService.get_version_annotations_from_r2(
+            version_b.project_id,
+            version_b.task_type,
+            version_b.version_number
+        )
 
         # Filter by image_id if specified
         if image_id:
