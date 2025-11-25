@@ -1460,9 +1460,6 @@ export default function Canvas() {
 
     // Phase 2.10.2: Update cursor position for magnifier
     setCursorPos({ x, y });
-    if (shouldShowMagnifier) {
-      console.log('[Canvas] Mouse moved to:', { x, y });
-    }
 
     // Update cursor style based on position (before setCursor to avoid render race)
     if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
@@ -2831,9 +2828,9 @@ export default function Canvas() {
         return;
       }
 
-      // Phase 2.10.2: Magnifier manual activation (Z key without Ctrl/Cmd)
+      // Phase 2.10.2: Magnifier manual activation (Z key without Ctrl/Cmd) - Toggle mode
       if (e.key === 'z' && !e.ctrlKey && !e.metaKey) {
-        setManualMagnifierActive(true);
+        setManualMagnifierActive(!manualMagnifierActive);
         return;
       }
 
@@ -3361,17 +3358,8 @@ export default function Canvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleConfirmImage, isImageConfirmed, annotations, handleNoObject, selectedImageIds, handleDeleteAllAnnotations, currentImage, selectedAnnotationId, tool, polygonVertices, image, canvasState, selectedVertexIndex, selectedBboxHandle, selectedCircleHandle, polylineVertices, circleCenter, circle3pPoints, undo, redo, canUndo, canRedo]);
 
-  // Phase 2.10.2: Z key release handler for magnifier
-  useEffect(() => {
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'z') {
-        setManualMagnifierActive(false);
-      }
-    };
-
-    window.addEventListener('keyup', handleKeyUp);
-    return () => window.removeEventListener('keyup', handleKeyUp);
-  }, []);
+  // Phase 2.10.2: Z key release handler removed - now using toggle mode instead
+  // (Toggle mode is more reliable in remote desktop environments)
 
   // Mouse wheel handler (zoom)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -3888,8 +3876,8 @@ export default function Canvas() {
 
       {/* Phase 8.5.2: Locked Overlay (when lock is not acquired) */}
       {!isImageLocked && currentImage && (
-        <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-md mx-4 flex flex-col items-center text-center">
+        <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-md mx-4 flex flex-col items-center text-center pointer-events-auto">
             {/* Lock Icon */}
             <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
               <svg className="w-10 h-10 text-gray-600" fill="currentColor" viewBox="0 0 20 20">

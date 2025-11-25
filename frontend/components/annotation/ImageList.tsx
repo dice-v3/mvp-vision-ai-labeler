@@ -54,17 +54,6 @@ export default function ImageList() {
   // Currently shows aggregate status across all tasks
   // Future: Backend should return task-specific status in image_annotation_status
   const getImageStatus = (img: any): 'not-started' | 'in-progress' | 'completed' => {
-    // Debug: Log image 007 data
-    if (img.id === 'images/zipper/squeezed_teeth/007') {
-      console.log('[ImageList.getImageStatus] Image 007 data from store:', {
-        id: img.id,
-        status: img.status,
-        is_confirmed: img.is_confirmed,
-        annotation_count: img.annotation_count,
-        confirmed_at: img.confirmed_at,
-      });
-    }
-
     // Use status from image_annotation_status table
     if (img.status) {
       return img.status as 'not-started' | 'in-progress' | 'completed';
@@ -187,20 +176,6 @@ export default function ImageList() {
       });
     }
   };
-
-  // Debug: Log when images array changes
-  useEffect(() => {
-    const img007 = images.find(img => img.id === 'images/zipper/squeezed_teeth/007');
-    if (img007) {
-      console.log('[ImageList] Images array updated - Image 007:', {
-        id: img007.id,
-        status: img007.status,
-        is_confirmed: img007.is_confirmed,
-        annotation_count: img007.annotation_count,
-        confirmed_at: img007.confirmed_at,
-      });
-    }
-  }, [images]);
 
   // Phase 8.5.2: Load project locks
   useEffect(() => {

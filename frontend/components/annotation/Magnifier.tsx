@@ -59,8 +59,6 @@ export default function Magnifier({
     const ctx = magnifierCanvas.getContext('2d');
     if (!ctx) return;
 
-    console.log('[Magnifier] Updating view at cursor:', cursorPosition);
-
     // Magnifier dimensions
     const radius = size / 2;
 
