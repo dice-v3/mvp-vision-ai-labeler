@@ -6,7 +6,7 @@ from botocore.config import Config
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 
-from app.db.models.labeler import AnnotationVersion
+from app.db.models.labeler import AnnotationVersion, Annotation
 from app.core.config import settings
 
 
@@ -228,6 +228,61 @@ class VersionDiffService:
         }
 
     @staticmethod
+    def get_annotations_from_db(
+        db: Session,
+        project_id: str,
+        task_type: str,
+        image_id: Optional[str] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get current annotations from DB for working/draft versions.
+
+        Args:
+            db: Database session
+            project_id: Project ID
+            task_type: Task type
+            image_id: Optional - filter by specific image
+
+        Returns:
+            Dict mapping image_id to list of annotations
+        """
+        # Query annotations from DB
+        query = db.query(Annotation).filter(
+            Annotation.project_id == project_id,
+            Annotation.task_type == task_type
+        )
+
+        # Filter by image_id if specified
+        if image_id:
+            query = query.filter(Annotation.image_id == image_id)
+
+        annotations = query.all()
+
+        # Group by image_id
+        grouped = {}
+        for ann in annotations:
+            img_id = ann.image_id
+
+            if img_id not in grouped:
+                grouped[img_id] = []
+
+            # Convert to dict format matching R2 structure
+            ann_dict = {
+                'annotation_id': ann.id,
+                'image_id': ann.image_id,
+                'annotation_type': ann.annotation_type,
+                'geometry': ann.geometry,
+                'class_id': ann.class_id,
+                'class_name': ann.class_name,
+                'attributes': ann.attributes or {},
+                'confidence': ann.confidence,
+            }
+
+            grouped[img_id].append(ann_dict)
+
+        return grouped
+
+    @staticmethod
     def get_version_annotations_from_r2(
         project_id: str,
         task_type: str,
@@ -288,6 +343,49 @@ class VersionDiffService:
             raise ValueError(f"Failed to load version {version_number} from R2: {str(e)}")
 
     @staticmethod
+    def get_version_annotations(
+        db: Session,
+        version: AnnotationVersion,
+        image_id: Optional[str] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get annotations for a version from appropriate source (DB or R2).
+
+        - Working/Draft versions: DB (current state)
+        - Published versions: R2 (immutable snapshot)
+
+        Args:
+            db: Database session
+            version: AnnotationVersion object
+            image_id: Optional - filter by specific image
+
+        Returns:
+            Dict mapping image_id to list of annotations
+        """
+        # Working/Draft versions → Get from DB
+        if version.version_type in ['working', 'draft']:
+            return VersionDiffService.get_annotations_from_db(
+                db,
+                version.project_id,
+                version.task_type,
+                image_id
+            )
+
+        # Published versions → Get from R2
+        else:  # version.version_type == 'published'
+            annotations = VersionDiffService.get_version_annotations_from_r2(
+                version.project_id,
+                version.task_type,
+                version.version_number
+            )
+
+            # Filter by image_id if specified
+            if image_id:
+                return {image_id: annotations.get(image_id, [])}
+
+            return annotations
+
+    @staticmethod
     def calculate_version_diff(
         db: Session,
         version_a_id: int,
@@ -319,22 +417,9 @@ class VersionDiffService:
         if version_a.task_type != version_b.task_type:
             raise ValueError("Versions must have the same task type")
 
-        # Get annotations from R2
-        snapshots_a = VersionDiffService.get_version_annotations_from_r2(
-            version_a.project_id,
-            version_a.task_type,
-            version_a.version_number
-        )
-        snapshots_b = VersionDiffService.get_version_annotations_from_r2(
-            version_b.project_id,
-            version_b.task_type,
-            version_b.version_number
-        )
-
-        # Filter by image_id if specified
-        if image_id:
-            snapshots_a = {image_id: snapshots_a.get(image_id, [])}
-            snapshots_b = {image_id: snapshots_b.get(image_id, [])}
+        # Get annotations (hybrid: DB for working, R2 for published)
+        snapshots_a = VersionDiffService.get_version_annotations(db, version_a, image_id)
+        snapshots_b = VersionDiffService.get_version_annotations(db, version_b, image_id)
 
         # Calculate diff for each image
         image_diffs = {}

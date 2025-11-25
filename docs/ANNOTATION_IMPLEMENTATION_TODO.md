@@ -1036,11 +1036,11 @@ Leverage existing version management system to provide visual comparison between
 ### 11.1 Backend: Version Comparison API (6-8h)
 
 **11.1.1 Diff Calculation Engine** (3-4h)
-- [ ] Implement annotation diff algorithm
+- [x] Implement annotation diff algorithm
   - Compare two versions by image_id
   - Categorize annotations: `added`, `removed`, `modified`, `unchanged`
   - Calculate modification details (bbox moved, class changed, etc.)
-- [ ] Create `AnnotationDiff` model/schema
+- [x] Create `AnnotationDiff` model/schema
   ```python
   {
     "image_id": "img_001",
@@ -1052,16 +1052,22 @@ Leverage existing version management system to provide visual comparison between
     "unchanged": [...]   # No changes
   }
   ```
-- [ ] Support multiple diff modes:
-  - Bounding box position changes (threshold: 5px)
+- [x] Support multiple diff modes:
+  - Bounding box position changes (IoU-based matching)
   - Class label changes
   - Attribute changes
-  - Polygon vertex changes (for segmentation)
+  - Confidence changes
+- [x] **Hybrid data source** (Working vs Published):
+  - **Working/Draft versions**: Load from DB (`annotations` table)
+  - **Published versions**: Load from R2 (`annotations/exports/{project_id}/{task_type}/{version}/annotations.json`)
+  - Enables "Working vs v1.0" comparisons before publishing
 
 **11.1.2 Comparison Endpoints** (2-3h)
-- [ ] `GET /api/v1/versions/{version_a}/compare/{version_b}`
+- [x] `GET /api/v1/version-diff/versions/{version_a}/compare/{version_b}`
   - Query params: `image_id` (optional - single image or all)
   - Response: Diff summary + detailed changes
+- [x] `GET /api/v1/version-diff/versions/{version_a}/compare/{version_b}/summary`
+  - Compact summary-only response for quick overview
 - [ ] `GET /api/v1/versions/{version_a}/compare/{version_b}/summary`
   - Statistics: total added, removed, modified counts
   - Per-class breakdown
