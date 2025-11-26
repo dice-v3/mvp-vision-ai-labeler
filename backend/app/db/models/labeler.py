@@ -596,3 +596,202 @@ class Invitation(LabelerBase):
         if self.status != "pending":
             return False
         return datetime.utcnow() < self.expires_at
+
+
+# ============================================================================
+# Phase 15: Admin Dashboard & Audit Models
+# ============================================================================
+
+class AuditLog(LabelerBase):
+    """
+    Audit log model for Phase 15 - Admin Dashboard.
+
+    Tracks all system actions for security, compliance, and troubleshooting.
+    Stores in Labeler DB (UserDB cannot be modified).
+
+    Use Cases:
+    - Security auditing (who did what, when)
+    - Compliance requirements (data access tracking)
+    - Troubleshooting (error investigation)
+    - User activity analysis
+
+    Performance Notes:
+    - Uses BigInteger for high-volume logging
+    - Optimized indexes for common queries (timestamp, user_id, action)
+    - JSONB for flexible detail storage
+    """
+
+    __tablename__ = "audit_logs"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+
+    # Core audit fields
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # Nullable for system events
+    action = Column(String(100), nullable=False, index=True)  # 'create', 'update', 'delete', 'login', etc.
+
+    # Resource identification
+    resource_type = Column(String(50), nullable=True)  # 'dataset', 'project', 'annotation', 'user', etc.
+    resource_id = Column(String(255), nullable=True)  # ID of the affected resource
+
+    # Additional context
+    details = Column(JSONB, nullable=True)  # Flexible JSON for action-specific data
+
+    # Request metadata
+    ip_address = Column(String(50), nullable=True)  # INET type in PostgreSQL
+    user_agent = Column(Text, nullable=True)
+    session_id = Column(String(255), nullable=True, index=True)
+
+    # Status tracking
+    status = Column(String(20), nullable=False, default='success')  # 'success', 'failure', 'error'
+    error_message = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_audit_logs_resource', 'resource_type', 'resource_id'),
+        Index('ix_audit_logs_timestamp_desc', timestamp.desc()),
+    )
+
+    def __repr__(self):
+        return (f"<AuditLog(id={self.id}, action='{self.action}', "
+                f"resource='{self.resource_type}/{self.resource_id}', status='{self.status}')>")
+
+    @property
+    def is_success(self) -> bool:
+        """Check if action was successful."""
+        return self.status == 'success'
+
+
+class UserSession(LabelerBase):
+    """
+    User session tracking model for Phase 15 - Admin Dashboard.
+
+    Tracks user login/logout sessions for analytics and monitoring.
+    Stores in Labeler DB (UserDB cannot be modified).
+
+    Use Cases:
+    - User activity analytics (session duration, active users)
+    - Session monitoring (concurrent sessions, peak hours)
+    - Compliance (user access records)
+
+    Features:
+    - Session duration calculation (logout_at - login_at)
+    - Last activity tracking (for idle session detection)
+    - Multiple sessions per user supported
+    """
+
+    __tablename__ = "user_sessions"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+
+    # User identification
+    user_id = Column(Integer, nullable=False, index=True)  # References User DB user.id
+    session_id = Column(String(255), nullable=False, unique=True, index=True)  # JWT token or UUID
+
+    # Session lifecycle
+    login_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    logout_at = Column(DateTime, nullable=True)
+    last_activity_at = Column(DateTime, nullable=True)
+
+    # Request metadata
+    ip_address = Column(String(50), nullable=True)  # INET type in PostgreSQL
+    user_agent = Column(Text, nullable=True)
+
+    # Calculated fields
+    duration_seconds = Column(Integer, nullable=True)  # Calculated on logout
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (f"<UserSession(id={self.id}, user_id={self.user_id}, "
+                f"session_id='{self.session_id[:8]}...', login_at={self.login_at})>")
+
+    @property
+    def is_active(self) -> bool:
+        """Check if session is still active (not logged out)."""
+        return self.logout_at is None
+
+    @property
+    def duration(self) -> int | None:
+        """Calculate session duration in seconds."""
+        if self.logout_at and self.login_at:
+            return int((self.logout_at - self.login_at).total_seconds())
+        elif self.last_activity_at and self.login_at:
+            # For active sessions, use last activity
+            return int((self.last_activity_at - self.login_at).total_seconds())
+        return None
+
+
+class SystemStatsCache(LabelerBase):
+    """
+    System statistics cache model for Phase 15 - Admin Dashboard.
+
+    Caches pre-calculated statistics to avoid expensive queries.
+    Stores in Labeler DB with TTL support.
+
+    Use Cases:
+    - Dashboard KPI cards (total users, datasets, annotations)
+    - Chart data (trends, growth, activity)
+    - Performance metrics (avoid recalculating expensive aggregations)
+
+    Features:
+    - Flexible JSONB storage for any metric type
+    - TTL support (expires_at)
+    - Background job updates (every 5-15 minutes)
+
+    Example Usage:
+    ```python
+    # Store cached metric
+    cache = SystemStatsCache(
+        metric_name='total_users',
+        metric_value={'count': 42, 'active': 35},
+        calculated_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(minutes=15)
+    )
+
+    # Retrieve cached metric
+    cached = db.query(SystemStatsCache).filter(
+        SystemStatsCache.metric_name == 'total_users',
+        SystemStatsCache.expires_at > datetime.utcnow()
+    ).first()
+    ```
+    """
+
+    __tablename__ = "system_stats_cache"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+
+    # Cache identification
+    metric_name = Column(String(100), nullable=False, index=True)  # e.g., 'total_users', 'active_datasets'
+
+    # Cache data
+    metric_value = Column(JSONB, nullable=False)  # Flexible JSON structure
+
+    # Cache metadata
+    calculated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=True, index=True)  # TTL support
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (f"<SystemStatsCache(id={self.id}, metric='{self.metric_name}', "
+                f"calculated_at={self.calculated_at}, expires_at={self.expires_at})>")
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if cache has expired."""
+        if self.expires_at is None:
+            return False
+        return datetime.utcnow() > self.expires_at
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if cache is still valid."""
+        return not self.is_expired
