@@ -449,11 +449,11 @@ def delete_dataset_complete(
     # Delete S3 data
     s3_counts = delete_s3_data(dataset_id, project_ids)
 
-    # Delete Platform dataset record
+    # Delete Labeler dataset record
     dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if dataset:
-        platform_db.delete(dataset)
-        platform_db.commit()
+        labeler_db.delete(dataset)
+        labeler_db.commit()
 
     return {
         "dataset_id": dataset_id,
