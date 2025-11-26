@@ -93,6 +93,7 @@ from app.core.storage import storage_client
 def export_to_dice(
     db: Session,
     platform_db: Session,
+    user_db: Session,
     project_id: str,
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
@@ -104,6 +105,7 @@ def export_to_dice(
     Args:
         db: Labeler database session
         platform_db: Platform database session
+        user_db: User database session
         project_id: Project ID to export
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
@@ -216,7 +218,7 @@ def export_to_dice(
             # Try to find any annotation with created_by
             for ann in image_annotations:
                 if ann.created_by:
-                    labeled_by_user = platform_db.query(User).filter(
+                    labeled_by_user = user_db.query(User).filter(
                         User.id == ann.created_by
                     ).first()
                     if labeled_by_user:
@@ -231,7 +233,7 @@ def export_to_dice(
                     break
 
             if confirmed_by_id:
-                reviewed_by_user = platform_db.query(User).filter(
+                reviewed_by_user = user_db.query(User).filter(
                     User.id == confirmed_by_id
                 ).first()
 

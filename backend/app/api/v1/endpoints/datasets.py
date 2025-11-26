@@ -851,6 +851,7 @@ async def delete_dataset(
         result = delete_dataset_complete(
             labeler_db=labeler_db,
             platform_db=platform_db,
+            user_db=user_db,
             dataset_id=dataset_id,
             create_backup=request.create_backup
         )

@@ -4035,6 +4035,13 @@ export default function Canvas() {
         </div>
       )}
 
+      {/* Image Path Display */}
+      {currentImage && (
+        <div className="absolute top-32 left-4 z-10 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-lg shadow text-xs font-mono">
+          {currentImage.id}
+        </div>
+      )}
+
       {/* Phase 8.5.2: Locked Overlay (when lock is not acquired) */}
       {!isImageLocked && currentImage && (
         <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
