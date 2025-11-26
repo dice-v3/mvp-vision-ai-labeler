@@ -14,6 +14,118 @@ class VersionDiffService:
     """Service for calculating diffs between annotation versions."""
 
     @staticmethod
+    def _convert_dice_to_db_format(dice_ann: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert DICE format annotation to DB format for diff comparison.
+
+        DICE format:
+            {id, image_id, class_id, class_name, bbox: [x,y,w,h], ...}
+
+        DB format:
+            {annotation_id, image_id, annotation_type, geometry: {x,y,width,height}, ...}
+        """
+        # Determine annotation type from DICE fields
+        annotation_type = 'bbox'  # default
+        geometry = {}
+
+        if 'bbox' in dice_ann:
+            # Bounding box annotation
+            annotation_type = 'bbox'
+            bbox = dice_ann['bbox']
+            if isinstance(bbox, list) and len(bbox) >= 4:
+                geometry = {
+                    'x': bbox[0],
+                    'y': bbox[1],
+                    'width': bbox[2],
+                    'height': bbox[3]
+                }
+        elif 'segmentation' in dice_ann:
+            # Polygon/segmentation annotation
+            annotation_type = 'polygon'
+            seg = dice_ann['segmentation']
+            if isinstance(seg, list) and len(seg) > 0:
+                # DICE segmentation format: [[x1,y1,x2,y2,...]]
+                flat_points = seg[0] if seg else []
+                points = []
+                for i in range(0, len(flat_points), 2):
+                    if i + 1 < len(flat_points):
+                        points.append([flat_points[i], flat_points[i+1]])
+                geometry = {'points': points}
+        elif 'polyline' in dice_ann:
+            # Polyline annotation
+            annotation_type = 'polyline'
+            polyline = dice_ann['polyline']
+            points = []
+            for i in range(0, len(polyline), 2):
+                if i + 1 < len(polyline):
+                    points.append([polyline[i], polyline[i+1]])
+            geometry = {'points': points}
+        elif 'circle' in dice_ann:
+            # Circle annotation
+            annotation_type = 'circle'
+            circle = dice_ann['circle']
+            geometry = {
+                'center': circle.get('center', [0, 0]),
+                'radius': circle.get('radius', 0)
+            }
+        elif dice_ann.get('is_background'):
+            # No object marker
+            annotation_type = 'no_object'
+        else:
+            # Classification or other
+            annotation_type = 'classification'
+
+        # Convert to DB format
+        return {
+            'annotation_id': dice_ann.get('id'),  # DICE 'id' → DB 'annotation_id'
+            'image_id': dice_ann.get('image_id'),
+            'annotation_type': annotation_type,
+            'geometry': geometry,
+            'class_id': str(dice_ann.get('class_id', 0)),  # Ensure string
+            'class_name': dice_ann.get('class_name', 'unknown'),
+            'attributes': dice_ann.get('attributes', {}),
+            'confidence': dice_ann.get('confidence', 1.0),
+        }
+
+    @staticmethod
+    def _parse_version_number(version_number: str) -> tuple:
+        """
+        Parse version number into a comparable tuple for sorting.
+
+        This ensures older versions come before newer versions.
+
+        Examples:
+            'Working' → (999999, 0)  # Always most recent
+            'draft' → (999998, 0)    # Newer than published
+            'v1.0' → (1, 0)
+            'v2.1' → (2, 1)
+
+        Returns:
+            Tuple of (major, minor) for comparison
+        """
+        # Special case: Working version is always the newest
+        if version_number == 'Working':
+            return (999999, 0)
+
+        # Special case: Draft versions are newer than published but older than Working
+        if version_number.lower() == 'draft':
+            return (999998, 0)
+
+        # Parse vX.Y format (e.g., v1.0, v2.5)
+        if version_number.startswith('v'):
+            try:
+                parts = version_number[1:].split('.')
+                major = int(parts[0]) if len(parts) > 0 else 0
+                minor = int(parts[1]) if len(parts) > 1 else 0
+                return (major, minor)
+            except (ValueError, IndexError):
+                # Fallback for unparseable versions
+                return (0, 0)
+
+        # Unknown format - treat as very old (version 0.0)
+        return (0, 0)
+
+    @staticmethod
     def calculate_iou(bbox1: Dict[str, Any], bbox2: Dict[str, Any]) -> float:
         """
         Calculate Intersection over Union (IoU) between two bounding boxes.
@@ -81,9 +193,14 @@ class VersionDiffService:
                 if candidate.get('annotation_id') == ann_id:
                     return (candidate, idx)
 
-        # Try IoU-based matching for bbox annotations
+        # Phase 11: Try IoU-based matching for bbox annotations
+        # Normalize geometry to handle both DB and R2 formats
         geometry = annotation.get('geometry', {})
-        if not geometry or 'x' not in geometry:
+        if not geometry:
+            return None
+
+        normalized_geom = VersionDiffService.normalize_geometry(geometry)
+        if 'x' not in normalized_geom:
             return None
 
         best_iou = 0.0
@@ -92,16 +209,64 @@ class VersionDiffService:
 
         for idx, candidate in enumerate(candidates):
             candidate_geometry = candidate.get('geometry', {})
-            if 'x' not in candidate_geometry:
+            if not candidate_geometry:
                 continue
 
-            iou = VersionDiffService.calculate_iou(geometry, candidate_geometry)
+            normalized_candidate = VersionDiffService.normalize_geometry(candidate_geometry)
+            if 'x' not in normalized_candidate:
+                continue
+
+            iou = VersionDiffService.calculate_iou(normalized_geom, normalized_candidate)
             if iou > best_iou and iou >= iou_threshold:
                 best_iou = iou
                 best_match = candidate
                 best_idx = idx
 
         return (best_match, best_idx) if best_match else None
+
+    @staticmethod
+    def normalize_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize geometry to consistent format for comparison.
+
+        Handles both formats:
+        - DB format: {x, y, width, height}
+        - R2/DICE format: {bbox: [x, y, w, h], type, image_width, image_height}
+
+        Args:
+            geometry: Geometry dict in any format
+
+        Returns:
+            Normalized geometry dict with only essential keys
+        """
+        normalized = {}
+
+        # BBox: Extract from array format or use direct keys
+        if 'bbox' in geometry and isinstance(geometry['bbox'], list):
+            bbox = geometry['bbox']
+            if len(bbox) >= 4:
+                normalized['x'] = bbox[0]
+                normalized['y'] = bbox[1]
+                normalized['width'] = bbox[2]
+                normalized['height'] = bbox[3]
+        elif 'x' in geometry:
+            # Already in normalized format
+            normalized['x'] = geometry.get('x')
+            normalized['y'] = geometry.get('y')
+            normalized['width'] = geometry.get('width')
+            normalized['height'] = geometry.get('height')
+
+        # Polygon/Polyline: Keep points
+        if 'points' in geometry:
+            normalized['points'] = geometry['points']
+
+        # Circle: Keep center and radius
+        if 'center' in geometry:
+            normalized['center'] = geometry['center']
+        if 'radius' in geometry:
+            normalized['radius'] = geometry['radius']
+
+        return normalized
 
     @staticmethod
     def compare_annotations(
@@ -128,18 +293,34 @@ class VersionDiffService:
             changes['old_class'] = old_class
             changes['new_class'] = new_class
 
-        # Check geometry change (position/size)
-        old_geom = ann_old.get('geometry', {})
-        new_geom = ann_new.get('geometry', {})
+        # Phase 11: Normalize geometry formats before comparison
+        # Handles both DB format {x, y, width, height} and R2 format {bbox: [...]}
+        old_geom_raw = ann_old.get('geometry', {})
+        new_geom_raw = ann_new.get('geometry', {})
+        old_geom = VersionDiffService.normalize_geometry(old_geom_raw)
+        new_geom = VersionDiffService.normalize_geometry(new_geom_raw)
+
+        # Debug: Log first annotation comparison
+        ann_id = ann_old.get('annotation_id')
+        if ann_id and ann_id == 2129:  # Debug specific annotation
+            print(f"\n[Compare Debug] Annotation {ann_id}:")
+            print(f"  Old geom raw keys: {list(old_geom_raw.keys())}")
+            print(f"  New geom raw keys: {list(new_geom_raw.keys())}")
+            print(f"  Old geom normalized: {old_geom}")
+            print(f"  New geom normalized: {new_geom}")
 
         geometry_changed = False
         if old_geom.get('x') != new_geom.get('x') or old_geom.get('y') != new_geom.get('y'):
             geometry_changed = True
             changes['position_changed'] = True
+            if ann_id and ann_id == 2129:
+                print(f"  Position changed: old ({old_geom.get('x')}, {old_geom.get('y')}) != new ({new_geom.get('x')}, {new_geom.get('y')})")
 
         if old_geom.get('width') != new_geom.get('width') or old_geom.get('height') != new_geom.get('height'):
             geometry_changed = True
             changes['size_changed'] = True
+            if ann_id and ann_id == 2129:
+                print(f"  Size changed: old ({old_geom.get('width')}, {old_geom.get('height')}) != new ({new_geom.get('width')}, {new_geom.get('height')})")
 
         if geometry_changed:
             changes['geometry_changed'] = True
@@ -147,10 +328,18 @@ class VersionDiffService:
             changes['new_geometry'] = new_geom
 
         # Check confidence change
-        if ann_old.get('confidence') != ann_new.get('confidence'):
+        # Treat None as 1.0 (default confidence)
+        old_confidence = ann_old.get('confidence')
+        new_confidence = ann_new.get('confidence')
+        if old_confidence is None:
+            old_confidence = 1.0
+        if new_confidence is None:
+            new_confidence = 1.0
+
+        if old_confidence != new_confidence:
             changes['confidence_changed'] = True
-            changes['old_confidence'] = ann_old.get('confidence')
-            changes['new_confidence'] = ann_new.get('confidence')
+            changes['old_confidence'] = old_confidence
+            changes['new_confidence'] = new_confidence
 
         # Check attributes change
         old_attrs = ann_old.get('attributes', {})
@@ -160,12 +349,21 @@ class VersionDiffService:
             changes['old_attributes'] = old_attrs
             changes['new_attributes'] = new_attrs
 
+        # Debug: Log final comparison result
+        if ann_id and ann_id == 2129:
+            print(f"  Final changes dict: {changes}")
+            print(f"  Old confidence: {ann_old.get('confidence')}")
+            print(f"  New confidence: {ann_new.get('confidence')}")
+            print(f"  Old attributes: {old_attrs}")
+            print(f"  New attributes: {new_attrs}")
+
         return changes
 
     @staticmethod
     def calculate_diff_for_image(
         snapshots_a: List[Dict[str, Any]],
-        snapshots_b: List[Dict[str, Any]]
+        snapshots_b: List[Dict[str, Any]],
+        debug_image_id: str = None
     ) -> Dict[str, Any]:
         """
         Calculate diff between two versions for a single image.
@@ -173,10 +371,27 @@ class VersionDiffService:
         Args:
             snapshots_a: List of annotation snapshots from version A
             snapshots_b: List of annotation snapshots from version B
+            debug_image_id: Optional image ID for debug logging
 
         Returns:
             Dict with categorized changes
         """
+        # Phase 11: Debug logging for first image to diagnose false diffs
+        if debug_image_id and len(snapshots_a) > 0:
+            print(f"\n[Diff Debug] Image: {debug_image_id}")
+            print(f"[Diff Debug] Version A ({len(snapshots_a)} annotations):")
+            for i, ann in enumerate(snapshots_a[:2]):  # Show first 2
+                print(f"  [{i}] annotation_id={ann.get('annotation_id')}, "
+                      f"type={ann.get('annotation_type')}, "
+                      f"class={ann.get('class_name') or ann.get('class_id')}, "
+                      f"geometry_keys={list(ann.get('geometry', {}).keys())}")
+            print(f"[Diff Debug] Version B ({len(snapshots_b)} annotations):")
+            for i, ann in enumerate(snapshots_b[:2]):  # Show first 2
+                print(f"  [{i}] annotation_id={ann.get('annotation_id')}, "
+                      f"type={ann.get('annotation_type')}, "
+                      f"class={ann.get('class_name') or ann.get('class_id')}, "
+                      f"geometry_keys={list(ann.get('geometry', {}).keys())}")
+
         added = []
         removed = []
         modified = []
@@ -212,6 +427,22 @@ class VersionDiffService:
 
         # Remaining annotations in B are new additions
         added = remaining_b
+
+        # Debug: Log diff results for specific images
+        if debug_image_id and ('combined/013' in debug_image_id or 'combined/012' in debug_image_id):
+            print(f"\n[Diff Result] Image: {debug_image_id}")
+            print(f"  Added: {len(added)}")
+            print(f"  Removed: {len(removed)}")
+            print(f"  Modified: {len(modified)}")
+            print(f"  Unchanged: {len(unchanged)}")
+            if removed:
+                print(f"  Removed details:")
+                for r in removed:
+                    print(f"    - annotation_id={r.get('annotation_id')}, class={r.get('class_name') or r.get('class_id')}")
+            if modified:
+                print(f"  Modified details:")
+                for m in modified:
+                    print(f"    - annotation_id={m['old'].get('annotation_id')}, changes={list(m['changes'].keys())}")
 
         return {
             'added': added,
@@ -324,18 +555,38 @@ class VersionDiffService:
             # Parse JSON
             annotations_data = json.loads(response['Body'].read().decode('utf-8'))
 
-            # Group by image_id
+            # Phase 11: Handle DICE format structure
+            # DICE format: {"images": [{"id": "...", "file_name": "...", "annotations": [...]}]}
             grouped = {}
-            for ann in annotations_data:
-                image_id = ann.get('image_id')
 
-                if not image_id:
-                    continue
+            if isinstance(annotations_data, dict) and 'images' in annotations_data:
+                # DICE format
+                for image_obj in annotations_data['images']:
+                    # Prioritize file_name (full path) over id (numeric) to match frontend
+                    image_id = image_obj.get('file_name') or image_obj.get('id')
+                    annotations = image_obj.get('annotations', [])
 
-                if image_id not in grouped:
-                    grouped[image_id] = []
+                    if image_id and annotations:
+                        # Convert DICE format to DB format for consistency
+                        converted_annotations = []
+                        for ann in annotations:
+                            converted_ann = VersionDiffService._convert_dice_to_db_format(ann)
+                            converted_annotations.append(converted_ann)
 
-                grouped[image_id].append(ann)
+                        # Ensure image_id is string (DICE format may use int IDs)
+                        grouped[str(image_id)] = converted_annotations
+            else:
+                # Legacy format: flat list of annotations
+                for ann in annotations_data:
+                    image_id = ann.get('image_id')
+
+                    if not image_id:
+                        continue
+
+                    if image_id not in grouped:
+                        grouped[image_id] = []
+
+                    grouped[image_id].append(ann)
 
             return grouped
 
@@ -397,25 +648,80 @@ class VersionDiffService:
 
         Args:
             db: Database session
-            version_a_id: Old version ID
-            version_b_id: New version ID
+            version_a_id: Old version ID (use -1 for virtual Working version)
+            version_b_id: New version ID (use -1 for virtual Working version)
             image_id: Optional - compare only this image
 
         Returns:
             Complete diff data with per-image and summary statistics
         """
-        # Get version metadata
-        version_a = db.get(AnnotationVersion, version_a_id)
-        version_b = db.get(AnnotationVersion, version_b_id)
+        # Phase 11: Handle virtual Working version (ID: -1)
+        # Get version metadata, handling -1 as special "current working" version
+        version_a = None if version_a_id == -1 else db.get(AnnotationVersion, version_a_id)
+        version_b = None if version_b_id == -1 else db.get(AnnotationVersion, version_b_id)
 
-        if not version_a or not version_b:
+        # At least one must be a real version to get project/task context
+        if not version_a and not version_b:
+            raise ValueError("At least one version must be a published version")
+
+        # Get reference version (the real one) for project/task context
+        ref_version = version_a if version_a else version_b
+
+        if not ref_version:
             raise ValueError("Version not found")
+
+        # Create synthetic version object for Working version (-1)
+        from datetime import datetime
+        if version_a_id == -1:
+            version_a = type('obj', (object,), {
+                'id': -1,
+                'project_id': ref_version.project_id,
+                'task_type': ref_version.task_type,
+                'version_number': 'Working',
+                'version_type': 'working',
+                'created_at': datetime.utcnow(),
+                'created_by': 0
+            })()
+
+        if version_b_id == -1:
+            version_b = type('obj', (object,), {
+                'id': -1,
+                'project_id': ref_version.project_id,
+                'task_type': ref_version.task_type,
+                'version_number': 'Working',
+                'version_type': 'working',
+                'created_at': datetime.utcnow(),
+                'created_by': 0
+            })()
 
         if version_a.project_id != version_b.project_id:
             raise ValueError("Versions must be from the same project")
 
         if version_a.task_type != version_b.task_type:
             raise ValueError("Versions must have the same task type")
+
+        # Phase 11: Auto-sort versions so older is always version_a, newer is version_b
+        # This ensures "added" means "added in newer version", "removed" means "deleted in newer"
+        print(f"\n[Version Diff] Starting comparison:")
+        print(f"  Input version_a: {version_a.version_number} (type: {version_a.version_type})")
+        print(f"  Input version_b: {version_b.version_number} (type: {version_b.version_type})")
+
+        parsed_a = VersionDiffService._parse_version_number(version_a.version_number)
+        parsed_b = VersionDiffService._parse_version_number(version_b.version_number)
+
+        print(f"  Parsed_a: {parsed_a}")
+        print(f"  Parsed_b: {parsed_b}")
+
+        # If version_a is newer than version_b, swap them
+        if parsed_a > parsed_b:
+            version_a, version_b = version_b, version_a
+            print(f"[Version Diff] Auto-swapped!")
+            print(f"  Final version_a (older/base): {version_a.version_number} (type: {version_a.version_type})")
+            print(f"  Final version_b (newer/compare): {version_b.version_number} (type: {version_b.version_type})")
+        else:
+            print(f"[Version Diff] No swap needed")
+            print(f"  Final version_a (older/base): {version_a.version_number} (type: {version_a.version_type})")
+            print(f"  Final version_b (newer/compare): {version_b.version_number} (type: {version_b.version_type})")
 
         # Get annotations (hybrid: DB for working, R2 for published)
         snapshots_a = VersionDiffService.get_version_annotations(db, version_a, image_id)
@@ -425,11 +731,26 @@ class VersionDiffService:
         image_diffs = {}
         all_image_ids = set(snapshots_a.keys()) | set(snapshots_b.keys())
 
+        # Phase 11: Debug first image to diagnose false diffs
+        first_image_id = list(all_image_ids)[0] if all_image_ids else None
+        debug_count = 0
+
         for img_id in all_image_ids:
             anns_a = snapshots_a.get(img_id, [])
             anns_b = snapshots_b.get(img_id, [])
 
-            diff = VersionDiffService.calculate_diff_for_image(anns_a, anns_b)
+            # Enable debug logging for:
+            # 1. First 3 images with annotations
+            # 2. Specific images (combined/012, combined/013)
+            is_target_image = 'combined/012' in img_id or 'combined/013' in img_id
+            debug_this = is_target_image or (debug_count < 3 and (len(anns_a) > 0 or len(anns_b) > 0))
+            if debug_this and not is_target_image:
+                debug_count += 1
+
+            diff = VersionDiffService.calculate_diff_for_image(
+                anns_a, anns_b,
+                debug_image_id=img_id if debug_this else None
+            )
 
             # Only include images with changes
             if diff['summary']['total_changes'] > 0:
