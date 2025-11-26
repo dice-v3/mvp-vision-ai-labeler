@@ -1638,9 +1638,9 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
 ### 15.4 Integration & Polish (10-12h) ⏸️
 
 #### 15.4.1 Permission & Access Control (3-4h)
-- [ ] Add `is_admin` field to User model
+- [ ] ~~Add `is_admin` field~~ ✅ 이미 존재 (user.system_role, user.is_admin)
 - [ ] Implement `require_admin` dependency
-- [ ] Admin menu visibility logic (sidebar)
+- [ ] Admin menu visibility logic (sidebar, check user.is_admin)
 - [ ] API authorization (403 for non-admin)
 - [ ] Route guards (redirect non-admin)
 
@@ -1672,22 +1672,26 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
 
 ### Database Schema
 
-**New Tables**:
-- `audit_logs` (User DB) - Comprehensive audit trail
-- `user_sessions` (User DB) - Session tracking for analytics
+**CONSTRAINT**: UserDB는 플랫폼팀 소유로 수정 불가
+
+**New Tables** (Labeler DB):
+- `audit_logs` (Labeler DB) - Comprehensive audit trail
+- `user_sessions` (Labeler DB) - Session tracking for analytics
 - `system_stats_cache` (Labeler DB) - Pre-calculated statistics
 
-**User Model Update**:
-- Add `is_admin` boolean field
+**User Model**: ✅ 수정 불필요
+- `system_role` 필드 이미 존재 ('admin' or 'user')
+- `is_admin` property 이미 구현됨
 
 ### Technical Decisions
 
 **Key Choices**:
-1. **Audit logs in User DB**: Centralized with user data for easier queries
+1. **Audit logs in Labeler DB**: UserDB 수정 불가 → Labeler DB 활용 ✅
 2. **Custom audit implementation**: FastAPI middleware + SQLAlchemy events
 3. **Hybrid statistics**: Real-time for simple counts, cached for expensive aggregations
 4. **Async logging**: Non-blocking audit writes for performance
 5. **Retention policy**: 90 days hot, 1 year warm (archived), 1+ year cold (R2)
+6. **Admin role**: 기존 `user.is_admin` property 활용 (system_role 기반)
 
 ### UI Structure
 
@@ -1707,8 +1711,13 @@ Logout
 ```
 
 **Dependencies**:
-- ✅ Phase 8.1 (RBAC) - Required for admin role checking
-- ✅ Phase 9.1 (User DB) - Required for audit log storage
+- ✅ Phase 8.1 (RBAC) - Permission system 기초
+- ✅ Phase 9.1 (User DB) - User.system_role 필드 활용
+
+**Implementation Constraints** (2025-11-26):
+- ❌ UserDB 수정 불가 (플랫폼팀 소유)
+- ✅ Labeler DB에 모든 새 테이블 생성
+- ✅ user.is_admin property 활용 (이미 구현됨)
 
 **Total**: 60-75h over 2-3 weeks
 

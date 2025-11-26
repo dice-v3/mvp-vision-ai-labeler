@@ -64,10 +64,12 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
 
 ### Database Schema
 
-**New Tables**:
+**IMPORTANT CONSTRAINT**: UserDB는 플랫폼팀 소유로 수정 불가. 모든 새 테이블은 **Labeler DB**에 생성.
+
+**New Tables** (Labeler DB):
 
 ```sql
--- Audit Log Table (User DB)
+-- Audit Log Table (Labeler DB) ← UPDATED
 CREATE TABLE audit_logs (
     id BIGSERIAL PRIMARY KEY,
     timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -89,7 +91,7 @@ CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
 
--- User Session Tracking (User DB)
+-- User Session Tracking (Labeler DB) ← UPDATED
 CREATE TABLE user_sessions (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
@@ -437,8 +439,9 @@ CREATE INDEX idx_system_stats_expires ON system_stats_cache(expires_at);
 
 **Role-based Access**:
 - [ ] Admin menu visibility:
-  - Only show to users with `admin` or `owner` role
-  - Check `ProjectPermission` or global admin flag
+  - Only show to users with `system_role == 'admin'`
+  - Use existing `user.is_admin` property (already implemented!)
+  - No ProjectPermission check needed for global admin features
 - [ ] API authorization:
   - Add `require_admin` dependency
   - Return 403 for non-admin users
@@ -451,10 +454,13 @@ CREATE INDEX idx_system_stats_expires ON system_stats_cache(expires_at);
 async def require_admin(
     current_user: User = Depends(get_current_user)
 ) -> User:
-    if not current_user.is_admin:  # Add is_admin field to User model
+    # Use existing is_admin property (checks system_role == 'admin')
+    if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 ```
+
+**Note**: User 모델에 이미 `system_role` 필드와 `is_admin` property가 구현되어 있음. UserDB 수정 불필요!
 
 ### 15.4.2 UI/UX Polish (4-5h)
 
@@ -534,20 +540,23 @@ async def require_admin(
 
 ### 1. Database Choice for Audit Logs
 
-**Options**:
-- **Option A**: User DB (PostgreSQL)
-  - Pros: Centralized user data, easier joins with users table
-  - Cons: User DB grows large, potential performance impact
+**Constraint**: UserDB는 플랫폼팀 소유로 Labeler에서 수정 불가
 
-- **Option B**: Labeler DB (PostgreSQL)
-  - Pros: Isolated from user data, easier to archive/partition
-  - Cons: Cross-DB queries needed for user info
+**Options**:
+- **Option A**: ~~User DB (PostgreSQL)~~ ❌ **불가능** (플랫폼팀 소유)
+  - Cons: 권한 없음, 팀간 합의 필요
+
+- **Option B**: Labeler DB (PostgreSQL) ✅ **선택됨**
+  - Pros: 기존 DB 활용, 관리 간편, 빠른 구현
+  - Pros: Labeler 관련 audit만 저장 (명확한 범위)
+  - Cons: Cross-DB 쿼리 필요 (user 정보 조인 시)
+  - Cons: DB 크기 증가 (partition으로 해결)
 
 - **Option C**: Separate Audit DB (PostgreSQL)
-  - Pros: Complete isolation, easy to scale/archive
-  - Cons: Additional DB to manage
+  - Pros: 완전한 분리, 확장성 좋음
+  - Cons: 추가 DB 관리, 설정 복잡도 증가
 
-**Decision**: **Option A (User DB)** - Audit logs are user-centric, easier to query with user info
+**Decision**: **Option B (Labeler DB)** - 빠른 구현, 기존 인프라 활용, 나중에 필요시 분리 가능
 
 ### 2. Audit Log Retention Policy
 
@@ -679,10 +688,10 @@ async def audit_middleware(request: Request, call_next):
 
 ## Open Questions
 
-1. **Admin Role Definition**:
-   - Should we add `is_admin` field to User model?
-   - Or rely on ProjectPermission with global scope?
-   - **Recommendation**: Add `is_admin` boolean to User model for simplicity
+1. **Admin Role Definition**: ✅ RESOLVED
+   - User 모델에 이미 `system_role` 필드 존재 ('admin' or 'user')
+   - `is_admin` property도 이미 구현됨
+   - **Decision**: 기존 필드 활용, UserDB 수정 불필요
 
 2. **Audit Log Scope**:
    - Should we log read operations (GET requests)?
@@ -696,7 +705,50 @@ async def audit_middleware(request: Request, call_next):
    - Should audit logs be per-organization or global?
    - **Recommendation**: Global for now, add organization_id filter later
 
+5. **Audit Log DB Location**: ✅ RESOLVED
+   - Cannot use UserDB (플랫폼팀 소유)
+   - **Decision**: Labeler DB 활용
+   - Rationale: 기존 인프라, 빠른 구현, 나중에 분리 가능
+
 ---
 
-**Last Updated**: 2025-11-26
+## Implementation Constraints (2025-11-26 Update)
+
+**UserDB Restrictions**:
+- ❌ Cannot modify UserDB schema (플랫폼팀 소유)
+- ❌ Cannot add tables to UserDB
+- ✅ Can READ from UserDB (User, Organization tables)
+- ✅ User.system_role already exists ('admin' or 'user')
+- ✅ User.is_admin property already implemented
+
+**Revised Architecture**:
+```
+User DB (Platform - Read Only)
+  ├── users (READ ONLY - has system_role field)
+  └── organizations (READ ONLY)
+
+Labeler DB (Full Access)
+  ├── annotations, projects (existing)
+  ├── audit_logs (NEW - all audit trail)
+  ├── user_sessions (NEW - session tracking)
+  └── system_stats_cache (NEW - statistics cache)
+```
+
+**Cross-DB Query Pattern**:
+```python
+# Get audit log with user info
+audit_log = labeler_db.query(AuditLog).filter(...).first()
+user = user_db.query(User).filter(User.id == audit_log.user_id).first()
+
+# Combine results
+result = {
+    "audit_log": audit_log,
+    "user": user.email,
+    "is_admin": user.is_admin
+}
+```
+
+---
+
+**Last Updated**: 2025-11-26 (Revised with UserDB constraints)
 **Author**: Claude Code + Development Team
