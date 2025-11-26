@@ -88,8 +88,12 @@ export default function Step4Upload({
           status: 'pending',
         });
       } else {
-        // Overwrite (or new file)
-        filesToUpload.push(mapping.file);
+        // Overwrite (or new file) - Use finalPath as filename to respect folder options
+        const fileWithCorrectPath = new File([mapping.file], mapping.finalPath, {
+          type: mapping.file.type,
+          lastModified: mapping.file.lastModified
+        });
+        filesToUpload.push(fileWithCorrectPath);
         initialStatuses.push({
           path: mapping.finalPath,
           status: 'pending',
