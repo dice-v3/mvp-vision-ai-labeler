@@ -1259,6 +1259,7 @@ async def upload_dataset(
     upload_result = await upload_files_to_s3(
         dataset_id=dataset_id,
         files=files,
+        labeler_db=labeler_db,
         preserve_structure=True
     )
 
@@ -1449,6 +1450,7 @@ async def add_images_to_dataset(
     upload_result = await upload_files_to_s3(
         dataset_id=dataset_id,
         files=files,
+        labeler_db=labeler_db,
         preserve_structure=True
     )
 
