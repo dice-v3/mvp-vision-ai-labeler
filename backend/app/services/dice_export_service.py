@@ -33,6 +33,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import json
+import hashlib
+import os
 
 # REFACTORING: Import task registry
 from app.tasks import task_registry, TaskType
@@ -49,6 +51,39 @@ def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(KST).isoformat()
+
+
+def get_split_from_image_id(image_id: str, train_ratio: float = 0.7, val_ratio: float = 0.2) -> str:
+    """
+    Deterministically assign train/val/test split based on image_id hash.
+
+    Args:
+        image_id: Image identifier (file path)
+        train_ratio: Ratio for training set (default: 0.7 = 70%)
+        val_ratio: Ratio for validation set (default: 0.2 = 20%)
+
+    Returns:
+        Split name: "train", "val", or "test"
+
+    Examples:
+        >>> get_split_from_image_id("images/001.png")
+        "train"  # Deterministic based on hash
+        >>> get_split_from_image_id("images/001.png")
+        "train"  # Always returns same result for same image_id
+    """
+    # Hash the image_id to get deterministic random value
+    hash_val = int(hashlib.md5(image_id.encode()).hexdigest(), 16)
+
+    # Normalize to [0, 1] range
+    normalized = (hash_val % 10000) / 10000.0
+
+    # Assign split based on thresholds
+    if normalized < train_ratio:
+        return "train"
+    elif normalized < train_ratio + val_ratio:
+        return "val"
+    else:
+        return "test"
 
 from app.db.models.labeler import Dataset, Annotation, AnnotationProject, ImageAnnotationStatus
 from app.db.models.platform import User
@@ -176,12 +211,18 @@ def export_to_dice(
         labeled_by_user = None
         reviewed_by_user = None
 
+        # Find labeled_by: Check all annotations for created_by
         if image_annotations:
-            first_annotation = image_annotations[0]
-            labeled_by_user = platform_db.query(User).filter(
-                User.id == first_annotation.created_by
-            ).first()
+            # Try to find any annotation with created_by
+            for ann in image_annotations:
+                if ann.created_by:
+                    labeled_by_user = platform_db.query(User).filter(
+                        User.id == ann.created_by
+                    ).first()
+                    if labeled_by_user:
+                        break
 
+        # Find reviewed_by: Look for confirmed_by
         if status and status.is_image_confirmed:
             confirmed_by_id = None
             for ann in image_annotations:
@@ -213,13 +254,21 @@ def export_to_dice(
                         height = geom_height
                         break
 
+        # Deterministic train/val/test split based on image_id hash
+        split = get_split_from_image_id(image_id)
+
+        # Extract file format from file_name
+        file_ext = os.path.splitext(file_name)[1]  # e.g., ".png"
+        file_format = file_ext[1:].lower() if file_ext else "unknown"  # e.g., "png"
+
         dice_image = {
             "id": dice_id,
             "file_name": file_name,
+            "file_format": file_format,  # e.g., "png", "jpg", "jpeg"
             "width": width,
             "height": height,
             "depth": 3,  # Assume RGB images
-            "split": "train",  # TODO: Implement train/val/test split logic
+            "split": split,  # Hash-based deterministic split (70% train, 20% val, 10% test)
             "annotations": [
                 _convert_annotation_to_dice(ann, dice_id, class_id_to_dice_index, class_id_to_name)
                 for ann in image_annotations
