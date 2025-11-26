@@ -256,6 +256,18 @@ async def create_dataset(
     )
     labeler_db.add(db_project)
 
+    # Create project owner permission (SAME TRANSACTION)
+    from app.db.models.labeler import ProjectPermission
+
+    db_project_permission = ProjectPermission(
+        project_id=project_id,
+        user_id=current_user.id,
+        role="owner",
+        granted_by=current_user.id,
+        granted_at=datetime.utcnow(),
+    )
+    labeler_db.add(db_project_permission)
+
     # Commit all changes in single transaction
     try:
         labeler_db.commit()
