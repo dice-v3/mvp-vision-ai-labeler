@@ -2,7 +2,7 @@
 
 **Project**: Vision AI Labeler - Annotation Interface
 **Start Date**: 2025-11-14
-**Last Updated**: 2025-11-27 (Phase 15 Audit Log API Complete)
+**Last Updated**: 2025-11-27 (Phase 15 Admin Dashboard Frontend Complete)
 
 ---
 
@@ -24,7 +24,7 @@
 | **Phase 12: Dataset Publish Improvements** | **✅ Complete** | **100%** | **2025-11-26** |
 | Phase 13: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
-| **Phase 15: Admin Dashboard & Audit** | **🔄 In Progress** | **50%** | **-** |
+| **Phase 15: Admin Dashboard & Audit** | **🔄 In Progress** | **75%** | **-** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -1533,20 +1533,18 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
   - User contribution stats
   - Average labeling time
 
-#### 15.1.2 Frontend Dashboard (10-12h)
-- [ ] Dataset Manager page (`frontend/app/admin/datasets/page.tsx`)
-  - Overview cards (datasets, images, storage, users)
-  - Dataset list with filters and search
-  - Sort by size/images/last_updated
-- [ ] Dataset detail view
+#### 15.1.2 Frontend Dashboard (10-12h) ✅ Complete
+- [x] Dataset Manager page (`frontend/app/admin/datasets/page.tsx`)
+  - Overview cards (datasets, images, storage, annotations)
+  - Dataset list with recent updates
+  - Click to view details
+- [x] Dataset detail view
   - Info panel (metadata, size, projects)
-  - User permissions table with roles
-  - Quick actions (view, export, manage permissions)
-- [ ] Progress visualization
-  - Completion rate pie chart
-  - Daily annotation trend
-  - User contribution bar chart
-  - Interactive filters (date range, task type, user)
+  - Storage information
+  - Progress visualization
+- [x] Admin menu in Sidebar
+  - Only shown for admin users (system_role === 'admin')
+  - Links to Dataset Manager and Audit Logs
 
 ### 15.2 Audit Log System (20-25h) ⏸️
 
@@ -1579,22 +1577,24 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
   - `GET /api/v1/admin/audit-logs/{id}` (detail)
   - `GET /api/v1/admin/audit-logs/stats/summary` (statistics)
 
-#### 15.2.3 Frontend Audit Viewer (8-10h)
-- [ ] Audit log page (`frontend/app/admin/audit-logs/page.tsx`)
-  - Log table (timestamp, user, action, resource, status, details)
-  - Real-time updates (optional WebSocket)
-  - Color-coded action badges
-- [ ] Advanced filters
-  - Date range picker
-  - User selector (autocomplete)
-  - Action type and resource type filters
-  - Status filter (success/failure)
-  - Full-text search
-- [ ] Log detail modal
-  - Expandable details with full context
+#### 15.2.3 Frontend Audit Viewer (8-10h) ✅ Complete
+- [x] Audit log page (`frontend/app/admin/audit-logs/page.tsx`)
+  - Log table (timestamp, user, action, resource, status, IP)
+  - Statistics cards (total logs, unique users, success rate, errors)
+  - Color-coded status badges
+- [x] Advanced filters
+  - Action type filter (dropdown)
+  - Resource type filter (dropdown)
+  - Status filter (success/failure/error)
+  - Time range filter for stats (1/7/30/90 days)
+- [x] Log detail modal
+  - Full details with timestamp, user, action, resource
   - IP address, user agent, session info
-  - Related logs (same resource)
-  - Copy actions (ID, JSON)
+  - JSON details display
+  - Error message (if applicable)
+- [x] Pagination
+  - 50 logs per page
+  - Previous/Next navigation
 
 ### 15.3 System Statistics Dashboard (22-28h) ⏸️
 
