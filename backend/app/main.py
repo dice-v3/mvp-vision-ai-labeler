@@ -66,6 +66,15 @@ app.add_middleware(
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 
+# Audit Middleware (Phase 15) - OPTIONAL
+# Automatically logs all API requests and responses to audit_logs table
+# WARNING: This generates high log volume. Consider enabling only in production
+# or for specific compliance requirements.
+#
+# To enable, uncomment the following lines:
+# from app.middleware.audit_middleware import AuditMiddleware
+# app.add_middleware(AuditMiddleware)
+
 # Override request class AFTER adding middleware
 # CustomRequest now properly handles OPTIONS requests
 # TEMPORARY: Disabled due to CORS conflict - investigating alternative solutions
