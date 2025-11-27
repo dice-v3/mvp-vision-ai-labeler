@@ -7,6 +7,13 @@ from app.schemas.project import (
     ProjectUpdate,
     ProjectResponse,
 )
+from app.schemas.service_account import (
+    ServiceAccountCreate,
+    ServiceAccountUpdate,
+    ServiceAccountResponse,
+    ServiceAccountWithKey,
+    ServiceAccountListResponse,
+)
 
 __all__ = [
     # Auth
@@ -19,4 +26,10 @@ __all__ = [
     "ProjectCreate",
     "ProjectUpdate",
     "ProjectResponse",
+    # Service Account
+    "ServiceAccountCreate",
+    "ServiceAccountUpdate",
+    "ServiceAccountResponse",
+    "ServiceAccountWithKey",
+    "ServiceAccountListResponse",
 ]

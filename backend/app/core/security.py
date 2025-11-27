@@ -395,3 +395,108 @@ def require_project_permission(required_role: str = "viewer"):
         return permission
 
     return check_permission
+
+
+# =============================================================================
+# Service Account Authentication (Phase 16 - Platform Integration)
+# =============================================================================
+
+async def get_current_service_account(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_labeler_db),
+):
+    """
+    Dependency to get current authenticated service account.
+
+    Phase 16: Validates API key and retrieves service account from Labeler database.
+
+    Service accounts authenticate using API keys in the format:
+    Authorization: Bearer sa_{prefix}_{secret}
+
+    Usage:
+        @app.get("/api/v1/platform/datasets/{dataset_id}")
+        def get_dataset_for_platform(
+            dataset_id: str,
+            service_account = Depends(get_current_service_account)
+        ):
+            return dataset_data
+
+    Args:
+        credentials: HTTP Bearer token credentials
+        db: Database session (Labeler DB)
+
+    Returns:
+        ServiceAccount object
+
+    Raises:
+        HTTPException: If API key is invalid, expired, or inactive
+    """
+    from app.services.service_account_service import verify_api_key
+
+    api_key = credentials.credentials
+
+    # Verify API key
+    service_account = verify_api_key(db, api_key)
+
+    if not service_account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not service_account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service account is inactive",
+        )
+
+    if service_account.is_expired:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service account has expired",
+        )
+
+    return service_account
+
+
+def require_scope(required_scope: str):
+    """
+    Dependency factory to check service account scope.
+
+    Args:
+        required_scope: Required scope (e.g., "datasets:read", "datasets:download")
+
+    Returns:
+        Dependency function that validates service account has the required scope
+
+    Usage:
+        @router.get("/platform/datasets/{dataset_id}")
+        async def get_dataset(
+            dataset_id: str,
+            service_account = Depends(get_current_service_account),
+            _scope = Depends(require_scope("datasets:read")),
+        ):
+            # Only service accounts with "datasets:read" scope can access
+            return dataset_data
+
+        @router.get("/platform/datasets/{dataset_id}/download")
+        async def get_download_url(
+            dataset_id: str,
+            service_account = Depends(get_current_service_account),
+            _scope = Depends(require_scope("datasets:download")),
+        ):
+            # Only service accounts with "datasets:download" scope can access
+            return {"download_url": "..."}
+    """
+    async def check_scope(
+        service_account = Depends(get_current_service_account),
+    ):
+        if not service_account.has_scope(required_scope):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Scope '{required_scope}' required. Your scopes: {', '.join(service_account.scopes or [])}",
+            )
+        return service_account
+
+    return check_scope
