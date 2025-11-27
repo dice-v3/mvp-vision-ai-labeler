@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth/context';
 import { listDatasets } from '@/lib/api/datasets';
 import type { Dataset } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
+import InvitationsPanel from '@/components/invitations/InvitationsPanel';
 
 export default function AdminLayout({
   children,
@@ -24,6 +25,7 @@ export default function AdminLayout({
 
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [invitationsPanelOpen, setInvitationsPanelOpen] = useState(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -62,20 +64,29 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <Sidebar
-        datasets={datasets}
-        selectedDatasetId={null}
-        onDatasetSelect={(datasetId) => router.push(`/?dataset=${datasetId}`)}
-        onDatasetRefresh={fetchDatasets}
-        onLogout={handleLogout}
-      />
+    <>
+      <div className="flex h-screen">
+        {/* Sidebar */}
+        <Sidebar
+          datasets={datasets}
+          selectedDatasetId={null}
+          onDatasetSelect={(datasetId) => router.push(`/?dataset=${datasetId}`)}
+          onDatasetRefresh={fetchDatasets}
+          onLogout={handleLogout}
+          onInvitationsClick={() => setInvitationsPanelOpen(true)}
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        {children}
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
       </div>
-    </div>
+
+      {/* Invitations Panel */}
+      <InvitationsPanel
+        isOpen={invitationsPanelOpen}
+        onClose={() => setInvitationsPanelOpen(false)}
+      />
+    </>
   );
 }
