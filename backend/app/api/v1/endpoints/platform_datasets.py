@@ -29,6 +29,9 @@ from app.schemas.platform import (
     PlatformDatasetBatchResponse,
     PlatformDatasetBatchItem,
     PlatformPermissionCheckResponse,
+    PlatformDownloadUrlRequest,
+    PlatformDownloadUrlResponse,
+    PlatformDownloadManifest,
 )
 
 router = APIRouter()
@@ -394,4 +397,129 @@ async def check_dataset_permission_for_platform(
         has_access=False,
         role=None,
         reason="no_access",
+    )
+
+
+@router.post(
+    "/{dataset_id}/download-url",
+    response_model=PlatformDownloadUrlResponse,
+    tags=["Platform Integration"],
+    summary="Generate download URL (Platform)",
+)
+async def generate_download_url_for_platform(
+    dataset_id: str,
+    request: PlatformDownloadUrlRequest,
+    service_account: ServiceAccount = Depends(get_current_service_account),
+    _scope: ServiceAccount = Depends(require_scope("datasets:download")),
+    labeler_db: Session = Depends(get_labeler_db),
+):
+    """
+    Generate presigned download URL for dataset (Platform API).
+
+    Used by Platform training service to download datasets.
+    Requires service account with 'datasets:download' scope.
+
+    Note: Currently generates presigned URL for annotation file.
+    Full dataset ZIP packaging will be added in future iteration.
+
+    Args:
+        dataset_id: Dataset ID
+        request: Download request (user_id, expiration, purpose)
+        service_account: Authenticated service account
+        labeler_db: Database session
+
+    Returns:
+        Presigned download URL with expiration time
+
+    Raises:
+        404: Dataset not found
+        403: User lacks access to dataset
+
+    Example:
+        POST /api/v1/platform/datasets/ds_c75023ca76d7448b/download-url
+        {
+            "user_id": 42,
+            "expiration_seconds": 3600,
+            "purpose": "training_job_123"
+        }
+    """
+    from app.core.storage import StorageClient
+    from datetime import timedelta
+
+    # Query dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Check user permission (same logic as permission check endpoint)
+    has_access = False
+    role = None
+
+    # Check 1: Owner
+    if dataset.owner_id == request.user_id:
+        has_access = True
+        role = "owner"
+    # Check 2: Public dataset
+    elif dataset.visibility == "public":
+        has_access = True
+    # Check 3: Explicit permission
+    else:
+        permission = (
+            labeler_db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.dataset_id == dataset_id,
+                DatasetPermission.user_id == request.user_id,
+            )
+            .first()
+        )
+        if permission:
+            has_access = True
+            role = permission.role
+
+    if not has_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User {request.user_id} does not have access to dataset {dataset_id}",
+        )
+
+    # Generate presigned URL for annotation file
+    # TODO: In future, generate ZIP archive with all dataset files
+    storage = StorageClient()
+
+    if dataset.annotation_path:
+        # Generate presigned URL for annotation file
+        annotation_key = f"datasets/{dataset_id}/{dataset.annotation_path}"
+        download_url = storage.generate_presigned_url(
+            bucket=storage.datasets_bucket,
+            key=annotation_key,
+            expiration=request.expiration_seconds,
+        )
+    else:
+        # No annotation file, return error
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} has no annotation file",
+        )
+
+    # Calculate expiration time
+    expires_at = datetime.utcnow() + timedelta(seconds=request.expiration_seconds)
+
+    # Create manifest
+    manifest = PlatformDownloadManifest(
+        images=f"datasets/{dataset_id}/images/",
+        annotations=dataset.annotation_path,
+        readme="README.md",
+    )
+
+    return PlatformDownloadUrlResponse(
+        dataset_id=dataset_id,
+        download_url=download_url,
+        expires_at=expires_at,
+        format="json",  # Currently annotation file only, will be "zip" when full packaging is implemented
+        size_bytes=None,  # TODO: Get file size from S3 metadata
+        manifest=manifest,
     )
