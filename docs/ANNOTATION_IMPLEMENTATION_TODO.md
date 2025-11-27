@@ -1734,6 +1734,755 @@ Logout
 
 ---
 
+## Phase 16: Platform Integration - Dataset API ⏸️ PENDING
+
+**Duration**: 1 week (35-40h)
+**Status**: Pending
+**Priority**: 🔴 Critical (Platform Training Jobs 의존성)
+
+### Overview
+
+Phase 16에서는 Platform Training Service가 Labeler의 데이터셋을 조회하고 다운로드할 수 있는 읽기 전용 REST API를 제공합니다. Dataset 관리가 Platform → Labeler로 이전되면서 발생한 데이터 중복 문제를 해결하고, Labeler를 **Dataset의 Single Source of Truth**로 확립합니다.
+
+**Architecture Principle**:
+```
+┌─────────────────────┐
+│ Labeler Backend     │ ← Single Source of Truth (SSOT)
+│  (Labeler DB)       │ ← Dataset CRUD 관리
+└──────────┬──────────┘
+           │ REST API (read-only)
+           ▼
+┌─────────────────────┐
+│ Platform Backend    │ ← 읽기 전용 조회
+│  (Platform DB)      │ ← dataset_id만 저장 (FK 참조)
+└─────────────────────┘
+```
+
+**Key Features**:
+- 🔐 Service Account Authentication: JWT 기반 서비스간 인증
+- 📊 Dataset Query API: 단일/목록/배치 조회 with 필터링
+- 🔒 Permission Check API: 사용자별 데이터셋 접근 권한 확인
+- 📦 Download URL Generation: R2 Presigned URL (임시 다운로드 링크)
+- 🚦 Rate Limiting: 서비스당 1000 req/min, 데이터셋당 100 req/min
+- ⚡ Performance: P95 < 300ms, Redis caching
+
+**Requirements Document**:
+- `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_DATASET_API_REQUIREMENTS.md`
+
+### 16.1 Service Account Authentication (8-10h) ⏸️
+
+**Goal**: Platform에서 Labeler API를 안전하게 호출할 수 있는 인증 시스템 구축
+
+#### 16.1.1 Database Schema (2h) ⏸️
+- [ ] Service Account model (User DB)
+  - `id` VARCHAR PRIMARY KEY (e.g., "sa_platform_12345")
+  - `service_name` VARCHAR (e.g., "vision-platform")
+  - `api_key_hash` VARCHAR (bcrypt hashed)
+  - `scopes` TEXT[] (e.g., ["datasets:read", "datasets:download"])
+  - `created_by` INTEGER (admin user ID)
+  - `created_at`, `expires_at`, `last_used_at` TIMESTAMP
+- [ ] Alembic migration
+  - `alembic revision --autogenerate -m "Add service_accounts table"`
+  - Apply migration to User DB
+
+**Schema**:
+```sql
+CREATE TABLE service_accounts (
+    id VARCHAR PRIMARY KEY,
+    service_name VARCHAR NOT NULL UNIQUE,
+    api_key_hash VARCHAR NOT NULL,
+    scopes TEXT[] NOT NULL,
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NULL,
+    last_used_at TIMESTAMP NULL
+);
+CREATE INDEX idx_service_accounts_service_name ON service_accounts(service_name);
+```
+
+#### 16.1.2 Backend Implementation (4-5h) ⏸️
+- [ ] Service Account model (`backend/app/db/models/user.py`)
+  - SQLAlchemy model with `scopes` as ARRAY type
+  - `verify_api_key()` method
+  - `has_scope()` helper method
+- [ ] Service Account schemas (`backend/app/schemas/service_account.py`)
+  - `ServiceAccountCreate`, `ServiceAccountResponse`
+- [ ] Service Account service (`backend/app/services/service_account_service.py`)
+  - `create_service_account()` - Generate API key, hash, store
+  - `verify_service_account()` - Verify API key and scopes
+  - `update_last_used()` - Track last usage
+  - `revoke_service_account()` - Soft delete
+- [ ] Auth dependency (`backend/app/core/security.py`)
+  - `get_current_service_account()` - Verify Bearer token as service account
+  - `require_scope()` - Check if service account has required scope
+
+#### 16.1.3 Admin API Endpoints (2-3h) ⏸️
+- [ ] Create service account (`POST /api/v1/auth/service-accounts`)
+  - Admin only (`Depends(get_current_admin_user)`)
+  - Generate random API key (32 characters)
+  - Return plaintext key once (never stored)
+  - Response: `{ "service_account_id", "api_key", "scopes", "expires_at" }`
+- [ ] List service accounts (`GET /api/v1/auth/service-accounts`)
+  - Admin only
+  - Return list without API keys
+- [ ] Revoke service account (`DELETE /api/v1/auth/service-accounts/{id}`)
+  - Admin only
+  - Soft delete or hard delete (TBD)
+
+**API Example**:
+```http
+POST /api/v1/auth/service-accounts HTTP/1.1
+Authorization: Bearer {admin_token}
+
+{
+  "service_name": "vision-platform",
+  "scopes": ["datasets:read", "datasets:download", "datasets:permissions"]
+}
+
+Response 201:
+{
+  "service_account_id": "sa_platform_abc123",
+  "api_key": "labeler_sk_def456ghi789...",  ← Only shown once
+  "scopes": ["datasets:read", "datasets:download", "datasets:permissions"],
+  "expires_at": null
+}
+```
+
+**Platform Usage**:
+```python
+# platform/backend/.env
+LABELER_API_URL=https://labeler-api.example.com
+LABELER_SERVICE_KEY=labeler_sk_def456ghi789...
+
+# All Platform → Labeler API calls use this header:
+Authorization: Bearer labeler_sk_def456ghi789...
+```
+
+### 16.2 Dataset Query API (10-12h) ⏸️
+
+**Goal**: Platform이 데이터셋 메타데이터를 조회할 수 있는 API 제공
+
+#### 16.2.1 Enhanced Single Dataset Query (3-4h) ⏸️
+- [ ] Update `GET /api/v1/datasets/{id}` endpoint
+  - Support service account authentication
+  - Add new response fields:
+    - `storage_type` ("r2")
+    - `storage_path` ("datasets/ds_abc/")
+    - `annotation_path` ("datasets/ds_abc/annotations_detection.json")
+    - `content_hash` ("sha256:...")
+    - `version` (integer)
+    - `class_names` (list of strings)
+    - `tags` (list of strings)
+  - Enrich from Project info (num_images, num_classes)
+- [ ] Update dataset schema (`backend/app/schemas/dataset.py`)
+  - `DatasetDetailResponse` with all new fields
+
+**Response Schema** (enhanced):
+```json
+{
+  "id": "ds_c75023ca76d7448b",
+  "name": "mvtec-bottle-detection",
+  "description": "MVTec Bottle Detection Dataset",
+  "format": "coco",
+  "labeled": true,
+  "storage_type": "r2",
+  "storage_path": "datasets/ds_c75023ca76d7448b/",
+  "annotation_path": "datasets/ds_c75023ca76d7448b/annotations_detection.json",
+  "num_classes": 2,
+  "num_images": 1000,
+  "class_names": ["broken", "normal"],
+  "tags": ["mvtec", "bottle", "detection"],
+  "visibility": "public",
+  "owner_id": 1,
+  "created_at": "2025-11-20T10:00:00Z",
+  "updated_at": "2025-11-27T09:30:00Z",
+  "version": 1,
+  "content_hash": "sha256:abc123..."
+}
+```
+
+#### 16.2.2 Dataset List with Filtering (3-4h) ⏸️
+- [ ] Update `GET /api/v1/datasets` endpoint
+  - Add query parameters:
+    - `user_id` (optional): Filter by owner
+    - `visibility` (optional): "public", "private", "organization"
+    - `labeled` (optional): true/false
+    - `tags` (optional): Comma-separated (e.g., "detection,mvtec")
+    - `format` (optional): "coco", "yolo", "dice", "imagefolder"
+    - `page` (optional): Default 1
+    - `limit` (optional): Default 50, max 200
+  - Paginated response with total count
+- [ ] Backend service enhancements
+  - Build dynamic SQLAlchemy filters
+  - Efficient query with pagination
+  - Include dataset counts in response
+
+**Endpoint**: `GET /api/v1/datasets?visibility=public&labeled=true&format=coco&limit=10`
+
+**Response**:
+```json
+{
+  "total": 150,
+  "page": 1,
+  "limit": 10,
+  "datasets": [
+    {
+      "id": "ds_c75023ca76d7448b",
+      "name": "mvtec-bottle-detection",
+      "format": "coco",
+      "labeled": true,
+      "num_images": 1000,
+      "num_classes": 2,
+      "visibility": "public",
+      "owner_id": 1,
+      "storage_type": "r2",
+      "created_at": "2025-11-20T10:00:00Z"
+    },
+    ...
+  ]
+}
+```
+
+#### 16.2.3 Batch Dataset Query (4h) ⏸️
+- [ ] Create `POST /api/v1/datasets/batch` endpoint
+  - Accept list of dataset IDs (max 50)
+  - Optional `fields` parameter for partial response
+  - Return dictionary keyed by dataset_id
+  - Partial success: Return found datasets + errors for missing ones
+- [ ] Batch query service
+  - Single DB query with `WHERE id IN (...)`
+  - Field filtering logic
+  - Error handling per dataset
+
+**Endpoint**: `POST /api/v1/datasets/batch`
+
+**Request**:
+```json
+{
+  "dataset_ids": ["ds_c75023ca76d7448b", "ds_abc123", "ds_xyz789"],
+  "fields": ["id", "name", "num_images", "format", "storage_path"]
+}
+```
+
+**Response**:
+```json
+{
+  "datasets": {
+    "ds_c75023ca76d7448b": {
+      "id": "ds_c75023ca76d7448b",
+      "name": "mvtec-bottle-detection",
+      "num_images": 1000,
+      "format": "coco",
+      "storage_path": "datasets/ds_c75023ca76d7448b/"
+    },
+    "ds_abc123": {
+      "id": "ds_abc123",
+      "name": "coco128",
+      "num_images": 128,
+      "format": "coco",
+      "storage_path": "datasets/ds_abc123/"
+    },
+    "ds_xyz789": null
+  },
+  "errors": {
+    "ds_xyz789": "Dataset not found"
+  }
+}
+```
+
+### 16.3 Permission Check API (4-5h) ⏸️
+
+**Goal**: Platform이 사용자의 데이터셋 접근 권한을 확인할 수 있는 API
+
+#### 16.3.1 Permission Check Endpoint (4-5h) ⏸️
+- [ ] Create `GET /api/v1/datasets/{dataset_id}/permissions/{user_id}` endpoint
+  - Service account authentication required
+  - Permission check logic:
+    1. Check if user is owner (`dataset.owner_id == user_id`)
+    2. Check if dataset is public (`dataset.visibility == 'public'`)
+    3. Check organization membership (if implemented)
+    4. Check explicit permissions (ProjectPermission table from Phase 8)
+  - Return access status + role + reason
+- [ ] Permission service (`backend/app/services/permission_service.py`)
+  - `check_dataset_access(dataset_id, user_id)` - Comprehensive check
+  - Return `{ has_access, role, reason }`
+
+**Endpoint**: `GET /api/v1/datasets/{dataset_id}/permissions/{user_id}`
+
+**Response**:
+```json
+{
+  "dataset_id": "ds_c75023ca76d7448b",
+  "user_id": 42,
+  "has_access": true,
+  "role": "viewer",
+  "reason": "public_dataset"
+}
+```
+
+**Possible Reasons**:
+- `"owner"`: User owns the dataset
+- `"public_dataset"`: Dataset is public
+- `"organization_member"`: User is in the same organization
+- `"explicit_permission"`: User has been granted permission (Phase 8)
+- `"no_access"`: User cannot access
+
+### 16.4 Download URL Generation (6-8h) ⏸️
+
+**Goal**: Platform Training Service가 데이터셋을 다운로드할 수 있는 임시 URL 생성
+
+#### 16.4.1 R2 Presigned URL Generation (6-8h) ⏸️
+- [ ] Create `POST /api/v1/datasets/{dataset_id}/download-url` endpoint
+  - Service account authentication required
+  - Verify user has permission to access dataset
+  - Generate R2 presigned URL (S3-compatible API)
+  - Configurable expiration (default 1 hour, max 24 hours)
+  - Audit log the download request
+  - Return URL + metadata (size, format, manifest)
+- [ ] Download URL service (`backend/app/services/download_url_service.py`)
+  - `generate_download_url(dataset_id, user_id, expiration_seconds, purpose)`
+  - Use `CloudflareR2StorageBackend.generate_presigned_url()`
+  - Track download in audit logs
+  - Include manifest (images path, annotations path, readme)
+- [ ] Dataset packaging considerations
+  - Assume dataset is already in R2 as ZIP or directory
+  - If directory, return presigned URL to root
+  - If ZIP, return presigned URL to archive.zip
+
+**Endpoint**: `POST /api/v1/datasets/{dataset_id}/download-url`
+
+**Request**:
+```json
+{
+  "user_id": 42,
+  "expiration_seconds": 3600,
+  "purpose": "training_job_123"
+}
+```
+
+**Response**:
+```json
+{
+  "dataset_id": "ds_c75023ca76d7448b",
+  "download_url": "https://r2.cloudflare.com/datasets/.../archive.zip?X-Amz-Algorithm=...",
+  "expires_at": "2025-11-27T11:15:00Z",
+  "format": "zip",
+  "size_bytes": 524288000,
+  "manifest": {
+    "images": "images/",
+    "annotations": "annotations_detection.json",
+    "readme": "README.md"
+  }
+}
+```
+
+**Implementation Notes**:
+- Use `boto3` S3 client with R2 credentials
+- `generate_presigned_url(ClientMethod='get_object', ExpiresIn=3600)`
+- URL expires automatically (no cleanup needed)
+- Consider adding download count tracking in audit logs
+
+### 16.5 Rate Limiting & Security (4-5h) ⏸️
+
+**Goal**: API 남용 방지 및 공정한 리소스 사용 보장
+
+#### 16.5.1 Rate Limiting Middleware (3-4h) ⏸️
+- [ ] Install `slowapi` or `fastapi-limiter`
+  - Add to `requirements.txt`
+  - Configure Redis connection for distributed rate limiting
+- [ ] Rate limit configuration
+  - Service account global: 1000 requests/minute
+  - Per dataset: 100 requests/minute
+  - Per IP (fallback): 60 requests/minute
+- [ ] Rate limit middleware
+  - Apply to all `/api/v1/datasets/*` endpoints
+  - Apply to service account endpoints
+  - Return 429 with retry-after header
+- [ ] Response headers
+  - `X-RateLimit-Limit`: Total allowed requests
+  - `X-RateLimit-Remaining`: Remaining requests in window
+  - `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+**Response Headers** (success):
+```http
+HTTP/1.1 200 OK
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 950
+X-RateLimit-Reset: 1701090000
+```
+
+**429 Response**:
+```json
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Too many requests. Retry after 60 seconds.",
+    "retry_after": 60,
+    "timestamp": "2025-11-27T10:30:00Z"
+  }
+}
+```
+
+#### 16.5.2 Security Enhancements (1h) ⏸️
+- [ ] Input validation
+  - Validate dataset_id format (UUID or custom format)
+  - Validate user_id (positive integer)
+  - Validate expiration_seconds (max 86400 = 24 hours)
+- [ ] Scope enforcement
+  - Check service account has required scope before processing
+  - `datasets:read` for query endpoints
+  - `datasets:download` for download URL generation
+  - `datasets:permissions` for permission checks
+
+### 16.6 Error Handling Standardization (2-3h) ⏸️
+
+**Goal**: 일관된 에러 응답으로 Platform 팀의 통합 용이성 향상
+
+#### 16.6.1 Error Response Schema (1h) ⏸️
+- [ ] Define error response model (`backend/app/schemas/error.py`)
+  - `ErrorResponse` with `code`, `message`, `details`, `timestamp`
+  - Error code constants (enum)
+- [ ] HTTP status mapping
+  - 404: `DATASET_NOT_FOUND`
+  - 403: `ACCESS_DENIED`
+  - 400: `INVALID_DATASET_ID`, `INVALID_REQUEST`
+  - 429: `RATE_LIMIT_EXCEEDED`
+  - 500: `INTERNAL_ERROR`
+  - 503: `R2_UNAVAILABLE`
+  - 401: `INVALID_SERVICE_ACCOUNT`
+
+**Error Response Schema**:
+```json
+{
+  "error": {
+    "code": "DATASET_NOT_FOUND",
+    "message": "Dataset ds_xyz789 not found",
+    "details": {
+      "dataset_id": "ds_xyz789"
+    },
+    "timestamp": "2025-11-27T10:30:00Z"
+  }
+}
+```
+
+**Error Code List**:
+| HTTP | Error Code | Description |
+|------|------------|-------------|
+| 404 | `DATASET_NOT_FOUND` | Dataset ID not found |
+| 403 | `ACCESS_DENIED` | User lacks permission |
+| 400 | `INVALID_DATASET_ID` | Malformed dataset ID |
+| 400 | `INVALID_REQUEST` | Request validation failed |
+| 429 | `RATE_LIMIT_EXCEEDED` | Too many requests |
+| 500 | `INTERNAL_ERROR` | Server error |
+| 503 | `R2_UNAVAILABLE` | R2 storage unavailable |
+| 401 | `INVALID_SERVICE_ACCOUNT` | Invalid/expired API key |
+
+#### 16.6.2 Error Middleware (1-2h) ⏸️
+- [ ] Global exception handler (`backend/app/middleware/error_handler.py`)
+  - Catch all exceptions
+  - Convert to standardized error response
+  - Log errors with context
+- [ ] Specific exception handlers
+  - `DatasetNotFoundException` → 404
+  - `AccessDeniedException` → 403
+  - `RateLimitExceededException` → 429
+  - `R2ConnectionException` → 503
+
+### 16.7 Testing & Documentation (6-8h) ⏸️
+
+**Goal**: 철저한 테스트와 명확한 문서로 안정적인 통합 보장
+
+#### 16.7.1 Backend Tests (4-5h) ⏸️
+- [ ] Unit tests (`tests/unit/`)
+  - `test_service_account_service.py` (create, verify, revoke)
+  - `test_permission_service.py` (access check logic)
+  - `test_download_url_service.py` (presigned URL generation)
+- [ ] Integration tests (`tests/integration/`)
+  - `test_service_account_endpoints.py` (CRUD operations)
+  - `test_dataset_query_endpoints.py` (single, list, batch)
+  - `test_permission_check_endpoint.py`
+  - `test_download_url_endpoint.py`
+  - `test_rate_limiting.py` (429 responses)
+- [ ] Load tests (`tests/load/`)
+  - Simulate 1000 req/min
+  - Verify rate limiting works
+  - Check P95 latency targets
+
+#### 16.7.2 Documentation (2-3h) ⏸️
+- [ ] Postman collection
+  - Service account creation (admin)
+  - GET single dataset
+  - GET dataset list (with various filters)
+  - POST batch query
+  - GET permission check
+  - POST download URL generation
+  - Rate limit testing (send 100+ requests)
+- [ ] OpenAPI spec update
+  - Add new endpoints to Swagger docs
+  - Document request/response schemas
+  - Document error responses
+- [ ] Mock dataset setup
+  - Create 3 test datasets in R2:
+    - `ds_test_coco_001`: COCO format, 100 images, detection
+    - `ds_test_yolo_002`: YOLO format, 50 images, classification
+    - `ds_test_dice_003`: DICE format, 200 images, segmentation
+  - Upload sample images + annotations
+- [ ] Integration guide for Platform team
+  - `docs/platform-integration-guide.md`
+  - LabelerClient usage examples
+  - Error handling best practices
+  - Rate limiting guidelines
+
+**Postman Collection Structure**:
+```
+Labeler Dataset API (Platform Integration)
+├── 1. Authentication
+│   ├── Create Service Account (Admin)
+│   ├── List Service Accounts (Admin)
+│   └── Revoke Service Account (Admin)
+├── 2. Dataset Queries
+│   ├── GET Single Dataset
+│   ├── GET Dataset List (no filters)
+│   ├── GET Dataset List (filtered: public, labeled, coco)
+│   ├── GET Dataset List (paginated: page=2, limit=20)
+│   └── POST Batch Query (3 datasets)
+├── 3. Permissions
+│   ├── GET Permission Check (has access)
+│   └── GET Permission Check (no access)
+├── 4. Download URLs
+│   ├── POST Generate Download URL (1 hour expiration)
+│   └── POST Generate Download URL (custom purpose)
+└── 5. Rate Limiting
+    └── POST Batch Query x100 (trigger 429)
+```
+
+### 16.8 Platform Client Implementation ⏸️ (Platform Team)
+
+**Responsibility**: Platform team
+**Duration**: 2 days
+**Status**: Waiting for Labeler API completion
+
+#### Platform Team Tasks (Platform 팀 작업)
+- [ ] LabelerClient class implementation
+  - `platform/backend/app/services/labeler_client.py`
+  - `httpx` based async client
+  - Methods: `get_dataset()`, `list_datasets()`, `batch_query()`, `check_permission()`, `generate_download_url()`
+- [ ] Environment configuration
+  - `LABELER_API_URL` in .env
+  - `LABELER_SERVICE_KEY` in .env (secret management)
+- [ ] Retry logic
+  - Exponential backoff for 503, 429 errors
+  - Max 3 retries
+- [ ] Caching (optional)
+  - Redis cache for dataset metadata (TTL: 5 minutes)
+  - Cache invalidation strategy
+- [ ] Training Job integration
+  - Update `create_training_job()` to use Labeler API
+  - Verify dataset exists and user has access
+  - Generate download URL for training service
+- [ ] E2E integration tests
+  - Joint testing with Labeler team
+  - Test all error scenarios
+
+**Example LabelerClient** (Platform's code):
+```python
+# platform/backend/app/services/labeler_client.py
+import httpx
+from app.core.config import settings
+
+class LabelerClient:
+    def __init__(self):
+        self.base_url = settings.LABELER_API_URL
+        self.headers = {
+            "Authorization": f"Bearer {settings.LABELER_SERVICE_KEY}"
+        }
+
+    async def get_dataset(self, dataset_id: str):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/datasets/{dataset_id}",
+                headers=self.headers,
+                timeout=10.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def check_permission(self, dataset_id: str, user_id: int):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/datasets/{dataset_id}/permissions/{user_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def generate_download_url(self, dataset_id: str, user_id: int, purpose: str):
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.base_url}/api/v1/datasets/{dataset_id}/download-url",
+                headers=self.headers,
+                json={
+                    "user_id": user_id,
+                    "expiration_seconds": 3600,
+                    "purpose": purpose
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+```
+
+### 16.9 Migration & Deployment (2-3h) ⏸️
+
+**Goal**: Platform DB Dataset 테이블 단계적 폐기 및 안전한 마이그레이션
+
+#### 16.9.1 Migration Strategy ⏸️
+- [ ] **Phase 1**: Labeler API 구현 (Labeler 팀)
+  - Duration: 3-4 days
+  - Deliverable: All endpoints working + tests passing
+- [ ] **Phase 2**: Platform 통합 (Platform 팀)
+  - Duration: 2 days
+  - Deliverable: LabelerClient implemented + integration tests
+- [ ] **Phase 3**: Dual Read (Platform 팀)
+  - Duration: 1-2 days
+  - Platform reads from both Platform DB and Labeler API
+  - Use Labeler API as primary, Platform DB as fallback
+  - Monitor error rates and latency
+- [ ] **Phase 4**: Switch to Labeler API (Both 팀)
+  - Duration: 1 day
+  - Update env config to use Labeler API only
+  - Remove fallback logic
+  - Monitor for issues
+- [ ] **Phase 5**: Deprecate Platform DB Dataset table (Platform 팀)
+  - Duration: 1 day (after 2 weeks of stability)
+  - Mark table as deprecated
+  - Keep for rollback purposes (read-only)
+  - Eventually drop table after 1 month
+
+#### 16.9.2 Rollback Plan ⏸️
+- [ ] Keep Platform DB Dataset table read-only for 2 weeks
+- [ ] Monitor Labeler API error rates (< 0.1% acceptable)
+- [ ] Quick switch back to Platform DB if critical issues
+  - Environment variable toggle
+  - No code changes needed
+- [ ] Gradual rollout using feature flags
+  - 10% traffic → Labeler API
+  - 50% traffic → Labeler API
+  - 100% traffic → Labeler API
+
+### Performance Requirements
+
+| Endpoint | Target P95 Latency | Notes |
+|----------|-------------------|-------|
+| GET /datasets/{id} | < 100ms | Single row query |
+| GET /datasets (list) | < 300ms | With pagination |
+| GET /permissions/{user_id} | < 150ms | Permission check logic |
+| POST /download-url | < 200ms | R2 presigned URL generation |
+| POST /batch | < 500ms | Up to 50 dataset IDs |
+
+**SLA**: 99.9% uptime
+
+**Caching Strategy**:
+- Redis cache for dataset metadata (TTL: 5 minutes)
+- Cache invalidation on dataset update
+- Cache permission checks (TTL: 1 minute)
+
+### Timeline
+
+| Day | Focus | Owner | Deliverables |
+|-----|-------|-------|--------------|
+| **Day 1** | Service Account Auth | Labeler | DB schema, models, auth logic |
+| **Day 2** | Dataset Query API (single + list) | Labeler | Enhanced endpoints, filtering |
+| **Day 3** | Batch Query + Permission Check | Labeler | Batch endpoint, permission logic |
+| **Day 4** | Download URL + Rate Limiting | Labeler | Presigned URLs, rate limits |
+| **Day 5** | Error Handling + Testing | Labeler | Unit tests, integration tests |
+| **Day 6** | Documentation + Postman | Labeler | OpenAPI, collection, mock data |
+| **Day 7-8** | Platform Integration | Platform | LabelerClient, E2E tests |
+
+**Total**: ~1 week (7-8 days)
+
+### Success Criteria
+
+✅ **Functionality**:
+- [ ] Platform can query dataset metadata without direct DB access
+- [ ] Service account authentication works reliably
+- [ ] Rate limiting prevents abuse (429 errors when exceeded)
+- [ ] Download URLs generate valid R2 presigned URLs
+- [ ] Batch queries handle up to 50 datasets efficiently
+- [ ] Permission checks return accurate results
+
+✅ **Performance**:
+- [ ] All endpoints meet P95 latency targets
+- [ ] No N+1 query problems
+- [ ] Caching reduces DB load by >50%
+- [ ] Service handles 1000 req/min sustained load
+
+✅ **Security**:
+- [ ] Service account scopes enforced correctly
+- [ ] Permission checks prevent unauthorized access
+- [ ] Presigned URLs expire after configured time
+- [ ] API keys are hashed (never stored plaintext)
+
+✅ **Integration**:
+- [ ] Platform Training Jobs can create jobs using Labeler datasets
+- [ ] E2E tests pass (Platform → Labeler → R2 download)
+- [ ] Zero downtime migration
+- [ ] Rollback plan tested and verified
+
+### Files to Create
+
+**Backend**:
+- `backend/app/db/models/user.py` (ServiceAccount model)
+- `backend/app/schemas/service_account.py` (schemas)
+- `backend/app/schemas/error.py` (standardized errors)
+- `backend/app/services/service_account_service.py` (auth logic)
+- `backend/app/services/permission_service.py` (access checks)
+- `backend/app/services/download_url_service.py` (presigned URLs)
+- `backend/app/api/v1/endpoints/service_accounts.py` (admin endpoints)
+- `backend/app/middleware/rate_limit.py` (rate limiting)
+- `backend/app/middleware/error_handler.py` (global error handler)
+- `backend/alembic/versions/YYYYMMDD_add_service_accounts.py` (migration)
+
+**Frontend**: None (backend-only integration)
+
+**Documentation**:
+- `docs/platform-integration-guide.md` (Platform team guide)
+- Postman collection (JSON export)
+- OpenAPI spec update (Swagger)
+
+**Tests**:
+- `tests/unit/test_service_account_service.py`
+- `tests/unit/test_permission_service.py`
+- `tests/unit/test_download_url_service.py`
+- `tests/integration/test_service_account_endpoints.py`
+- `tests/integration/test_dataset_query_endpoints.py`
+- `tests/integration/test_permission_check.py`
+- `tests/integration/test_download_url.py`
+- `tests/integration/test_rate_limiting.py`
+- `tests/load/test_sustained_load.py`
+
+### Dependencies
+
+**Completed Phases**:
+- ✅ Phase 8.1 (RBAC) - ProjectPermission table
+- ✅ Phase 9.1 (User DB) - User model with system_role
+- ✅ Phase 15 (Admin) - Admin authorization (`get_current_admin_user`)
+
+**External Dependencies**:
+- Platform team availability for integration testing
+- R2 storage access and credentials
+- Redis instance for rate limiting
+
+### Related Documents
+
+- **Requirements**: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_DATASET_API_REQUIREMENTS.md`
+- **Platform Integration**: `docs/design/PLATFORM_INTEGRATION.md`
+- **API Spec**: `docs/design/API_SPEC.md`
+- **Database Schema**: `docs/design/DATABASE_SCHEMA.md`
+
+**Total**: 35-40h over ~1 week
+
+---
+
 ## Technical Stack
 
 **Frontend**:
