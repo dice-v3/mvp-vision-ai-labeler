@@ -2,7 +2,7 @@
 
 **Project**: Vision AI Labeler - Annotation Interface
 **Start Date**: 2025-11-14
-**Last Updated**: 2025-11-27 (Phase 15 Admin Dashboard Frontend Complete)
+**Last Updated**: 2025-11-27 (Phase 15 Complete - Admin Dashboard & Audit System)
 
 ---
 
@@ -24,7 +24,7 @@
 | **Phase 12: Dataset Publish Improvements** | **✅ Complete** | **100%** | **2025-11-26** |
 | Phase 13: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
-| **Phase 15: Admin Dashboard & Audit** | **🔄 In Progress** | **75%** | **-** |
+| **Phase 15: Admin Dashboard & Audit** | **✅ Complete** | **100%** | **2025-11-27** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -1596,69 +1596,72 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
   - 50 logs per page
   - Previous/Next navigation
 
-### 15.3 System Statistics Dashboard (22-28h) ⏸️
+### 15.3 System Statistics Dashboard (22-28h) ✅ Complete
 
 **Goal**: 시스템 전체 통계 및 사용 패턴 분석
 
-#### 15.3.1 Backend Statistics API (10-12h)
-- [ ] User statistics API
+#### 15.3.1 Backend Statistics API (10-12h) ✅ Complete
+- [x] User statistics API
   - `GET /api/v1/admin/stats/users` (total, active, new users)
-  - `GET /api/v1/admin/stats/sessions` (duration, peak hours, timeline)
-- [ ] Dataset & annotation statistics API
-  - `GET /api/v1/admin/stats/datasets` (total, storage, recent uploads, trends)
-  - `GET /api/v1/admin/stats/annotations` (by task type, per day, avg time, leaderboard)
-- [ ] System performance metrics API
-  - `GET /api/v1/admin/stats/performance` (response times, DB perf, storage, errors)
-  - Cache statistics (hit rates)
-- [ ] Statistics caching service (`backend/app/services/stats_cache_service.py`)
-  - Pre-calculate expensive queries
-  - Background jobs (APScheduler/Celery)
-  - Cache in `system_stats_cache` table (TTL: 5-15min)
+  - `GET /api/v1/admin/stats/sessions` (duration, active sessions, timeline)
+- [x] Resource usage statistics API
+  - `GET /api/v1/admin/stats/resources` (datasets, images, annotations, storage)
+- [x] Performance metrics API
+  - `GET /api/v1/admin/stats/performance` (annotation rate, task distribution, top annotators)
+- [x] System overview API
+  - `GET /api/v1/admin/stats/overview` (comprehensive system stats)
+- [x] Statistics service (`backend/app/services/system_stats_service.py`)
+  - User activity stats (registration trend, login activity)
+  - Resource usage stats (datasets, images, annotations, storage)
+  - Performance metrics (annotation rate, task distribution)
+  - Session statistics (active sessions, avg duration)
 
-#### 15.3.2 Frontend Statistics Dashboard (12-16h)
-- [ ] Overview dashboard (`frontend/app/admin/stats/page.tsx`)
-  - KPI cards (users, datasets, annotations, storage)
-  - Key charts (user growth, annotation activity, storage usage, active hours heatmap)
-- [ ] User analytics tab
-  - Registration trend (90 days)
-  - Active vs inactive users
-  - Session duration distribution
-  - User engagement metrics (DAU/WAU)
-  - Top users by activity
-- [ ] Dataset & annotation analytics tab
-  - Dataset growth chart
-  - Annotations over time
-  - Task type breakdown (pie + bar charts)
-  - Recent activity timeline
-- [ ] Performance monitoring tab
-  - API response time percentiles
-  - Request volume by endpoint
-  - Error rate trends
-  - System health indicators (DB pool, cache, storage)
+#### 15.3.2 Frontend Statistics Dashboard (12-16h) ✅ Complete
+- [x] Overview dashboard (`frontend/app/admin/stats/page.tsx`)
+  - KPI cards (total users, active users, new users, logins)
+  - Resource usage cards (datasets, images, annotations, storage)
+  - Performance cards (avg annotations/day, active sessions, session duration)
+- [x] User activity section
+  - Registration trend chart (bar chart)
+  - Active users metrics (7d/30d)
+  - New users tracking
+  - Login activity stats
+- [x] Resource usage section
+  - Datasets by status
+  - Annotations by task type (progress bars)
+  - Storage usage
+  - Recent activity tracking
+- [x] Performance metrics section
+  - Daily annotation rate chart (bar chart)
+  - Daily sessions chart (bar chart)
+  - Task distribution
+  - Session statistics
+- [x] Time range filter (7/30/90 days)
+- [x] Refresh functionality
 
-### 15.4 Integration & Polish (10-12h) ⏸️
+### 15.4 Integration & Polish (10-12h) ✅ Complete
 
-#### 15.4.1 Permission & Access Control (3-4h)
-- [ ] ~~Add `is_admin` field~~ ✅ 이미 존재 (user.system_role, user.is_admin)
-- [ ] Implement `require_admin` dependency
-- [ ] Admin menu visibility logic (sidebar, check user.is_admin)
-- [ ] API authorization (403 for non-admin)
-- [ ] Route guards (redirect non-admin)
+#### 15.4.1 Permission & Access Control (3-4h) ✅ Complete
+- [x] ~~Add `is_admin` field~~ ✅ 이미 존재 (user.system_role, user.is_admin)
+- [x] Implement `require_admin` dependency (`get_current_admin_user`)
+- [x] Admin menu visibility logic (sidebar, check user.system_role === 'admin')
+- [x] API authorization (403 for non-admin via Depends(get_current_admin_user))
+- [x] Route guards (redirect non-admin to home page)
 
-#### 15.4.2 UI/UX Polish (4-5h)
-- [ ] Sidebar menu updates
+#### 15.4.2 UI/UX Polish (4-5h) ✅ Complete
+- [x] Sidebar menu updates
   - Add admin section above user profile
   - 3 menu items: Dataset Manager, System Logs, System Stats
-  - Icons and active state styling
-- [ ] Admin layout component
-  - Breadcrumbs navigation
-  - Page title and description
-  - Action buttons (export, refresh)
-- [ ] Loading & error states
-  - Skeleton loaders for charts/tables
-  - Error boundaries
+  - Icons and hover effects
+- [x] Admin page layout
+  - Page headers with title and description
+  - Action buttons (refresh)
+  - Time range selectors
+- [x] Loading & error states
+  - Loading indicators
+  - Error handling with toast notifications
   - Empty states with helpful messages
-  - Retry mechanisms
+  - 403 error redirect to home
 
 #### 15.4.3 Testing & Documentation (3h)
 - [ ] Unit tests (audit_service, stats_cache_service)

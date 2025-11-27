@@ -222,3 +222,104 @@ export async function getAuditActions(): Promise<string[]> {
 export async function getAuditResourceTypes(): Promise<string[]> {
   return apiClient.get<string[]>('/api/v1/admin/audit-logs/meta/resource-types');
 }
+
+// =============================================================================
+// System Statistics APIs
+// =============================================================================
+
+export interface SystemOverview {
+  user_activity: UserActivityStats;
+  resource_usage: ResourceUsageStats;
+  performance: PerformanceMetrics;
+  sessions: SessionStats;
+  generated_at: string;
+  time_period_days: number;
+}
+
+export interface UserActivityStats {
+  total_users: number;
+  active_users_7d: number;
+  active_users_30d: number;
+  new_users_7d: number;
+  new_users_30d: number;
+  registration_trend: Array<{ date: string; count: number }>;
+  login_activity: {
+    logins_7d: number;
+    logins_30d: number;
+  };
+}
+
+export interface ResourceUsageStats {
+  datasets: {
+    total: number;
+    by_status: Record<string, number>;
+  };
+  images: {
+    total: number;
+  };
+  annotations: {
+    total: number;
+    by_task_type: Record<string, number>;
+    recent_7d: number;
+  };
+  storage: {
+    total_bytes: number;
+    total_gb: number;
+  };
+}
+
+export interface PerformanceMetrics {
+  annotation_rate: {
+    daily: Array<{ date: string; count: number }>;
+    average_per_day: number;
+    total_period: number;
+  };
+  task_distribution: Record<string, number>;
+  top_annotators: Array<{
+    user_id: number;
+    annotation_count: number;
+  }>;
+}
+
+export interface SessionStats {
+  total_sessions: number;
+  active_sessions: number;
+  avg_duration_seconds: number;
+  avg_duration_minutes: number;
+  sessions_by_day: Array<{ date: string; count: number }>;
+}
+
+/**
+ * Get comprehensive system overview
+ */
+export async function getSystemOverview(days: number = 7): Promise<SystemOverview> {
+  return apiClient.get<SystemOverview>(`/api/v1/admin/stats/overview?days=${days}`);
+}
+
+/**
+ * Get user activity statistics
+ */
+export async function getUserActivityStats(days: number = 30): Promise<UserActivityStats> {
+  return apiClient.get<UserActivityStats>(`/api/v1/admin/stats/users?days=${days}`);
+}
+
+/**
+ * Get resource usage statistics
+ */
+export async function getResourceUsageStats(): Promise<ResourceUsageStats> {
+  return apiClient.get<ResourceUsageStats>('/api/v1/admin/stats/resources');
+}
+
+/**
+ * Get performance metrics
+ */
+export async function getPerformanceMetrics(days: number = 7): Promise<PerformanceMetrics> {
+  return apiClient.get<PerformanceMetrics>(`/api/v1/admin/stats/performance?days=${days}`);
+}
+
+/**
+ * Get session statistics
+ */
+export async function getSessionStats(days: number = 7): Promise<SessionStats> {
+  return apiClient.get<SessionStats>(`/api/v1/admin/stats/sessions?days=${days}`);
+}
