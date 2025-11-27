@@ -28,6 +28,7 @@ from app.schemas.platform import (
     PlatformDatasetBatchRequest,
     PlatformDatasetBatchResponse,
     PlatformDatasetBatchItem,
+    PlatformPermissionCheckResponse,
 )
 
 router = APIRouter()
@@ -260,4 +261,137 @@ async def get_datasets_batch_for_platform(
     return PlatformDatasetBatchResponse(
         datasets=datasets_dict,
         errors=errors_dict,
+    )
+
+
+@router.get(
+    "/{dataset_id}/permissions/{user_id}",
+    response_model=PlatformPermissionCheckResponse,
+    tags=["Platform Integration"],
+    summary="Check user dataset permission (Platform)",
+)
+async def check_dataset_permission_for_platform(
+    dataset_id: str,
+    user_id: int,
+    service_account: ServiceAccount = Depends(get_current_service_account),
+    _scope: ServiceAccount = Depends(require_scope("datasets:permissions")),
+    labeler_db: Session = Depends(get_labeler_db),
+    user_db: Session = Depends(get_user_db),
+):
+    """
+    Check if a user has access to a dataset (Platform API).
+
+    Used by Platform to verify user permissions before training job creation.
+    Requires service account with 'datasets:permissions' scope.
+
+    Permission Logic:
+    1. Owner: User owns the dataset (dataset.owner_id == user_id)
+    2. Public: Dataset is public (visibility == 'public')
+    3. Explicit Permission: User has DatasetPermission record
+    4. Organization Member: User is in same organization as owner (TODO)
+
+    Args:
+        dataset_id: Dataset ID
+        user_id: User ID to check
+        service_account: Authenticated service account
+        labeler_db: Labeler database session
+        user_db: User database session
+
+    Returns:
+        Permission check result with access status and reason
+
+    Raises:
+        404: Dataset not found
+
+    Example:
+        GET /api/v1/platform/datasets/ds_c75023ca76d7448b/permissions/42
+        Response:
+        {
+            "dataset_id": "ds_c75023ca76d7448b",
+            "user_id": 42,
+            "has_access": true,
+            "role": "owner",
+            "reason": "owner"
+        }
+    """
+    # Query dataset
+    dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
+
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found",
+        )
+
+    # Check 1: Owner
+    if dataset.owner_id == user_id:
+        return PlatformPermissionCheckResponse(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            has_access=True,
+            role="owner",
+            reason="owner",
+        )
+
+    # Check 2: Public dataset
+    if dataset.visibility == "public":
+        # Check if user has explicit permission (to determine role)
+        permission = (
+            labeler_db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.dataset_id == dataset_id,
+                DatasetPermission.user_id == user_id,
+            )
+            .first()
+        )
+
+        return PlatformPermissionCheckResponse(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            has_access=True,
+            role=permission.role if permission else None,
+            reason="public_dataset",
+        )
+
+    # Check 3: Explicit permission
+    permission = (
+        labeler_db.query(DatasetPermission)
+        .filter(
+            DatasetPermission.dataset_id == dataset_id,
+            DatasetPermission.user_id == user_id,
+        )
+        .first()
+    )
+
+    if permission:
+        return PlatformPermissionCheckResponse(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            has_access=True,
+            role=permission.role,
+            reason="explicit_permission",
+        )
+
+    # Check 4: Organization member (TODO - requires organization membership logic)
+    # For now, we'll skip this check as it requires cross-DB joins
+    # and organization membership tables
+    #
+    # user = user_db.query(User).filter(User.id == user_id).first()
+    # owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
+    # if user and owner and user.organization_id == owner.organization_id:
+    #     return PlatformPermissionCheckResponse(
+    #         dataset_id=dataset_id,
+    #         user_id=user_id,
+    #         has_access=True,
+    #         role="member",
+    #         reason="organization_member",
+    #     )
+
+    # No access
+    return PlatformPermissionCheckResponse(
+        dataset_id=dataset_id,
+        user_id=user_id,
+        has_access=False,
+        role=None,
+        reason="no_access",
     )
