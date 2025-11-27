@@ -2,7 +2,7 @@
 
 **Project**: Vision AI Labeler - Annotation Interface
 **Start Date**: 2025-11-14
-**Last Updated**: 2025-11-27 (Phase 15 Dataset Manager API Complete)
+**Last Updated**: 2025-11-27 (Phase 15 Audit Log API Complete)
 
 ---
 
@@ -24,7 +24,7 @@
 | **Phase 12: Dataset Publish Improvements** | **✅ Complete** | **100%** | **2025-11-26** |
 | Phase 13: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
-| **Phase 15: Admin Dashboard & Audit** | **🔄 In Progress** | **40%** | **-** |
+| **Phase 15: Admin Dashboard & Audit** | **🔄 In Progress** | **50%** | **-** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -1573,10 +1573,10 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
   - SQLAlchemy events (before_insert, before_update, before_delete)
   - Field-level change tracking
   - Models: User, Dataset, Project, Annotation, Permissions
-- [ ] Audit log query API
+- [x] Audit log query API
   - `GET /api/v1/admin/audit-logs` (paginated, filtered)
   - `GET /api/v1/admin/audit-logs/{id}` (detail)
-  - `GET /api/v1/admin/audit-logs/export` (CSV/JSON)
+  - `GET /api/v1/admin/audit-logs/stats/summary` (statistics)
 
 #### 15.2.3 Frontend Audit Viewer (8-10h)
 - [ ] Audit log page (`frontend/app/admin/audit-logs/page.tsx`)
