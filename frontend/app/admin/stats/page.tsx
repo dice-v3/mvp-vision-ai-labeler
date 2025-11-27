@@ -97,10 +97,10 @@ export default function AdminStatsPage() {
   const { user_activity, resource_usage, performance, sessions } = overview;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">System Statistics</h1>
@@ -129,7 +129,7 @@ export default function AdminStatsPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="px-6 py-8 space-y-8">
         {/* User Activity Section */}
         <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-4">👥 User Activity</h2>
@@ -220,7 +220,7 @@ export default function AdminStatsPage() {
             </div>
             <div className="bg-white rounded-lg shadow p-6">
               <p className="text-sm text-gray-500">Storage</p>
-              <p className="text-2xl font-bold text-gray-900">{resource_usage.storage.total_gb.toFixed(1)} GB</p>
+              <p className="text-2xl font-bold text-gray-900">{Number(resource_usage.storage.total_gb).toFixed(1)} GB</p>
               <p className="text-xs text-gray-500 mt-1">
                 {formatBytes(resource_usage.storage.total_bytes)}
               </p>
