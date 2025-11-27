@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, datasets, projects, annotations, export, image_locks, project_permissions, users, invitations, version_diff
+from app.api.v1.endpoints import auth, datasets, projects, annotations, export, image_locks, project_permissions, users, invitations, version_diff, admin_datasets
 
 api_router = APIRouter()
 
@@ -17,3 +17,4 @@ api_router.include_router(project_permissions.router, prefix="/projects", tags=[
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(invitations.router, prefix="/invitations", tags=["Invitations"])
 api_router.include_router(version_diff.router, prefix="/version-diff", tags=["Version Diff"])
+api_router.include_router(admin_datasets.router, prefix="/admin/datasets", tags=["Admin"])
