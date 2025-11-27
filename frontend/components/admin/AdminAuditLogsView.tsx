@@ -1,7 +1,5 @@
-'use client';
-
 /**
- * Admin Audit Logs Page
+ * Admin Audit Logs View Component
  * Phase 15 - Admin Dashboard
  *
  * View and filter system audit logs for compliance and monitoring
@@ -21,7 +19,7 @@ import {
 } from '@/lib/api/admin';
 import { toast } from '@/lib/stores/toastStore';
 
-export default function AdminAuditLogsPage() {
+export default function AdminAuditLogsView() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 

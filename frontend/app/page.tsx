@@ -23,6 +23,9 @@ import InviteDialog from '@/components/datasets/InviteDialog';
 import InvitationsPanel from '@/components/invitations/InvitationsPanel';
 import CreateDatasetModal from '@/components/datasets/CreateDatasetModal';
 import MultiStepUploadModal from '@/components/datasets/upload/MultiStepUploadModal';
+import AdminDatasetsView from '@/components/admin/AdminDatasetsView';
+import AdminAuditLogsView from '@/components/admin/AdminAuditLogsView';
+import AdminStatsView from '@/components/admin/AdminStatsView';
 
 // Phase 2.9: Task progress stats
 interface TaskStats {
@@ -35,6 +38,9 @@ interface TaskStats {
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
+
+  // Phase 15: View state management (dataset view vs admin views)
+  const [currentView, setCurrentView] = useState<'dataset' | 'admin-datasets' | 'admin-audit-logs' | 'admin-stats'>('dataset');
 
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
@@ -104,6 +110,8 @@ export default function DashboardPage() {
   };
 
   const handleDatasetSelect = async (datasetId: string) => {
+    // Switch to dataset view
+    setCurrentView('dataset');
     setSelectedDatasetId(datasetId);
     const dataset = datasets.find(d => d.id === datasetId);
     setSelectedDataset(dataset || null);
@@ -299,6 +307,19 @@ export default function DashboardPage() {
   // Check if current user is owner
   const isOwner = permissions.some(p => p.user_id === user?.id && p.role === 'owner');
 
+  // Phase 15: Admin menu handlers
+  const handleAdminDatasetsClick = () => {
+    setCurrentView('admin-datasets');
+  };
+
+  const handleAdminAuditLogsClick = () => {
+    setCurrentView('admin-audit-logs');
+  };
+
+  const handleAdminStatsClick = () => {
+    setCurrentView('admin-stats');
+  };
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -327,28 +348,38 @@ export default function DashboardPage() {
         onDatasetRefresh={fetchDatasets}
         onLogout={logout}
         onInvitationsClick={() => setInvitationsPanelOpen(true)}
+        onAdminDatasetsClick={handleAdminDatasetsClick}
+        onAdminAuditLogsClick={handleAdminAuditLogsClick}
+        onAdminStatsClick={handleAdminStatsClick}
       />
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="max-w-6xl mx-auto p-8">
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
+        {/* Phase 15: Conditional rendering based on current view */}
+        {currentView === 'admin-datasets' && <AdminDatasetsView />}
+        {currentView === 'admin-audit-logs' && <AdminAuditLogsView />}
+        {currentView === 'admin-stats' && <AdminStatsView />}
 
-          {!selectedDataset ? (
-            <div className="text-center py-20">
-              <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">데이터셋을 선택해주세요</h3>
-              <p className="text-sm text-gray-500">
-                왼쪽 사이드바에서 작업할 데이터셋을 선택하세요
-              </p>
-            </div>
-          ) : (
+        {/* Dataset View (default) */}
+        {currentView === 'dataset' && (
+          <div className="max-w-6xl mx-auto p-8">
+            {error && (
+              <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
+
+            {!selectedDataset ? (
+              <div className="text-center py-20">
+                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">데이터셋을 선택해주세요</h3>
+                <p className="text-sm text-gray-500">
+                  왼쪽 사이드바에서 작업할 데이터셋을 선택하세요
+                </p>
+              </div>
+            ) : (
             <div>
               {/* Dataset Header */}
               <div className="mb-8">
@@ -814,8 +845,9 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Delete Dataset Modal */}

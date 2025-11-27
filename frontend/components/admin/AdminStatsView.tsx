@@ -1,7 +1,5 @@
-'use client';
-
 /**
- * Admin System Statistics Page
+ * Admin System Statistics View Component
  * Phase 15 - Admin Dashboard
  *
  * System-wide statistics and performance metrics
@@ -16,7 +14,7 @@ import {
 } from '@/lib/api/admin';
 import { toast } from '@/lib/stores/toastStore';
 
-export default function AdminStatsPage() {
+export default function AdminStatsView() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 

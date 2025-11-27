@@ -1,7 +1,5 @@
-'use client';
-
 /**
- * Admin Dataset Manager Page
+ * Admin Dataset Manager View Component
  * Phase 15 - Admin Dashboard
  *
  * Dataset overview, management, and monitoring for administrators
@@ -34,7 +32,7 @@ const icons = {
   warning: '⚠️',
 };
 
-export default function AdminDatasetsPage() {
+export default function AdminDatasetsView() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
