@@ -1565,10 +1565,11 @@ Phase 15에서는 시스템 관리자를 위한 포괄적인 관리 기능을 �
   - Core logging functions (log_action, log_login, log_create, etc.)
   - Async logging for performance
   - Session tracking integration
-- [ ] Audit middleware (`backend/app/middleware/audit_middleware.py`)
+- [x] Audit middleware (`backend/app/middleware/audit_middleware.py`)
   - Automatic request/response logging
   - IP address and user agent capture
   - Exclude health checks and static assets
+  - Optional: Can be enabled in main.py
 - [ ] Model event listeners
   - SQLAlchemy events (before_insert, before_update, before_delete)
   - Field-level change tracking
