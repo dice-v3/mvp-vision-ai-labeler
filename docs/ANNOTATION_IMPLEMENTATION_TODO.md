@@ -25,6 +25,7 @@
 | Phase 13: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
 | **Phase 15: Admin Dashboard & Audit** | **✅ Complete** | **100%** | **2025-11-27** |
+| **Phase 16: Platform Integration - Hybrid JWT** | **🔄 In Progress** | **33%** (16.1-16.4 완료, 16.5 진행중) | **-** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -40,7 +41,9 @@
 - **Phase 10: Application Performance Optimization ✅ Complete** (Quick Wins - 80% latency reduction)
 - **Phase 12: Dataset Publish Improvements ✅ Complete** (DICE format enhancements, hash-based splits)
 
-**Current Focus**: Phase 11 (Version Diff & Comparison) - Overlay mode complete, side-by-side mode pending
+**Current Focus**:
+- Phase 11 (Version Diff & Comparison) - Overlay mode complete, side-by-side mode pending
+- **Phase 16.5 (Hybrid JWT Migration)** - Service Account → JWT 전환 진행 중 🔄
 
 ---
 
@@ -1734,44 +1737,73 @@ Logout
 
 ---
 
-## Phase 16: Platform Integration - Dataset API ⏸️ PENDING
+## Phase 16: Platform Integration - Hybrid JWT Authentication 🔄 IN PROGRESS
 
 **Duration**: 1 week (35-40h)
-**Status**: Pending
+**Status**: 🔄 In Progress (16.1-16.4 기존 구현 → 16.5 Hybrid JWT 전환)
 **Priority**: 🔴 Critical (Platform Training Jobs 의존성)
 
 ### Overview
 
-Phase 16에서는 Platform Training Service가 Labeler의 데이터셋을 조회하고 다운로드할 수 있는 읽기 전용 REST API를 제공합니다. Dataset 관리가 Platform → Labeler로 이전되면서 발생한 데이터 중복 문제를 해결하고, Labeler를 **Dataset의 Single Source of Truth**로 확립합니다.
+Phase 16에서는 Platform과 Labeler 간 **Hybrid JWT Authentication**을 구현하여 안전한 마이크로서비스 간 통신을 구축합니다. Dataset 관리가 Platform → Labeler로 이전되면서 발생한 데이터 중복 문제를 해결하고, Labeler를 **Dataset의 Single Source of Truth**로 확립합니다.
 
 **Architecture Principle**:
 ```
-┌─────────────────────┐
-│ Labeler Backend     │ ← Single Source of Truth (SSOT)
-│  (Labeler DB)       │ ← Dataset CRUD 관리
-└──────────┬──────────┘
-           │ REST API (read-only)
+┌─────────────────────────────────────┐
+│        Platform Backend             │
+│                                     │
+│  User Requests                      │
+│  ↓                                  │
+│  Generate Hybrid JWT (5min)         │
+│  • user_id (from session)           │
+│  • service: "platform"              │
+│  • scopes: ["labeler:read"]         │
+│  ↓                                  │
+│  Authorization: Bearer {JWT}        │
+└──────────┬──────────────────────────┘
+           │ HTTPS
            ▼
-┌─────────────────────┐
-│ Platform Backend    │ ← 읽기 전용 조회
-│  (Platform DB)      │ ← dataset_id만 저장 (FK 참조)
-└─────────────────────┘
+┌─────────────────────────────────────┐
+│        Labeler Backend              │
+│                                     │
+│  Verify JWT Signature               │
+│  ↓                                  │
+│  Extract user_id + service          │
+│  ↓                                  │
+│  Check user permissions             │
+│  ↓                                  │
+│  Return dataset data                │
+└─────────────────────────────────────┘
 ```
 
 **Key Features**:
-- 🔐 Service Account Authentication: JWT 기반 서비스간 인증
-- 📊 Dataset Query API: 단일/목록/배치 조회 with 필터링
-- 🔒 Permission Check API: 사용자별 데이터셋 접근 권한 확인
-- 📦 Download URL Generation: R2 Presigned URL (임시 다운로드 링크)
-- 🚦 Rate Limiting: 서비스당 1000 req/min, 데이터셋당 100 req/min
-- ⚡ Performance: P95 < 300ms, Redis caching
+- 🔐 **Hybrid JWT Authentication**: User context + Service identity
+- 👤 **User Context**: JWT carries user_id for permission checks
+- ⏱️ **Short-lived Tokens**: 5min (user requests), 1h (background jobs)
+- 🎯 **Scope-based Authorization**: labeler:read, labeler:write, labeler:delete
+- 🔒 **Shared Secret**: SERVICE_JWT_SECRET between Platform & Labeler
+- 📊 **Dataset Query API**: Single/List/Batch with filtering
+- 🔒 **Permission Check API**: User-level dataset access validation
+- 📦 **Download URL Generation**: R2 Presigned URL
 
-**Requirements Document**:
-- `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_DATASET_API_REQUIREMENTS.md`
+**Requirements Documents**:
+- Platform 요청: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\cowork\LABELER_AUTHENTICATION_GUIDE.md`
+- Dataset API: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_DATASET_API_REQUIREMENTS.md`
 
-### 16.1 Service Account Authentication (8-10h) ⏸️
+**Architecture Decision** (2025-11-28):
+- ❌ **Deprecated**: Service Account API Key 방식 (Phase 16.1-16.4)
+- ✅ **Adopted**: Hybrid JWT Authentication (Platform 표준)
+- **Reason**: Microservice 간 통합 인증 표준화, User context 필요성
 
-**Goal**: Platform에서 Labeler API를 안전하게 호출할 수 있는 인증 시스템 구축
+### 16.1 Service Account Authentication (8-10h) ✅ **DEPRECATED**
+
+**Status**: ✅ Complete (2025-11-28) → ❌ **To be replaced by Hybrid JWT (16.5)**
+**Goal**: ~~Platform에서 Labeler API를 안전하게 호출할 수 있는 인증 시스템 구축~~
+
+**Deprecation Note**:
+- Service Account API Key 방식으로 구현 완료
+- Platform 팀 요청으로 Hybrid JWT 방식으로 전환 결정
+- Phase 16.5에서 코드 삭제 및 JWT 방식 구현 예정
 
 #### 16.1.1 Database Schema (2h) ⏸️
 - [ ] Service Account model (User DB)
@@ -1858,9 +1890,14 @@ LABELER_SERVICE_KEY=labeler_sk_def456ghi789...
 Authorization: Bearer labeler_sk_def456ghi789...
 ```
 
-### 16.2 Dataset Query API (10-12h) ⏸️
+### 16.2 Dataset Query API (10-12h) ✅ **COMPLETE - Auth to be updated**
 
+**Status**: ✅ Complete (2025-11-28) → 🔄 **Auth migration needed (16.5)**
 **Goal**: Platform이 데이터셋 메타데이터를 조회할 수 있는 API 제공
+
+**Implementation Note**:
+- 엔드포인트 구현 완료 (Service Account 인증)
+- Phase 16.5에서 Hybrid JWT 인증으로 전환
 
 #### 16.2.1 Enhanced Single Dataset Query (3-4h) ⏸️
 - [ ] Update `GET /api/v1/datasets/{id}` endpoint
@@ -1990,9 +2027,14 @@ Authorization: Bearer labeler_sk_def456ghi789...
 }
 ```
 
-### 16.3 Permission Check API (4-5h) ⏸️
+### 16.3 Permission Check API (4-5h) ✅ **COMPLETE - Auth to be updated**
 
+**Status**: ✅ Complete (2025-11-28) → 🔄 **Auth migration needed (16.5)**
 **Goal**: Platform이 사용자의 데이터셋 접근 권한을 확인할 수 있는 API
+
+**Implementation Note**:
+- 엔드포인트 구현 완료 (Service Account 인증)
+- Phase 16.5에서 Hybrid JWT 인증으로 전환
 
 #### 16.3.1 Permission Check Endpoint (4-5h) ⏸️
 - [ ] Create `GET /api/v1/datasets/{dataset_id}/permissions/{user_id}` endpoint
@@ -2027,9 +2069,14 @@ Authorization: Bearer labeler_sk_def456ghi789...
 - `"explicit_permission"`: User has been granted permission (Phase 8)
 - `"no_access"`: User cannot access
 
-### 16.4 Download URL Generation (6-8h) ⏸️
+### 16.4 Download URL Generation (6-8h) ✅ **COMPLETE - Auth to be updated**
 
+**Status**: ✅ Complete (2025-11-28) → 🔄 **Auth migration needed (16.5)**
 **Goal**: Platform Training Service가 데이터셋을 다운로드할 수 있는 임시 URL 생성
+
+**Implementation Note**:
+- 엔드포인트 구현 완료 (Service Account 인증)
+- Phase 16.5에서 Hybrid JWT 인증으로 전환
 
 #### 16.4.1 R2 Presigned URL Generation (6-8h) ⏸️
 - [ ] Create `POST /api/v1/datasets/{dataset_id}/download-url` endpoint
@@ -2082,7 +2129,228 @@ Authorization: Bearer labeler_sk_def456ghi789...
 - URL expires automatically (no cleanup needed)
 - Consider adding download count tracking in audit logs
 
-### 16.5 Rate Limiting & Security (4-5h) ⏸️
+### 16.5 Hybrid JWT Authentication Migration (12-15h) 🔄 **IN PROGRESS**
+
+**Status**: 🔄 In Progress (2025-11-28)
+**Goal**: Service Account API Key 방식을 Hybrid JWT 방식으로 완전 전환
+
+**Architecture Decision**:
+- Platform 팀이 모든 마이크로서비스에서 Hybrid JWT 표준 사용
+- User context (user_id)가 필요한 permission 로직에 필수적
+- Short-lived tokens (5min user, 1h background)으로 보안 강화
+
+**Requirements Document**: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\cowork\LABELER_AUTHENTICATION_GUIDE.md`
+
+#### 16.5.1 기존 Service Account 코드 삭제 (2-3h) ⏸️
+
+**삭제 대상**:
+```
+backend/app/db/models/labeler.py
+- ServiceAccount model (lines 804-858)
+- pwd_context import (line 20)
+
+backend/app/schemas/service_account.py
+- 전체 파일 삭제
+
+backend/app/services/service_account_service.py
+- 전체 파일 삭제
+
+backend/app/api/v1/endpoints/service_accounts.py
+- 전체 파일 삭제
+
+backend/app/core/security.py
+- get_current_service_account() (lines 404-460)
+- require_scope() (lines 463-502)
+
+backend/app/api/v1/router.py
+- service_accounts import
+- service_accounts router
+
+backend/alembic/versions/*_add_service_accounts_table*.py
+- Migration 파일 삭제 및 DB 롤백
+```
+
+**작업 순서**:
+- [ ] Alembic downgrade로 service_accounts 테이블 삭제
+  ```bash
+  cd backend
+  alembic downgrade -1  # 이전 버전으로 롤백
+  ```
+- [ ] 코드 파일 삭제
+- [ ] Import 정리
+- [ ] Git commit: "refactor: Remove deprecated Service Account authentication"
+
+#### 16.5.2 Hybrid JWT 인증 구현 (5-6h) ⏸️
+
+**Configuration** (`backend/app/core/config.py`):
+- [ ] Add `SERVICE_JWT_SECRET` to settings
+  ```python
+  SERVICE_JWT_SECRET: str = Field(..., env="SERVICE_JWT_SECRET")
+  JWT_ALGORITHM: str = "HS256"
+  ```
+- [ ] Update `.env.example`
+  ```
+  SERVICE_JWT_SECRET=8f7e6d5c4b3a29180716253e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a
+  ```
+
+**JWT Verification** (`backend/app/core/service_jwt.py` - 새 파일):
+- [ ] Install PyJWT: `pip install pyjwt` (이미 설치됨 - jose에 포함)
+- [ ] Create verification function
+  ```python
+  def verify_service_jwt(
+      authorization: str = Header(...),
+      required_scopes: Optional[List[str]] = None
+  ) -> Dict[str, Any]:
+      """
+      Verify Hybrid JWT from Platform.
+
+      Returns:
+          JWT payload with user_id, service, scopes
+
+      Raises:
+          HTTPException(401): Invalid or expired token
+          HTTPException(403): Insufficient scopes
+      """
+  ```
+- [ ] Implement scope validation
+- [ ] Handle token expiration (5min user, 1h background)
+- [ ] Extract user_id helper function
+  ```python
+  def get_user_id_from_jwt(payload: Dict[str, Any]) -> Optional[int]:
+      """Extract user ID from JWT payload (can be None for background jobs)"""
+  ```
+
+**Authentication Dependency** (`backend/app/core/security.py`):
+- [ ] Create `get_current_service_jwt()` dependency
+  ```python
+  async def get_current_service_jwt(
+      authorization: str = Header(...),
+      db: Session = Depends(get_labeler_db)
+  ) -> Dict[str, Any]:
+      """
+      Verify service JWT and return payload.
+
+      Use this for endpoints that need service auth with user context.
+      """
+  ```
+- [ ] Create scope requirement factory
+  ```python
+  def require_service_scope(required_scope: str):
+      """Dependency factory for checking JWT scopes"""
+  ```
+
+#### 16.5.3 Platform Dataset Endpoints 업데이트 (3-4h) ⏸️
+
+**Update** (`backend/app/api/v1/endpoints/platform_datasets.py`):
+- [ ] Replace authentication dependencies
+  ```python
+  # Before:
+  service_account: ServiceAccount = Depends(get_current_service_account),
+  _scope: ServiceAccount = Depends(require_scope("datasets:read")),
+
+  # After:
+  jwt_payload: dict = Depends(get_current_service_jwt),
+  ```
+- [ ] Update all 4 endpoints:
+  - `GET /api/v1/platform/datasets/{dataset_id}` → `labeler:read` scope
+  - `GET /api/v1/platform/datasets` → `labeler:read` scope
+  - `POST /api/v1/platform/datasets/batch` → `labeler:read` scope
+  - `GET /api/v1/platform/datasets/{dataset_id}/permissions/{user_id}` → `labeler:read` scope
+  - `POST /api/v1/platform/datasets/{dataset_id}/download-url` → `labeler:read` scope
+- [ ] Extract user_id from JWT payload
+  ```python
+  user_id = get_user_id_from_jwt(jwt_payload)
+  # Use user_id for permission checks
+  ```
+- [ ] Update permission checks to use JWT user_id
+- [ ] Remove service_account references
+
+**Scope Mapping**:
+```
+Platform Scope → Required for Endpoints
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+labeler:read  → GET /platform/datasets/*
+                POST /platform/datasets/batch
+labeler:write → (future) POST/PUT dataset operations
+labeler:delete → (future) DELETE dataset operations
+```
+
+#### 16.5.4 Testing & Validation (2h) ⏸️
+
+**Unit Tests** (`backend/tests/test_service_jwt.py` - 새 파일):
+- [ ] Test JWT verification
+  ```python
+  def test_verify_valid_jwt():
+      """Test valid JWT with user_id"""
+
+  def test_verify_background_jwt():
+      """Test background job JWT (no user_id)"""
+
+  def test_expired_jwt():
+      """Test expired JWT returns 401"""
+
+  def test_insufficient_scope():
+      """Test missing scope returns 403"""
+  ```
+
+**Integration Tests**:
+- [ ] Generate test JWT using Platform secret
+- [ ] Test all 5 platform endpoints with JWT auth
+- [ ] Verify user_id is extracted correctly
+- [ ] Verify permission checks use JWT user_id
+
+**Manual Testing**:
+- [ ] Create test JWT with Python script
+  ```python
+  import jwt
+  from datetime import datetime, timedelta
+
+  payload = {
+      "sub": "1",  # user_id
+      "service": "platform",
+      "scopes": ["labeler:read"],
+      "type": "service",
+      "iat": datetime.utcnow(),
+      "exp": datetime.utcnow() + timedelta(minutes=5),
+  }
+  token = jwt.encode(payload, SERVICE_JWT_SECRET, algorithm="HS256")
+  print(f"Test JWT: {token}")
+  ```
+- [ ] Test with curl:
+  ```bash
+  curl -H "Authorization: Bearer {JWT}" \
+       http://localhost:8000/api/v1/platform/datasets/ds_test
+  ```
+
+#### 16.5.5 Documentation Update (1h) ⏸️
+
+- [ ] Update API documentation
+  - Swagger/OpenAPI: Update security scheme from ApiKey to Bearer JWT
+  - Add JWT token structure documentation
+  - Add scope requirements to endpoint descriptions
+- [ ] Update README
+  - Remove Service Account setup instructions
+  - Add JWT authentication setup
+  - Add SERVICE_JWT_SECRET configuration
+- [ ] Create migration guide for Platform team
+  - Before/After authentication flow
+  - JWT payload format
+  - Error handling changes
+
+**Summary**:
+```
+✅ Phase 16.1-16.4: Dataset API 구현 완료 (Service Account)
+🔄 Phase 16.5: Hybrid JWT 전환
+   → 16.5.1: 기존 코드 삭제 ⏸️
+   → 16.5.2: JWT 인증 구현 ⏸️
+   → 16.5.3: Endpoints 업데이트 ⏸️
+   → 16.5.4: Testing ⏸️
+   → 16.5.5: Documentation ⏸️
+```
+
+---
+
+### 16.10 Rate Limiting & Security (4-5h) ⏸️ (기존 16.5)
 
 **Goal**: API 남용 방지 및 공정한 리소스 사용 보장
 
