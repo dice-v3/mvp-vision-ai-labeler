@@ -18,12 +18,8 @@ from sqlalchemy import (
     BigInteger, Index, JSON, ForeignKey, UniqueConstraint, CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from passlib.context import CryptContext
 
 from app.core.database import LabelerBase
-
-# Password hashing context for service account API keys
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class Dataset(LabelerBase):
@@ -799,60 +795,3 @@ class SystemStatsCache(LabelerBase):
     def is_valid(self) -> bool:
         """Check if cache is still valid."""
         return not self.is_expired
-
-
-# =============================================================================
-# Phase 16: Service Account for Platform Integration
-# =============================================================================
-
-class ServiceAccount(LabelerBase):
-    """
-    Service Account model for service-to-service authentication (Phase 16).
-
-    Service accounts allow Platform and other services to authenticate with Labeler
-    using API keys with specific scopes.
-
-    Example:
-        - Platform Training Service uses a service account to query datasets
-        - API key is generated once and hashed (never stored in plaintext)
-        - Scopes control what the service can access (datasets:read, datasets:download, etc.)
-
-    NOTE: Stored in Labeler DB (not User DB) because User DB is read-only for Labeler.
-    """
-
-    __tablename__ = "service_accounts"
-
-    id = Column(String(50), primary_key=True)  # e.g., "sa_platform_abc123"
-    service_name = Column(String(100), nullable=False, unique=True)  # e.g., "vision-platform"
-    api_key_hash = Column(String(255), nullable=False)  # Bcrypt hashed API key
-    scopes = Column(ARRAY(String), nullable=False)  # e.g., ["datasets:read", "datasets:download"]
-    created_by = Column(Integer, nullable=False)  # Admin user ID (from User DB, no FK)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=True)  # NULL = never expires
-    last_used_at = Column(DateTime, nullable=True)  # Track last API call
-    is_active = Column(Boolean, nullable=False, default=True)  # Soft delete
-
-    # Indexes
-    __table_args__ = (
-        Index('idx_service_accounts_service_name', 'service_name'),
-        Index('idx_service_accounts_created_by', 'created_by'),
-        Index('idx_service_accounts_is_active', 'is_active'),
-    )
-
-    def verify_api_key(self, plaintext_key: str) -> bool:
-        """Verify plaintext API key against hashed version."""
-        return pwd_context.verify(plaintext_key, self.api_key_hash)
-
-    def has_scope(self, required_scope: str) -> bool:
-        """Check if service account has a specific scope."""
-        return required_scope in (self.scopes or [])
-
-    @property
-    def is_expired(self) -> bool:
-        """Check if service account is expired."""
-        if self.expires_at is None:
-            return False
-        return datetime.utcnow() > self.expires_at
-
-    def __repr__(self):
-        return f"<ServiceAccount(id='{self.id}', service_name='{self.service_name}', active={self.is_active})>"

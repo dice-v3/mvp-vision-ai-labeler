@@ -1,15 +1,14 @@
 """
-Platform Dataset API Endpoints (Phase 16.2)
+Platform Dataset API Endpoints (Phase 16.2 → 16.5)
 
 Read-only dataset query endpoints for Platform team.
-Authenticated via service accounts with 'datasets:read' scope.
+
+TODO (Phase 16.5): Migrate from Service Account to Hybrid JWT authentication
 
 These endpoints allow Platform to:
 - Query dataset metadata for training jobs
 - Check user permissions on datasets
 - List available datasets with filters
-
-All endpoints require service account authentication.
 """
 
 import json
@@ -19,8 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_labeler_db, get_user_db
-from app.core.security import get_current_service_account, require_scope
-from app.db.models.labeler import Dataset, DatasetPermission, ServiceAccount
+# TODO (Phase 16.5): Replace with JWT auth
+# from app.core.security import get_current_service_jwt
+from app.db.models.labeler import Dataset, DatasetPermission
 from app.db.models.user import User
 from app.schemas.platform import (
     PlatformDatasetResponse,
