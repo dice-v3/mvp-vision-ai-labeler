@@ -1,25 +1,30 @@
 """
-Platform Dataset API Endpoints (Phase 16.2 → 16.5)
+Platform Dataset API Endpoints (Phase 16.5)
 
 Read-only dataset query endpoints for Platform team.
 
-TODO (Phase 16.5): Migrate from Service Account to Hybrid JWT authentication
+Uses Hybrid JWT authentication for secure service-to-service communication.
 
 These endpoints allow Platform to:
 - Query dataset metadata for training jobs
 - Check user permissions on datasets
 - List available datasets with filters
+- Generate presigned download URLs
 """
 
 import json
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_labeler_db, get_user_db
-# TODO (Phase 16.5): Replace with JWT auth
-# from app.core.security import get_current_service_jwt
+from app.core.service_jwt import (
+    get_service_jwt_payload,
+    require_service_scope,
+    extract_user_id_from_jwt,
+)
 from app.db.models.labeler import Dataset, DatasetPermission
 from app.db.models.user import User
 from app.schemas.platform import (
@@ -80,25 +85,27 @@ def _dataset_to_platform_response(dataset: Dataset) -> PlatformDatasetResponse:
 )
 async def get_dataset_for_platform(
     dataset_id: str,
-    service_account: ServiceAccount = Depends(get_current_service_account),
-    _scope: ServiceAccount = Depends(require_scope("datasets:read")),
+    jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
+    _scope: Dict = Depends(require_service_scope("labeler:read")),
     db: Session = Depends(get_labeler_db),
 ):
     """
     Get dataset metadata by ID (Platform API).
 
     This endpoint is used by Platform for training job creation.
-    Requires service account with 'datasets:read' scope.
+    Requires Hybrid JWT with 'labeler:read' scope.
 
     Args:
         dataset_id: Dataset ID (e.g., 'ds_c75023ca76d7448b')
-        service_account: Authenticated service account
+        jwt_payload: Authenticated JWT payload from Platform
         db: Database session
 
     Returns:
         Complete dataset metadata
 
     Raises:
+        401: Invalid or missing JWT
+        403: Insufficient permissions
         404: Dataset not found
     """
     # Query dataset
@@ -126,15 +133,15 @@ async def list_datasets_for_platform(
     format: Optional[str] = Query(None, description="Filter by format (coco/yolo/dice/imagefolder)"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
-    service_account: ServiceAccount = Depends(get_current_service_account),
-    _scope: ServiceAccount = Depends(require_scope("datasets:read")),
+    jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
+    _scope: Dict = Depends(require_service_scope("labeler:read")),
     db: Session = Depends(get_labeler_db),
 ):
     """
     List datasets with filters (Platform API).
 
     Used by Platform to show available datasets for training jobs.
-    Requires service account with 'datasets:read' scope.
+    Requires Hybrid JWT with 'labeler:read' scope.
 
     Query Parameters:
         - user_id: Filter by owner
@@ -186,15 +193,15 @@ async def list_datasets_for_platform(
 )
 async def get_datasets_batch_for_platform(
     request: PlatformDatasetBatchRequest,
-    service_account: ServiceAccount = Depends(get_current_service_account),
-    _scope: ServiceAccount = Depends(require_scope("datasets:read")),
+    jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
+    _scope: Dict = Depends(require_service_scope("labeler:read")),
     db: Session = Depends(get_labeler_db),
 ):
     """
     Get multiple datasets in a single request (Platform API).
 
     Used by Platform to fetch dataset metadata for multiple training jobs.
-    Requires service account with 'datasets:read' scope.
+    Requires Hybrid JWT with 'labeler:read' scope.
 
     Request Body:
         {
@@ -276,8 +283,8 @@ async def get_datasets_batch_for_platform(
 async def check_dataset_permission_for_platform(
     dataset_id: str,
     user_id: int,
-    service_account: ServiceAccount = Depends(get_current_service_account),
-    _scope: ServiceAccount = Depends(require_scope("datasets:permissions")),
+    jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
+    _scope: Dict = Depends(require_service_scope("labeler:read")),
     labeler_db: Session = Depends(get_labeler_db),
     user_db: Session = Depends(get_user_db),
 ):
@@ -285,7 +292,7 @@ async def check_dataset_permission_for_platform(
     Check if a user has access to a dataset (Platform API).
 
     Used by Platform to verify user permissions before training job creation.
-    Requires service account with 'datasets:permissions' scope.
+    Requires Hybrid JWT with 'labeler:read' scope.
 
     Permission Logic:
     1. Owner: User owns the dataset (dataset.owner_id == user_id)
@@ -296,7 +303,7 @@ async def check_dataset_permission_for_platform(
     Args:
         dataset_id: Dataset ID
         user_id: User ID to check
-        service_account: Authenticated service account
+        jwt_payload: Authenticated JWT payload from Platform
         labeler_db: Labeler database session
         user_db: User database session
 
@@ -304,6 +311,8 @@ async def check_dataset_permission_for_platform(
         Permission check result with access status and reason
 
     Raises:
+        401: Invalid or missing JWT
+        403: Insufficient permissions
         404: Dataset not found
 
     Example:
@@ -409,42 +418,45 @@ async def check_dataset_permission_for_platform(
 async def generate_download_url_for_platform(
     dataset_id: str,
     request: PlatformDownloadUrlRequest,
-    service_account: ServiceAccount = Depends(get_current_service_account),
-    _scope: ServiceAccount = Depends(require_scope("datasets:download")),
+    jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
+    _scope: Dict = Depends(require_service_scope("labeler:read")),
     labeler_db: Session = Depends(get_labeler_db),
 ):
     """
     Generate presigned download URL for dataset (Platform API).
 
     Used by Platform training service to download datasets.
-    Requires service account with 'datasets:download' scope.
+    Requires Hybrid JWT with 'labeler:read' scope.
 
     Note: Currently generates presigned URL for annotation file.
     Full dataset ZIP packaging will be added in future iteration.
 
     Args:
         dataset_id: Dataset ID
-        request: Download request (user_id, expiration, purpose)
-        service_account: Authenticated service account
+        request: Download request (expiration, purpose)
+        jwt_payload: Authenticated JWT payload from Platform
         labeler_db: Database session
 
     Returns:
         Presigned download URL with expiration time
 
     Raises:
+        401: Invalid or missing JWT
+        403: User lacks access to dataset or insufficient permissions
         404: Dataset not found
-        403: User lacks access to dataset
 
     Example:
         POST /api/v1/platform/datasets/ds_c75023ca76d7448b/download-url
         {
-            "user_id": 42,
             "expiration_seconds": 3600,
             "purpose": "training_job_123"
         }
     """
     from app.core.storage import StorageClient
     from datetime import timedelta
+
+    # Extract user_id from JWT (not from request body for security)
+    user_id = extract_user_id_from_jwt(jwt_payload)
 
     # Query dataset
     dataset = labeler_db.query(Dataset).filter(Dataset.id == dataset_id).first()
@@ -460,7 +472,7 @@ async def generate_download_url_for_platform(
     role = None
 
     # Check 1: Owner
-    if dataset.owner_id == request.user_id:
+    if dataset.owner_id == user_id:
         has_access = True
         role = "owner"
     # Check 2: Public dataset
@@ -472,7 +484,7 @@ async def generate_download_url_for_platform(
             labeler_db.query(DatasetPermission)
             .filter(
                 DatasetPermission.dataset_id == dataset_id,
-                DatasetPermission.user_id == request.user_id,
+                DatasetPermission.user_id == user_id,
             )
             .first()
         )
@@ -483,7 +495,7 @@ async def generate_download_url_for_platform(
     if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"User {request.user_id} does not have access to dataset {dataset_id}",
+            detail=f"User {user_id} does not have access to dataset {dataset_id}",
         )
 
     # Generate presigned URL for annotation file

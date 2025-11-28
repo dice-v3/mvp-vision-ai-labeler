@@ -111,8 +111,9 @@ class PlatformPermissionCheckResponse(BaseModel):
 class PlatformDownloadUrlRequest(BaseModel):
     """
     Request schema for generating dataset download URL.
+
+    Note (Phase 16.5): user_id is now extracted from JWT token instead of request body.
     """
-    user_id: int = Field(..., description="User ID requesting download")
     expiration_seconds: int = Field(3600, ge=60, le=86400, description="URL expiration time (60s - 24h)")
     purpose: Optional[str] = Field(None, description="Purpose of download (e.g., 'training_job_123')")
 
