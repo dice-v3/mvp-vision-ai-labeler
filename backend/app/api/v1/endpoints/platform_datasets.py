@@ -53,8 +53,51 @@ def _parse_json_field(field_value: Optional[str]) -> Optional[List[str]]:
         return None
 
 
-def _dataset_to_platform_response(dataset: Dataset) -> PlatformDatasetResponse:
-    """Convert Dataset model to PlatformDatasetResponse."""
+def _dataset_to_platform_response(
+    dataset: Dataset,
+    db: Session = None,
+    task_type: Optional[str] = None,
+) -> PlatformDatasetResponse:
+    """
+    Convert Dataset model to PlatformDatasetResponse.
+
+    If task_type is provided, returns task-specific statistics from latest AnnotationVersion.
+    Otherwise, returns dataset-level statistics.
+    """
+    from app.db.models.labeler import AnnotationProject, AnnotationVersion
+
+    # Default values from Dataset table
+    num_classes = dataset.num_classes
+    num_images = dataset.num_images
+    class_names = _parse_json_field(dataset.class_names)
+    annotation_path = dataset.annotation_path
+
+    # Phase 16.6: If task_type provided, get task-specific statistics
+    if task_type and db:
+        # Find the project for this dataset
+        project = db.query(AnnotationProject).filter(
+            AnnotationProject.dataset_id == dataset.id
+        ).first()
+
+        if project:
+            # Get latest version for this task_type
+            latest_version = (
+                db.query(AnnotationVersion)
+                .filter(
+                    AnnotationVersion.project_id == project.id,
+                    AnnotationVersion.task_type == task_type,
+                )
+                .order_by(AnnotationVersion.created_at.desc())
+                .first()
+            )
+
+            if latest_version:
+                # Use task-specific statistics
+                num_images = latest_version.image_count or num_images
+                annotation_path = latest_version.export_path
+                # num_classes would need to be extracted from export_path JSON
+                # For now, keep dataset-level num_classes
+
     return PlatformDatasetResponse(
         id=dataset.id,
         name=dataset.name,
@@ -63,10 +106,10 @@ def _dataset_to_platform_response(dataset: Dataset) -> PlatformDatasetResponse:
         labeled=dataset.labeled,
         storage_type=dataset.storage_type,
         storage_path=dataset.storage_path,
-        annotation_path=dataset.annotation_path,
-        num_classes=dataset.num_classes,
-        num_images=dataset.num_images,
-        class_names=_parse_json_field(dataset.class_names),
+        annotation_path=annotation_path,
+        num_classes=num_classes,
+        num_images=num_images,
+        class_names=class_names,
         published_task_types=dataset.published_task_types or [],  # Phase 16.6
         tags=_parse_json_field(dataset.tags),
         visibility=dataset.visibility,
@@ -188,7 +231,7 @@ async def list_datasets_for_platform(
         total=total,
         page=page,
         limit=limit,
-        datasets=[_dataset_to_platform_response(ds) for ds in datasets],
+        datasets=[_dataset_to_platform_response(ds, db=db, task_type=task_type) for ds in datasets],
     )
 
 
