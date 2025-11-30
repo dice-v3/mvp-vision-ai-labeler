@@ -31,6 +31,12 @@ class PlatformDatasetResponse(BaseModel):
     num_images: int
     class_names: Optional[List[str]] = None
 
+    # Phase 16.6: Task-type tracking
+    published_task_types: List[str] = Field(
+        default_factory=list,
+        description="Task types published for this dataset (e.g., ['detection', 'segmentation'])"
+    )
+
     # Metadata
     tags: Optional[List[str]] = None
     visibility: str  # 'private', 'public', 'organization'

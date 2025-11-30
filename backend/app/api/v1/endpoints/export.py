@@ -456,6 +456,14 @@ async def publish_version(
             if dataset:
                 dataset.annotation_path = annotation_path
                 dataset.labeled = True
+
+                # Phase 16.6: Track which task types have been published
+                if dataset.published_task_types is None:
+                    dataset.published_task_types = []
+                if task_type not in dataset.published_task_types:
+                    dataset.published_task_types = dataset.published_task_types + [task_type]
+                    logger.info(f"Added {task_type} to published_task_types: {dataset.published_task_types}")
+
                 # Don't commit here - will be committed with version below (line 468)
                 logger.info(f"Updated Labeler DB: annotation_path={annotation_path}, labeled=True")
             else:

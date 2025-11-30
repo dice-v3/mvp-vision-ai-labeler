@@ -67,6 +67,7 @@ def _dataset_to_platform_response(dataset: Dataset) -> PlatformDatasetResponse:
         num_classes=dataset.num_classes,
         num_images=dataset.num_images,
         class_names=_parse_json_field(dataset.class_names),
+        published_task_types=dataset.published_task_types or [],  # Phase 16.6
         tags=_parse_json_field(dataset.tags),
         visibility=dataset.visibility,
         owner_id=dataset.owner_id,
@@ -131,6 +132,7 @@ async def list_datasets_for_platform(
     visibility: Optional[str] = Query(None, description="Filter by visibility (public/private/organization)"),
     labeled: Optional[bool] = Query(None, description="Filter by labeled status"),
     format: Optional[str] = Query(None, description="Filter by format (coco/yolo/dice/imagefolder)"),
+    task_type: Optional[str] = Query(None, description="Filter by task type (detection/segmentation/classification)"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
     jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
@@ -148,6 +150,7 @@ async def list_datasets_for_platform(
         - visibility: public/private/organization
         - labeled: true/false
         - format: coco/yolo/dice/imagefolder
+        - task_type: Filter by published task type (detection/segmentation/classification)
         - page: Page number (default 1)
         - limit: Items per page (default 50, max 200)
 
@@ -155,7 +158,7 @@ async def list_datasets_for_platform(
         Paginated list of datasets
 
     Example:
-        GET /api/v1/platform/datasets?visibility=public&labeled=true&limit=10
+        GET /api/v1/platform/datasets?visibility=public&labeled=true&task_type=detection&limit=10
     """
     # Build query
     query = db.query(Dataset)
@@ -169,6 +172,10 @@ async def list_datasets_for_platform(
         query = query.filter(Dataset.labeled == labeled)
     if format:
         query = query.filter(Dataset.format == format)
+    if task_type:
+        # Phase 16.6: Filter by published task type using PostgreSQL array containment
+        # This uses the GIN index created in migration for efficient querying
+        query = query.filter(Dataset.published_task_types.contains([task_type]))
 
     # Get total count
     total = query.count()
