@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import any_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_labeler_db, get_user_db
@@ -218,7 +219,8 @@ async def list_datasets_for_platform(
     if task_type:
         # Phase 16.6: Filter by published task type using PostgreSQL array containment
         # This uses the GIN index created in migration for efficient querying
-        query = query.filter(Dataset.published_task_types.contains([task_type]))
+        # Using any_() for PostgreSQL array membership check
+        query = query.filter(task_type == any_(Dataset.published_task_types))
 
     # Get total count
     total = query.count()

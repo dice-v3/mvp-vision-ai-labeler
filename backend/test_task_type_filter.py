@@ -4,7 +4,7 @@ Phase 16.6 Task-Type Filtering Verification Script
 Tests that the published_task_types array filtering works correctly.
 """
 import sys
-from sqlalchemy import create_engine, Column, String
+from sqlalchemy import create_engine, Column, String, any_
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
@@ -47,7 +47,7 @@ def test_task_type_filtering():
         print("Test 2: Filter by task_type='detection'")
         print("-" * 80)
         detection_datasets = db.query(Dataset).filter(
-            Dataset.published_task_types.contains(['detection'])
+            'detection' == any_(Dataset.published_task_types)
         ).all()
         print(f"  Found {len(detection_datasets)} dataset(s) with 'detection' task type:")
         for ds in detection_datasets:
@@ -58,7 +58,7 @@ def test_task_type_filtering():
         print("Test 3: Filter by task_type='segmentation'")
         print("-" * 80)
         seg_datasets = db.query(Dataset).filter(
-            Dataset.published_task_types.contains(['segmentation'])
+            'segmentation' == any_(Dataset.published_task_types)
         ).all()
         print(f"  Found {len(seg_datasets)} dataset(s) with 'segmentation' task type:")
         for ds in seg_datasets:
@@ -71,7 +71,7 @@ def test_task_type_filtering():
         print("Test 4: Filter by task_type='classification'")
         print("-" * 80)
         cls_datasets = db.query(Dataset).filter(
-            Dataset.published_task_types.contains(['classification'])
+            'classification' == any_(Dataset.published_task_types)
         ).all()
         print(f"  Found {len(cls_datasets)} dataset(s) with 'classification' task type:")
         for ds in cls_datasets:
