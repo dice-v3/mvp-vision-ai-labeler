@@ -96,6 +96,13 @@ def export_to_coco(
         for idx, (class_id, class_info) in enumerate(sorted_classes, start=1):
             class_id_to_category[class_id] = idx
 
+    # Phase 16.6: Add storage information for Platform integration
+    storage_info = {
+        "storage_type": dataset.storage_type if dataset else "s3",
+        "bucket": "training-datasets",  # S3_BUCKET_DATASETS
+        "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
+    }
+
     # Build COCO structure
     coco_data = {
         "info": _build_info(project, dataset),
@@ -103,6 +110,7 @@ def export_to_coco(
         "images": _build_images(unique_image_ids),
         "annotations": _build_annotations(annotations, class_id_to_category),
         "categories": _build_categories(task_classes),
+        "storage_info": storage_info,  # Phase 16.6: Image storage location
     }
 
     return coco_data

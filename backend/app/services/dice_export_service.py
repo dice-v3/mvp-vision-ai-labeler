@@ -296,6 +296,14 @@ def export_to_dice(
     }
     dice_task_type = dice_task_type_mapping.get(effective_task_type, effective_task_type)
 
+    # Phase 16.6: Add storage information for Platform integration
+    # This allows Platform to locate and download images from S3/R2
+    storage_info = {
+        "storage_type": dataset.storage_type if dataset else "s3",
+        "bucket": "training-datasets",  # S3_BUCKET_DATASETS from environment
+        "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
+    }
+
     # Build final DICE data
     dice_data = {
         "format_version": "1.0",
@@ -305,6 +313,7 @@ def export_to_dice(
         "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
         "last_modified_at": to_kst_isoformat(datetime.utcnow()),
         "version": 1,  # TODO: Get actual version number
+        "storage_info": storage_info,  # Phase 16.6: Image storage location
         "classes": _convert_classes_to_dice(task_classes),
         "images": dice_images_with_mapping,
         "statistics": _calculate_statistics(dice_images_with_mapping, task_classes)
