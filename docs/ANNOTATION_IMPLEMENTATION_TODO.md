@@ -25,7 +25,7 @@
 | Phase 13: AI Integration | ⏸️ Pending | 0% | - |
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
 | **Phase 15: Admin Dashboard & Audit** | **✅ Complete** | **100%** | **2025-11-27** |
-| **Phase 16: Platform Integration - Hybrid JWT** | **🔄 In Progress** | **70%** (16.5: 75% - 16.5.1~3 완료) | **-** |
+| **Phase 16: Platform Integration** | **🔄 In Progress** | **60%** (16.5: 60% complete, 16.6: planned) | **-** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -2344,12 +2344,288 @@ labeler:delete → (future) DELETE dataset operations
 **Summary**:
 ```
 ✅ Phase 16.1-16.4: Dataset API 구현 완료 (Service Account)
-🔄 Phase 16.5: Hybrid JWT 전환
-   → 16.5.1: 기존 코드 삭제 ⏸️
-   → 16.5.2: JWT 인증 구현 ⏸️
-   → 16.5.3: Endpoints 업데이트 ⏸️
+✅ Phase 16.5: Hybrid JWT 전환 완료 (70%)
+   → 16.5.1: 기존 코드 삭제 ✅
+   → 16.5.2: JWT 인증 구현 ✅
+   → 16.5.3: Endpoints 업데이트 ✅
    → 16.5.4: Testing ⏸️
    → 16.5.5: Documentation ⏸️
+```
+
+---
+
+### 16.6 Task-Type-Specific Dataset Query (8-10h) ⏸️ **NEW**
+
+**Goal**: 데이터셋의 task_type별 publish 상태 추적 및 task_type 기반 필터링
+
+**Status**: ⏸️ Pending (2025-11-30 계획 수립)
+
+**Background**:
+- 하나의 데이터셋은 여러 task_type으로 publish 가능
+- Example: mvtec-ad → detection ✅, segmentation ✅, classification ✅
+- Platform이 특정 task_type으로 학습하려면 해당 task_type의 annotation만 필요
+- 현재 문제: Dataset에 task_type 정보가 없어 필터링 불가
+
+**Architecture**:
+```python
+# Before (현재):
+Dataset {
+    labeled: True,  # Boolean (어떤 task든 publish되면 True)
+    annotation_path: "exports/.../detection/v9.0/annotations.json"  # 하나만 저장
+}
+
+# After (목표):
+Dataset {
+    labeled: True,  # published_task_types가 비어있지 않으면 True
+    published_task_types: ["detection", "segmentation"],  # 배열
+    # annotation_path는 deprecated 또는 latest만 저장
+}
+
+# Platform API 요청:
+GET /api/v1/platform/datasets?task_type=segmentation&labeled=true
+→ published_task_types에 "segmentation"이 포함된 데이터셋만 반환
+→ annotation_path는 segmentation의 latest version export_path
+```
+
+**Use Cases**:
+```
+Case 1: mvtec-ad published as detection, segmentation
+  - Platform requests: task_type=segmentation
+  - Result: ✅ mvtec-ad returned with segmentation annotation_path
+
+Case 2: mvtec-ad published as detection only
+  - Platform requests: task_type=segmentation
+  - Result: ❌ mvtec-ad excluded (not published for segmentation)
+
+Case 3: mvtec-ad published as detection, segmentation, classification
+  - Platform requests: task_type=classification
+  - Result: ✅ mvtec-ad returned with classification annotation_path
+```
+
+#### 16.6.1 Database Schema (2-3h) ⏸️
+
+**Add `published_task_types` to Dataset**:
+```python
+# backend/app/db/models/labeler.py
+class Dataset(LabelerBase):
+    # ... existing fields ...
+
+    # Phase 16.6: Track which task_types are published
+    published_task_types = Column(ARRAY(String(20)))  # ['detection', 'segmentation', 'classification']
+
+    # annotation_path becomes deprecated or stores latest only
+    annotation_path = Column(String(500))  # Latest published annotation (for backward compatibility)
+```
+
+**Alembic Migration**:
+```bash
+alembic revision --autogenerate -m "Add published_task_types to datasets table (Phase 16.6)"
+```
+
+**Migration File**:
+```python
+def upgrade():
+    op.add_column('datasets', sa.Column('published_task_types', sa.ARRAY(sa.String(20)), nullable=True))
+
+    # Migrate existing data: detect task_type from annotation_path
+    # Example: "exports/.../detection/v9.0/annotations.json" → ["detection"]
+
+def downgrade():
+    op.drop_column('datasets', 'published_task_types')
+```
+
+#### 16.6.2 Update export.py Logic (2-3h) ⏸️
+
+**Publish시 published_task_types 업데이트**:
+```python
+# backend/app/api/v1/endpoints/export.py (line ~460)
+dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+if dataset:
+    dataset.annotation_path = annotation_path  # Latest annotation
+    dataset.labeled = True
+
+    # Phase 16.6: Add task_type to published_task_types array
+    if dataset.published_task_types is None:
+        dataset.published_task_types = []
+
+    if task_type not in dataset.published_task_types:
+        dataset.published_task_types.append(task_type)
+        logger.info(f"Added {task_type} to published_task_types: {dataset.published_task_types}")
+
+    labeler_db.commit()
+```
+
+**Logic**:
+- publish 시마다 task_type을 배열에 추가 (중복 방지)
+- `labeled = True`는 `len(published_task_types) > 0` 의미
+- `annotation_path`는 가장 최근 publish된 것 (backward compatibility)
+
+#### 16.6.3 Platform API: task_type Parameter (2-3h) ⏸️
+
+**Add task_type query parameter**:
+```python
+# backend/app/api/v1/endpoints/platform_datasets.py
+
+@router.get("", response_model=PlatformDatasetListResponse)
+async def list_datasets_for_platform(
+    task_type: Optional[str] = Query(None, description="Filter by published task_type (detection/segmentation/classification)"),
+    labeled: Optional[bool] = Query(None),
+    # ... other params ...
+):
+    """
+    List datasets with task_type filtering.
+
+    Example:
+        GET /api/v1/platform/datasets?task_type=segmentation&labeled=true
+        → Returns only datasets published for segmentation task
+    """
+    query = db.query(Dataset)
+
+    # Filter by task_type (if provided)
+    if task_type:
+        # Use PostgreSQL array contains operator
+        query = query.filter(Dataset.published_task_types.contains([task_type]))
+
+    # Filter by labeled
+    if labeled is not None:
+        query = query.filter(Dataset.labeled == labeled)
+
+    # ... rest of filtering ...
+```
+
+**Single Dataset Endpoint**:
+```python
+@router.get("/{dataset_id}", response_model=PlatformDatasetResponse)
+async def get_dataset_for_platform(
+    dataset_id: str,
+    task_type: Optional[str] = Query(None, description="Get annotation for specific task_type"),
+    # ... auth params ...
+):
+    """
+    Get dataset with task-specific annotation path.
+
+    If task_type is provided, returns annotation_path for that task_type.
+    Otherwise, returns latest annotation_path.
+    """
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+
+    if not dataset:
+        raise HTTPException(404, "Dataset not found")
+
+    # Get task-specific annotation_path
+    if task_type:
+        if task_type not in (dataset.published_task_types or []):
+            raise HTTPException(
+                404,
+                f"Dataset not published for task_type={task_type}. "
+                f"Available: {dataset.published_task_types}"
+            )
+
+        # Get latest version for this task_type
+        latest_version = db.query(AnnotationVersion).filter(
+            AnnotationVersion.project_id == project.id,
+            AnnotationVersion.task_type == task_type,
+            AnnotationVersion.version_type == "published"
+        ).order_by(AnnotationVersion.version_number.desc()).first()
+
+        annotation_path = latest_version.export_path if latest_version else None
+    else:
+        annotation_path = dataset.annotation_path  # Default to latest
+
+    return PlatformDatasetResponse(
+        ...
+        task_types=dataset.published_task_types,  # 새 필드
+        annotation_path=annotation_path,  # task_type별 동적 경로
+        ...
+    )
+```
+
+#### 16.6.4 Update Schema (1h) ⏸️
+
+**PlatformDatasetResponse**:
+```python
+# backend/app/schemas/platform.py
+
+class PlatformDatasetResponse(BaseModel):
+    id: str
+    name: str
+    # ... existing fields ...
+
+    # Phase 16.6: Task-type information
+    labeled: bool
+    task_types: Optional[List[str]] = None  # ['detection', 'segmentation']
+    annotation_path: Optional[str] = None   # Task-specific annotation (based on query param)
+
+    # ... rest of fields ...
+```
+
+#### 16.6.5 Data Migration (1h) ⏸️
+
+**Migrate existing datasets**:
+```python
+# Script: backend/scripts/migrate_published_task_types.py
+
+from app.core.database import LabelerSessionLocal
+from app.db.models.labeler import Dataset, AnnotationVersion
+
+db = LabelerSessionLocal()
+
+datasets = db.query(Dataset).filter(Dataset.labeled == True).all()
+
+for dataset in datasets:
+    # Find all published task_types from AnnotationVersion
+    project_id = db.query(AnnotationProject).filter(
+        AnnotationProject.dataset_id == dataset.id
+    ).first().id
+
+    published_tasks = db.query(AnnotationVersion.task_type).filter(
+        AnnotationVersion.project_id == project_id,
+        AnnotationVersion.version_type == "published"
+    ).distinct().all()
+
+    dataset.published_task_types = [t[0] for t in published_tasks]
+    print(f"{dataset.name}: {dataset.published_task_types}")
+
+db.commit()
+```
+
+#### 16.6.6 Testing (1-2h) ⏸️
+
+**Test Cases**:
+```python
+# Test 1: List datasets for specific task_type
+GET /api/v1/platform/datasets?task_type=detection&labeled=true
+→ mvtec-ad returned (has detection)
+
+GET /api/v1/platform/datasets?task_type=segmentation&labeled=true
+→ mvtec-ad excluded (doesn't have segmentation yet)
+
+# Test 2: Get dataset with task_type
+GET /api/v1/platform/datasets/ds_c75023ca76d7448b?task_type=detection
+→ annotation_path: "exports/.../detection/v10.0/annotations.json"
+
+GET /api/v1/platform/datasets/ds_c75023ca76d7448b?task_type=segmentation
+→ 404: "Dataset not published for task_type=segmentation"
+
+# Test 3: Publish new task_type
+POST /api/v1/projects/{project_id}/versions (publish segmentation)
+→ dataset.published_task_types: ["detection", "segmentation"]
+
+GET /api/v1/platform/datasets?task_type=segmentation&labeled=true
+→ mvtec-ad now returned
+```
+
+**Summary**:
+```
+Phase 16.6 구현 순서:
+1. Database: published_task_types 컬럼 추가 (2-3h)
+2. Export Logic: publish 시 task_type 추가 (2-3h)
+3. Platform API: task_type 파라미터 & 필터링 (2-3h)
+4. Schema: PlatformDatasetResponse 업데이트 (1h)
+5. Data Migration: 기존 데이터 마이그레이션 (1h)
+6. Testing: task_type 기반 조회 테스트 (1-2h)
+
+Total: 8-10h
 ```
 
 ---
