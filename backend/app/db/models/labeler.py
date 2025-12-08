@@ -52,6 +52,10 @@ class Dataset(LabelerBase):
     labeled = Column(Boolean, nullable=False, default=False)
     annotation_path = Column(String(500))
 
+    # Phase 16.6: Task-type tracking for Platform integration
+    # Tracks which task types have been published (e.g., ['detection', 'segmentation'])
+    published_task_types = Column(ARRAY(String(20)), nullable=False, default=[])
+
     # Statistics
     num_classes = Column(Integer)
     num_images = Column(Integer, nullable=False, default=0)

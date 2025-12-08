@@ -449,16 +449,25 @@ async def publish_version(
                 version_number=new_version_number
             )
 
-            # Update Platform DB with new annotation_path and labeled status
-            from app.db.models.platform import Dataset
-            dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+            # Update Labeler DB with new annotation_path and labeled status
+            # NOTE (Phase 5): Dataset moved from Platform DB to Labeler DB (2025-11-20)
+            from app.db.models.labeler import Dataset
+            dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
             if dataset:
                 dataset.annotation_path = annotation_path
                 dataset.labeled = True
-                platform_db.commit()
-                logger.info(f"Updated Platform DB: annotation_path={annotation_path}, labeled=True")
+
+                # Phase 16.6: Track which task types have been published
+                if dataset.published_task_types is None:
+                    dataset.published_task_types = []
+                if task_type not in dataset.published_task_types:
+                    dataset.published_task_types = dataset.published_task_types + [task_type]
+                    logger.info(f"Added {task_type} to published_task_types: {dataset.published_task_types}")
+
+                # Don't commit here - will be committed with version below (line 468)
+                logger.info(f"Updated Labeler DB: annotation_path={annotation_path}, labeled=True")
             else:
-                logger.warning(f"Dataset {project.dataset_id} not found in Platform DB")
+                logger.warning(f"Dataset {project.dataset_id} not found in Labeler DB")
 
         except Exception as e:
             # Log error but don't fail the publish

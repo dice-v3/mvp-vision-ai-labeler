@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
 
+    # Service JWT Authentication (Phase 16.5 - Platform Integration)
+    # Shared secret for verifying JWTs from Platform service
+    SERVICE_JWT_SECRET: str = "service-jwt-secret-change-in-production"
+    SERVICE_JWT_ALGORITHM: str = "HS256"
+
     class Config:
         env_file = ".env"
         case_sensitive = True
