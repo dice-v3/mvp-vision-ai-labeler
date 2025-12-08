@@ -1,14 +1,50 @@
 version: '3.8'
 
 services:
-  # Note: Platform DB (postgres) and MinIO are provided by the Platform
-  # Platform services should be running on:
-  #   - PostgreSQL: localhost:5432
-  #   - MinIO: localhost:9000-9001
-  #   - Redis: localhost:6379
+  # Platform Database (Master)
+  # Platform team's main database
+  postgres-platform:
+    image: postgres:16-alpine
+    container_name: labeler-postgres-platform
+    environment:
+      POSTGRES_DB: platform
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_platform_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - labeler-network
 
-  # PostgreSQL - Labeler DB (Independent)
-  # This is the Labeler's own database
+  # User Database
+  # Shared user management database
+  postgres-user:
+    image: postgres:16-alpine
+    container_name: labeler-postgres-user
+    environment:
+      POSTGRES_DB: users
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_user_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d users"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - labeler-network
+
+  # Labeler Database (Independent)
+  # Labeler's own database for annotations, versions, etc.
   postgres-labeler:
     image: postgres:16-alpine
     container_name: labeler-postgres-labeler
@@ -28,10 +64,30 @@ services:
     networks:
       - labeler-network
 
-  # Note: Redis and MinIO are provided by the Platform
+  # Redis (Optional - for caching and real-time features)
+  redis:
+    image: redis:7-alpine
+    container_name: labeler-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - labeler-network
 
 volumes:
+  postgres_platform_data:
+    driver: local
+  postgres_user_data:
+    driver: local
   postgres_labeler_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:
