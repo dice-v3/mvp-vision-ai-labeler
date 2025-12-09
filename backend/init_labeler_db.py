@@ -5,15 +5,16 @@ Database Initialization Script for Vision AI Labeler
 This script initializes the Labeler database:
 1. Checks database connectivity
 2. Creates database if not exists (optional)
-3. Runs Alembic migrations
+3. Runs Alembic migrations or creates tables directly
 4. Verifies table creation
 
 Usage:
-    python init_labeler_db.py [--create-db] [--skip-migration]
+    python init_labeler_db.py [--create-db] [--skip-migration] [--create-tables]
 
 Options:
     --create-db       Create the database if it doesn't exist
     --skip-migration  Skip Alembic migrations (only check connectivity)
+    --create-tables   Create tables directly using SQLAlchemy models (no Alembic)
     --wait            Wait for PostgreSQL to be ready (for Docker/K8s)
 """
 
@@ -25,11 +26,13 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from sqlalchemy import create_engine
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import settings
+from app.core.database import LabelerBase
 
 
 def print_status(message: str, status: str = "INFO"):
@@ -179,6 +182,30 @@ def get_migration_status() -> str:
         return "Unknown"
 
 
+def create_tables_directly() -> bool:
+    """Create tables directly using SQLAlchemy models (without Alembic)."""
+    print_status("Creating tables directly using SQLAlchemy models...")
+
+    try:
+        # Import all models to register them with LabelerBase
+        from app.db.models import labeler  # noqa: F401
+
+        # Create engine
+        engine = create_engine(
+            f"postgresql://{settings.LABELER_DB_USER}:{settings.LABELER_DB_PASSWORD}@"
+            f"{settings.LABELER_DB_HOST}:{settings.LABELER_DB_PORT}/{settings.LABELER_DB_NAME}"
+        )
+
+        # Create all tables
+        LabelerBase.metadata.create_all(engine)
+
+        print_status("Tables created successfully", "OK")
+        return True
+    except Exception as e:
+        print_status(f"Error creating tables: {e}", "ERROR")
+        return False
+
+
 def verify_tables() -> bool:
     """Verify that required tables exist."""
     required_tables = [
@@ -231,6 +258,7 @@ def main():
     parser = argparse.ArgumentParser(description="Initialize Vision AI Labeler database")
     parser.add_argument("--create-db", action="store_true", help="Create database if not exists")
     parser.add_argument("--skip-migration", action="store_true", help="Skip Alembic migrations")
+    parser.add_argument("--create-tables", action="store_true", help="Create tables directly using SQLAlchemy models (no Alembic)")
     parser.add_argument("--wait", action="store_true", help="Wait for PostgreSQL to be ready")
     args = parser.parse_args()
 
@@ -283,9 +311,14 @@ def main():
             sys.exit(1)
         print_status(f"Database '{settings.LABELER_DB_NAME}' exists", "OK")
 
-    # Step 2: Run migrations
-    if not args.skip_migration:
-        print()
+    # Step 2: Run migrations or create tables directly
+    print()
+    if args.create_tables:
+        print_status("Step 2: Creating tables directly...")
+        if not create_tables_directly():
+            print_status("Table creation failed", "ERROR")
+            sys.exit(1)
+    elif not args.skip_migration:
         print_status("Step 2: Running migrations...")
 
         current_status = get_migration_status()
@@ -295,7 +328,6 @@ def main():
             print_status("Migration failed", "ERROR")
             sys.exit(1)
     else:
-        print()
         print_status("Step 2: Skipping migrations (--skip-migration)", "WARN")
 
     # Step 3: Verify tables

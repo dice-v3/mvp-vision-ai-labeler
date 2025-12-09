@@ -15,7 +15,37 @@ print("=" * 80)
 
 try:
     with engine.connect() as conn:
-        print("\n[1/2] Creating test users...")
+        print("\n[1/3] Checking/Creating users table...")
+
+        # Create users table if not exists
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                hashed_password VARCHAR(255) NOT NULL,
+                full_name VARCHAR(255),
+                company VARCHAR(100),
+                company_custom VARCHAR(255),
+                division VARCHAR(100),
+                division_custom VARCHAR(255),
+                department VARCHAR(255),
+                organization_id INTEGER,
+                phone_number VARCHAR(50),
+                bio TEXT,
+                system_role VARCHAR(11) NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                avatar_name VARCHAR(100),
+                badge_color VARCHAR(20),
+                password_reset_token VARCHAR(255),
+                password_reset_expires TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.commit()
+        print("[OK] Users table ready")
+
+        print("\n[2/3] Creating test users...")
 
         # Insert test users
         # Password: 'admin123' - hash generated using get_password_hash with 72-byte truncation
@@ -42,7 +72,7 @@ try:
         else:
             print("[INFO] Users already exist, skipping...")
 
-        print("\n[2/2] Verifying users...")
+        print("\n[3/3] Verifying users...")
         result = conn.execute(text("SELECT email, system_role, is_active FROM users"))
         users = result.fetchall()
 
