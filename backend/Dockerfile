@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install build dependencies and uv
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
@@ -19,13 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Create virtual environment and install dependencies
-RUN uv venv /opt/venv
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Copy dependency files first for caching
+COPY pyproject.toml uv.lock* ./
 
-COPY requirements.txt .
-RUN uv pip install --no-cache -r requirements.txt
+# Install dependencies using uv
+# If uv.lock exists, use it for reproducible builds
+# Otherwise fall back to requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /opt/venv && \
+    . /opt/venv/bin/activate && \
+    if [ -f uv.lock ]; then \
+        uv sync --frozen --no-dev; \
+    elif [ -f requirements.txt ]; then \
+        uv pip install -r requirements.txt; \
+    else \
+        uv sync --no-dev; \
+    fi
 
 # Stage 2: Runner
 FROM python:3.11-slim AS runner
