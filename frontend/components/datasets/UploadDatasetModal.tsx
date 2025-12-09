@@ -305,10 +305,9 @@ export default function UploadDatasetModal({
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
-        </form>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end space-x-3 sticky bottom-0 bg-white">
+          {/* Footer - inside form for submit button to work */}
+          <div className="pt-4 mt-4 border-t border-gray-200 flex items-center justify-end space-x-3">
           <button
             type="button"
             onClick={handleClose}
@@ -330,7 +329,8 @@ export default function UploadDatasetModal({
             )}
             <span>{uploading ? '업로드 중...' : '업로드'}</span>
           </button>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );
