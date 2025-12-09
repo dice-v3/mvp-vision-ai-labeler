@@ -2,6 +2,7 @@
 import sys
 from sqlalchemy import create_engine, text
 from app.core.config import settings
+from app.core.security import get_password_hash
 
 # Create engine for Platform DB
 engine = create_engine(
@@ -17,15 +18,19 @@ try:
         print("\n[1/2] Creating test users...")
 
         # Insert test users
-        # Password: 'admin123' (bcrypt hash)
-        result = conn.execute(text("""
+        # Password: 'admin123' - hash generated using get_password_hash with 72-byte truncation
+        admin_password_hash = get_password_hash("admin123")
+        result = conn.execute(
+            text("""
             INSERT INTO users (email, hashed_password, full_name, system_role, is_active, badge_color, created_at, updated_at)
             VALUES
-                ('admin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYIq8E4O8p6', 'Admin User', 'admin', TRUE, '#9333ea', NOW(), NOW()),
-                ('user@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYIq8E4O8p6', 'Test User', 'user', TRUE, '#3b82f6', NOW(), NOW())
+                ('admin@example.com', :admin_hash, 'Admin User', 'admin', TRUE, '#9333ea', NOW(), NOW()),
+                ('user@example.com', :user_hash, 'Test User', 'user', TRUE, '#3b82f6', NOW(), NOW())
             ON CONFLICT (email) DO NOTHING
             RETURNING email
-        """))
+            """),
+            {"admin_hash": admin_password_hash, "user_hash": admin_password_hash}
+        )
 
         conn.commit()
 
