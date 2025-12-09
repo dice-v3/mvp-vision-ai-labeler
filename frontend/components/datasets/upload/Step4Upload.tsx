@@ -9,7 +9,7 @@
  * - Display summary on completion
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { addImagesToDataset } from '@/lib/api/datasets';
 import type { FileMappingInfo } from './MultiStepUploadModal';
 import { toast } from '@/lib/stores/toastStore';
@@ -56,7 +56,12 @@ export default function Step4Upload({
     annotations: 0,
   });
 
+  // Prevent duplicate upload calls (React Strict Mode calls useEffect twice)
+  const uploadStartedRef = useRef(false);
+
   useEffect(() => {
+    if (uploadStartedRef.current) return;
+    uploadStartedRef.current = true;
     startUpload();
   }, []);
 
