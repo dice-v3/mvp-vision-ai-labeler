@@ -3,7 +3,7 @@ name = "vision-ai-labeler-backend"
 version = "0.1.0"
 description = "Vision AI Labeler - Backend API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     # Web Framework
     "fastapi==0.109.0",
@@ -51,10 +51,6 @@ dev = [
     # Development
     "watchfiles==0.21.0",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
 [tool.uv]
 dev-dependencies = [
