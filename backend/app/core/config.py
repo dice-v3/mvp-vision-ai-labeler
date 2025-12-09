@@ -52,8 +52,9 @@ class Settings(BaseSettings):
 
     # User Database (Read-Only - Phase 9)
     # PostgreSQL database shared with Platform service
+    # Updated 2025-12-09: Single PostgreSQL instance architecture
     USER_DB_HOST: str = "localhost"
-    USER_DB_PORT: int = 5433
+    USER_DB_PORT: int = 5432
     USER_DB_NAME: str = "users"
     USER_DB_USER: str = "admin"
     USER_DB_PASSWORD: str = "devpass"
@@ -67,11 +68,13 @@ class Settings(BaseSettings):
         )
 
     # Labeler Database (Full Access)
+    # Updated 2025-12-09: Single PostgreSQL instance architecture
+    # Platform team manages PostgreSQL instance, Labeler team manages schema only
     LABELER_DB_HOST: str = "localhost"
-    LABELER_DB_PORT: int = 5433
+    LABELER_DB_PORT: int = 5432
     LABELER_DB_NAME: str = "labeler"
-    LABELER_DB_USER: str = "labeler_user"
-    LABELER_DB_PASSWORD: str = "labeler_password"
+    LABELER_DB_USER: str = "admin"
+    LABELER_DB_PASSWORD: str = "devpass"
 
     @property
     def LABELER_DB_URL(self) -> str:

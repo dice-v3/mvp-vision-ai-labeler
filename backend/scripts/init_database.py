@@ -64,11 +64,11 @@ def check_database_connection():
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version()"))
             version = result.fetchone()[0]
-            print(f"✓ Connection successful!")
+            print(f"[OK] Connection successful!")
             print(f"  PostgreSQL version: {version.split(',')[0]}")
             return True
     except OperationalError as e:
-        print(f"✗ Connection failed: {e}")
+        print(f"[ERROR] Connection failed: {e}")
         print("\nPlease check:")
         print("1. PostgreSQL instance is running (Platform's infrastructure)")
         print("2. Database credentials in .env are correct")
@@ -268,9 +268,9 @@ def main():
     )
     args = parser.parse_args()
 
-    print("╔" + "=" * 78 + "╗")
-    print("║" + " " * 20 + "Labeler Database Initialization" + " " * 27 + "║")
-    print("╚" + "=" * 78 + "╝")
+    print("=" * 80)
+    print(" " * 20 + "Labeler Database Initialization")
+    print("=" * 80)
     print()
 
     # Step 1: Check connection
@@ -324,9 +324,9 @@ def main():
         create_sample_data()
 
     # Success!
-    print("\n" + "╔" + "=" * 78 + "╗")
-    print("║" + " " * 25 + "✓ Initialization Complete!" + " " * 28 + "║")
-    print("╚" + "=" * 78 + "╝")
+    print("\n" + "=" * 80)
+    print(" " * 20 + "Initialization Complete!")
+    print("=" * 80)
     print()
     print("Next steps:")
     print("1. Start backend:  uvicorn app.main:app --reload --host 0.0.0.0 --port 8001")
