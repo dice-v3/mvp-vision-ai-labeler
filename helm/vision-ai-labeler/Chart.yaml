@@ -1,0 +1,13 @@
+apiVersion: v2
+name: vision-ai-labeler
+description: A Helm chart for Vision AI Labeler - Frontend and Backend deployment
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Vision AI Team
+keywords:
+  - vision-ai
+  - labeler
+  - annotation
+  - machine-learning
