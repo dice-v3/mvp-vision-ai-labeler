@@ -4,6 +4,21 @@ Database Initialization Script
 
 Initializes Labeler database schema and optionally creates sample data.
 
+IMPORTANT: Database Architecture (Updated 2025-12-09)
+-------------------------------------------------------
+The Platform team manages a single PostgreSQL instance (port 5432) with 3 databases:
+  - platform (Platform team)
+  - users (Platform team, shared with Labeler)
+  - labeler (Labeler team - schema managed by this script)
+
+Prerequisites:
+  1. PostgreSQL instance is running (Platform's docker-compose or production RDS)
+  2. Database 'labeler' has been created by Platform team
+  3. .env file has correct connection details (all databases on port 5432)
+
+This script ONLY manages the Labeler database schema (tables, indexes, etc.).
+It does NOT create the database itself.
+
 Usage:
     python scripts/init_database.py                    # Initialize schema only
     python scripts/init_database.py --with-sample     # Initialize + sample data
@@ -55,11 +70,21 @@ def check_database_connection():
     except OperationalError as e:
         print(f"✗ Connection failed: {e}")
         print("\nPlease check:")
-        print("1. PostgreSQL is running")
+        print("1. PostgreSQL instance is running (Platform's infrastructure)")
         print("2. Database credentials in .env are correct")
-        print("3. Database 'labeler' exists")
-        print("\nTo create database:")
-        print(f"  createdb -h {settings.LABELER_DB_HOST} -p {settings.LABELER_DB_PORT} -U {settings.LABELER_DB_USER} {settings.LABELER_DB_NAME}")
+        print("3. All databases use the same host and port (5432)")
+        print("4. Database 'labeler' exists (created by Platform team)")
+        print("\nDatabase Setup:")
+        print("  Local Development:")
+        print("    cd ../mvp-vision-ai-platform/infrastructure")
+        print("    docker-compose up -d")
+        print("    # This creates all 3 databases (platform, users, labeler)")
+        print("\n  Production:")
+        print("    # Platform team creates the 'labeler' database on RDS")
+        print("    # Then update .env with production connection details")
+        print("\n  Manual Creation (if needed):")
+        print(f"    psql -h {settings.LABELER_DB_HOST} -p {settings.LABELER_DB_PORT} -U admin")
+        print(f"    CREATE DATABASE {settings.LABELER_DB_NAME};")
         return False
 
 
