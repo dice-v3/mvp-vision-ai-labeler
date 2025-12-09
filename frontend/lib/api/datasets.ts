@@ -7,6 +7,9 @@
 import { apiClient } from './client';
 import type { Dataset, Project } from '../types';
 
+// Use same API base URL as apiClient
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+
 export interface CreateDatasetRequest {
   name: string;
   description?: string;
@@ -257,7 +260,7 @@ export async function uploadDataset(
     // Get token from localStorage
     const token = localStorage.getItem('access_token');
 
-    xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/upload`);
+    xhr.open('POST', `${API_BASE_URL}/api/v1/datasets/upload`);
 
     if (token) {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -388,7 +391,7 @@ export async function addImagesToDataset(
     // Get token from localStorage
     const token = localStorage.getItem('access_token');
 
-    xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/${datasetId}/images`);
+    xhr.open('POST', `${API_BASE_URL}/api/v1/datasets/${datasetId}/images`);
 
     if (token) {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);

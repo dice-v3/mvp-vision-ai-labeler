@@ -83,18 +83,15 @@ Vision AI Labeler is a production-ready web annotation tool supporting:
 
 ### Database Architecture
 
-**Three-Database Strategy**:
+**⚠️ Architecture Update (2025-12-09)**: Consolidated to single PostgreSQL instance
+
+**Single Instance, Three Databases**:
 
 ```
-User DB (Master)        ← Platform owns
-    ↓ (read-only)
-    ├─→ Labeler reads users
-    │
-Platform DB (Master)    ← Platform owns
-    ↓ (read-only)
-    ├─→ Labeler reads datasets metadata
-    │
-Labeler DB (Independent) ← Labeler owns
+PostgreSQL Instance (port 5432)  ← Platform team manages
+├── platform database            ← Platform owns (Labeler: read-only)
+├── users database               ← Platform owns (Labeler: read-only)
+└── labeler database             ← Labeler owns (schema only)
     ├─→ Projects, Annotations
     ├─→ Versions, Locks
     ├─→ Permissions, Invitations
@@ -102,10 +99,14 @@ Labeler DB (Independent) ← Labeler owns
 ```
 
 **Benefits**:
+- ✅ Resource efficiency (1 PostgreSQL process vs 3)
+- ✅ Simplified port management (single port 5432)
+- ✅ Standard PostgreSQL practice
+- ✅ Logical isolation (databases cannot query each other)
 - ✅ Complete independence for Labeler operations
-- ✅ Performance isolation
-- ✅ Independent scaling
 - ✅ Security (read-only access to Platform data)
+
+**Migration**: If upgrading from old architecture (3 separate containers), see [DATABASE_MIGRATION_GUIDE.md](./docs/DATABASE_MIGRATION_GUIDE.md)
 
 ---
 
@@ -180,8 +181,12 @@ npm run dev
 - [ANNOTATION_IMPLEMENTATION_TODO.md](./docs/ANNOTATION_IMPLEMENTATION_TODO.md) - Implementation progress tracker
 
 ### 📖 Integration Guides
-- [PLATFORM_ANNOTATION_FORMAT.md](./docs/PLATFORM_ANNOTATION_FORMAT.md) - Annotation file format for Platform integration
+- [PLATFORM_ANNOTATION_FORMAT.md](./docs/integration/PLATFORM_ANNOTATION_FORMAT.md) - Annotation file format for Platform integration
 - [Phase 16 Documentation](./docs/integration/) - Platform integration details
+
+### 🚀 Deployment & Operations
+- [DEPLOYMENT_GUIDE.md](./docs/DEPLOYMENT_GUIDE.md) - Production deployment guide
+- [DATABASE_MIGRATION_GUIDE.md](./docs/DATABASE_MIGRATION_GUIDE.md) - **NEW!** Migrate to single PostgreSQL instance
 
 ### 🎨 Design Documents
 1. [PROJECT_DESIGN.md](./docs/design/PROJECT_DESIGN.md) - Overall project design & features
@@ -197,43 +202,53 @@ npm run dev
 
 ## 🗄️ Database Setup
 
-### Option 1: Using Docker (Recommended)
+**⚠️ IMPORTANT**: Database architecture changed on 2025-12-09. Use Platform's infrastructure!
+
+### Option 1: Using Platform Infrastructure (Recommended)
 
 ```bash
-# Start all databases
+# Step 1: Start Platform's PostgreSQL instance
+cd ../mvp-vision-ai-platform/infrastructure
 docker-compose up -d
 
-# This starts:
-# - Platform DB (port 5432)
-# - User DB (port 5433)
-# - Labeler DB (port 5435)
-```
+# This creates PostgreSQL 16 on port 5432 with 3 databases:
+# - platform (Platform team)
+# - users (Platform team, shared)
+# - labeler (empty, ready for Labeler schema)
 
-### Option 2: Using Initialization Script
-
-```bash
-cd backend
-
-# Run initialization script
+# Step 2: Initialize Labeler schema
+cd ../../mvp-vision-ai-labeler/backend
 python scripts/init_database.py
 
 # This will:
-# 1. Create database schemas
+# 1. Connect to labeler database (port 5432)
 # 2. Run all Alembic migrations
-# 3. Create sample data (optional)
+# 3. Verify all tables exist
 ```
 
-### Manual Setup
+### Option 2: Manual Setup (Production)
 
 ```bash
+# Platform team provides:
+# 1. PostgreSQL instance endpoint (RDS, Cloud SQL, etc.)
+# 2. Database 'labeler' already created
+# 3. Connection credentials
+
+# Update .env with production credentials
+# All databases should use port 5432
+
 cd backend
 
-# Run migrations
+# Run Labeler schema migrations
 alembic upgrade head
 
 # Verify
 alembic current
 ```
+
+### Migration from Old Architecture
+
+If you're upgrading from the old 3-container setup, see [DATABASE_MIGRATION_GUIDE.md](./docs/DATABASE_MIGRATION_GUIDE.md)
 
 ---
 
