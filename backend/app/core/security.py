@@ -24,19 +24,37 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT Bearer token
 security = HTTPBearer()
 
+# bcrypt has a 72-byte limit for passwords
+BCRYPT_MAX_PASSWORD_LENGTH = 72
+
 
 # =============================================================================
 # Password Utilities
 # =============================================================================
 
+def _truncate_password(password: str) -> str:
+    """
+    Truncate password to 72 bytes for bcrypt compatibility.
+
+    bcrypt only uses the first 72 bytes of a password, so we explicitly
+    truncate to ensure consistent behavior across different bcrypt versions.
+    """
+    password_bytes = password.encode("utf-8")
+    if len(password_bytes) > BCRYPT_MAX_PASSWORD_LENGTH:
+        password_bytes = password_bytes[:BCRYPT_MAX_PASSWORD_LENGTH]
+    return password_bytes.decode("utf-8", errors="ignore")
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    truncated_password = _truncate_password(plain_password)
+    return pwd_context.verify(truncated_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
     """Generate password hash."""
-    return pwd_context.hash(password)
+    truncated_password = _truncate_password(password)
+    return pwd_context.hash(truncated_password)
 
 
 # =============================================================================

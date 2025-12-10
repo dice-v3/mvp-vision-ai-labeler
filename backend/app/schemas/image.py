@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class ImageMetadata(BaseModel):
     """Image metadata with presigned URL."""
 
-    id: str = Field(..., description="Image ID (filename without extension)")
+    id: str = Field(..., description="Image ID (relative path with extension, e.g., 'train/good/001.png')")
     key: str = Field(..., description="S3 object key")
     filename: str = Field(..., description="Image filename")
     file_name: str = Field(..., description="Image filename (alias for frontend compatibility)")

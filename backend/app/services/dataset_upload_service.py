@@ -111,8 +111,8 @@ async def upload_files_to_s3(
                 logger.debug(f"Uploaded thumbnail: {thumbnail_key} ({len(thumbnail_bytes)} bytes)")
 
             # Phase 2.12: Save image metadata to DB
-            # Generate unique image ID (relative path without extension)
-            image_id = relative_path.rsplit('.', 1)[0] if '.' in relative_path else relative_path
+            # Generate unique image ID (relative path with extension for S3 key compatibility)
+            image_id = relative_path
             file_name = os.path.basename(file.filename)
 
             db_image = ImageMetadata(
@@ -218,8 +218,8 @@ async def upload_zip_with_structure(
                 logger.debug(f"Uploaded thumbnail: {thumbnail_key} ({len(thumbnail_bytes)} bytes)")
 
             # Phase 2.12: Save image metadata to DB
-            # Generate unique image ID (relative path without extension)
-            image_id = member.rsplit('.', 1)[0] if '.' in member else member
+            # Generate unique image ID (relative path with extension for S3 key compatibility)
+            image_id = member
             file_name = os.path.basename(member)
             folder_path = os.path.dirname(member) if os.path.dirname(member) else None
 

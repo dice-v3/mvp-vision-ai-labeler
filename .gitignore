@@ -29,6 +29,10 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.venv/
+
+# uv (Python package manager)
+uv.lock
 
 # IDE
 .vscode/
@@ -51,6 +55,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+bun.lock
 
 # Next.js
 .next/

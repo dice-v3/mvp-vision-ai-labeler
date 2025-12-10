@@ -197,10 +197,9 @@ export default function CreateDatasetModal({
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
-        </form>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end space-x-3">
+          {/* Footer - inside form for submit button to work */}
+          <div className="pt-4 mt-4 border-t border-gray-200 flex items-center justify-end space-x-3">
           <button
             type="button"
             onClick={handleClose}
@@ -211,7 +210,6 @@ export default function CreateDatasetModal({
           </button>
           <button
             type="submit"
-            onClick={handleSubmit}
             disabled={submitting || !name.trim()}
             className="px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
@@ -227,7 +225,8 @@ export default function CreateDatasetModal({
                 : (submitting ? '저장 중...' : '저장')}
             </span>
           </button>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );

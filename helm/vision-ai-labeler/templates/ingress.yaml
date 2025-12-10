@@ -1,0 +1,50 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "vision-ai-labeler.fullname" . }}
+  labels:
+    {{- include "vision-ai-labeler.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if or .Values.ingress.backend.tls .Values.ingress.frontend.tls }}
+  tls:
+    {{- with .Values.ingress.backend.tls }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.ingress.frontend.tls }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- if .Values.backend.enabled }}
+    - host: {{ .Values.ingress.backend.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.backend.path }}
+            pathType: {{ .Values.ingress.backend.pathType }}
+            backend:
+              service:
+                name: {{ include "vision-ai-labeler.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+    {{- end }}
+    {{- if .Values.frontend.enabled }}
+    - host: {{ .Values.ingress.frontend.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.frontend.path }}
+            pathType: {{ .Values.ingress.frontend.pathType }}
+            backend:
+              service:
+                name: {{ include "vision-ai-labeler.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
+    {{- end }}
+{{- end }}
