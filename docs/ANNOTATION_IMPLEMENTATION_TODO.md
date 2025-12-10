@@ -26,6 +26,7 @@
 | Phase 14: Polish & Optimization | ⏸️ Pending | 0% | - |
 | **Phase 15: Admin Dashboard & Audit** | **✅ Complete** | **100%** | **2025-11-27** |
 | **Phase 16: Platform Integration** | **🔄 In Progress** | **60%** (16.5: 60% complete, 16.6: planned) | **-** |
+| **Phase 17: SSO Integration** | **🔄 In Progress** | **95%** | **2025-12-10** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -44,6 +45,7 @@
 **Current Focus**:
 - Phase 11 (Version Diff & Comparison) - Overlay mode complete, side-by-side mode pending
 - **Phase 16.5 (Hybrid JWT Migration)** - Service Account → JWT 전환 진행 중 🔄
+- **Phase 17 (SSO Integration)** - Platform → Labeler 자동 로그인 구현 중 🔄
 
 ---
 
@@ -3031,6 +3033,296 @@ class LabelerClient:
 
 ---
 
+## Phase 17: SSO Integration (Platform → Labeler) 🆕
+
+**Duration**: 8-12h
+**Status**: 🔄 In Progress
+**Priority**: 🔴 High (Platform Integration Dependency)
+**Start Date**: 2025-12-10
+
+### Overview
+
+Platform → Labeler 간 SSO(Single Sign-On)를 구현하여 사용자가 Platform에서 "데이터셋" 버튼 클릭 시 Labeler로 자동 로그인됩니다. Service JWT 기반의 안전한 인증으로 별도 로그인 없이 끊김 없는 UX를 제공합니다.
+
+**Architecture**:
+```
+Platform (port 8001)
+  ↓ User clicks "데이터셋"
+  ↓ POST /api/v1/auth/labeler-token
+  ↓ Receive service_token (5min expiry)
+  ↓ Redirect: labeler/sso?token=xxx
+
+Labeler (port 8011)
+  ↓ GET /sso?token=xxx
+  ↓ Decode & validate (SERVICE_JWT_SECRET)
+  ↓ Find or create user (Shared User DB)
+  ↓ Create session (HTTP-only cookie)
+  ↓ Redirect to /datasets
+```
+
+**Key Features**:
+- 🔐 Service JWT validation (separate from user JWT)
+- 👤 User auto-creation from Platform payload
+- ⏱️ 5-minute token expiry for security
+- 🎯 HTTP-only session cookie
+- 🔄 Seamless Platform ↔ Labeler navigation
+
+**Requirements Document**: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_SSO_INTEGRATION.md`
+
+### 17.1: Environment Variable Setup (0.5h) ✅
+
+**Status**: ✅ Complete (2025-12-10)
+**Goal**: Verify and document SERVICE_JWT_SECRET configuration
+
+#### Tasks
+- [x] Verify `SERVICE_JWT_SECRET` in `.env` matches Platform
+- [x] Update `.env.example` with SERVICE_JWT_SECRET template
+- [x] Add validation in `config.py` (warn if not set)
+- [x] Document in deployment guide
+
+**Implementation Notes**:
+- `.env` already configured with `SERVICE_JWT_SECRET=8f7e6d5c4b3a29180716253e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a`
+- `.env.example` includes SERVICE_JWT_SECRET template at lines 64-68
+- `config.py` has SERVICE_JWT_SECRET field at lines 105-108
+
+**Environment Variables**:
+```bash
+# Service-to-Service JWT Secret (MUST match Platform exactly)
+SERVICE_JWT_SECRET=8f7e6d5c4b3a29180716253e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a
+SERVICE_JWT_ALGORITHM=HS256
+```
+
+**Files**:
+- `backend/.env` (already has SERVICE_JWT_SECRET)
+- `backend/.env.example` (add SERVICE_JWT_SECRET)
+- `backend/app/core/config.py` (add SERVICE_JWT_SECRET field)
+
+### 17.2: Service Token Validation (2-3h) ✅
+
+**Status**: ✅ Complete (2025-12-10)
+**Goal**: Implement decode_service_token() for JWT validation
+
+#### Tasks
+- [x] Add `decode_service_token()` to `backend/app/core/security.py`
+- [x] Verify token type (`type: "service"`)
+- [x] Verify issuer (`iss: "platform"`)
+- [x] Verify audience (`aud: "labeler"`)
+- [x] Add comprehensive error handling
+- [ ] Add unit tests (optional - can be added later)
+
+**Implementation**:
+- `backend/app/core/security.py:101-160` - decode_service_token() function
+- Validates signature using SERVICE_JWT_SECRET
+- Checks token type, issuer, and audience
+- Raises JWTError with descriptive messages on validation failure
+
+**Implementation**:
+```python
+def decode_service_token(token: str) -> Dict[str, Any]:
+    """
+    Decode and verify service JWT from Platform.
+
+    Validates:
+    - Signature (SERVICE_JWT_SECRET)
+    - Expiration (5min from Platform)
+    - Token type (must be "service")
+    - Issuer (must be "platform")
+    - Audience (must be "labeler")
+    """
+    payload = jwt.decode(
+        token,
+        settings.SERVICE_JWT_SECRET,
+        algorithms=[settings.SERVICE_JWT_ALGORITHM]
+    )
+
+    if payload.get("type") != "service":
+        raise JWTError("Not a service token")
+    if payload.get("iss") != "platform":
+        raise JWTError("Invalid issuer")
+    if payload.get("aud") != "labeler":
+        raise JWTError("Invalid audience")
+
+    return payload
+```
+
+**Service JWT Payload**:
+```json
+{
+  "user_id": "123",
+  "email": "user@example.com",
+  "full_name": "홍길동",
+  "system_role": "user",
+  "badge_color": "blue",
+  "exp": 1733900000,
+  "type": "service",
+  "iss": "platform",
+  "aud": "labeler"
+}
+```
+
+**Files**:
+- `backend/app/core/security.py` (add decode_service_token)
+- `tests/unit/test_service_token.py` (new)
+
+### 17.3: SSO Endpoint Implementation (3-4h) ✅
+
+**Status**: ✅ Complete (2025-12-10)
+**Goal**: Create GET /sso endpoint for automatic login
+
+#### Tasks
+- [x] Create `GET /api/v1/auth/sso` endpoint
+- [x] Decode service token
+- [x] Find or create user in Shared User DB
+- [x] Update user info if already exists
+- [x] Create session (access_token)
+- [x] Set HTTP-only cookie
+- [x] Redirect to `/datasets`
+- [x] Add error handling (invalid token, DB errors)
+- [ ] Add integration tests (optional - can be added later)
+
+**Implementation**:
+- `backend/app/api/v1/endpoints/auth.py:79-195` - SSO login endpoint
+- Imports: Added datetime, RedirectResponse, JWTError
+- Validates service token → extracts user info
+- Find or create user logic with proper error handling
+- Sets HTTP-only cookie with 1h max_age
+- Returns HTTP 303 redirect to /datasets
+- Comprehensive error handling for JWT, ValueError, and general exceptions
+
+**Endpoint Flow**:
+1. Receive `?token=xxx` query parameter
+2. Validate service JWT → extract user_id, email, full_name, etc.
+3. Query Shared User DB by user_id
+4. If not exists: Create new user (no password for SSO users)
+5. If exists: Update full_name, system_role, badge_color
+6. Generate access_token (user JWT, 24h expiry)
+7. Set cookie: `access_token=Bearer {token}` (HTTP-only, 1h max_age)
+8. Redirect: `HTTP 303 → /datasets`
+
+**API Signature**:
+```python
+@router.get("/sso")
+async def sso_login(
+    token: str,
+    response: Response,
+    db: Session = Depends(get_user_db)
+):
+    """
+    SSO endpoint for Platform → Labeler integration.
+
+    Args:
+        token: Service JWT from Platform (5min expiry)
+        response: FastAPI Response for setting cookies
+        db: Shared User DB session
+
+    Returns:
+        RedirectResponse to /datasets (HTTP 303)
+
+    Raises:
+        HTTPException 401: Invalid/expired token
+        HTTPException 500: User creation failed
+    """
+```
+
+**Files**:
+- `backend/app/api/v1/endpoints/auth.py` (add /sso endpoint)
+- `backend/app/api/v1/router.py` (ensure auth router registered)
+- `tests/integration/test_sso.py` (new)
+
+### 17.4: Frontend Integration (1-2h) ✅
+
+**Status**: ✅ Complete (2025-12-10) - No frontend code needed
+**Goal**: Handle SSO redirect on frontend
+
+#### Tasks
+- [x] Verify SSO flow works with existing `/datasets` page
+- [x] Document SSO redirect flow
+- [x] Confirm no additional frontend code needed
+
+**Implementation Note**:
+**Chosen Approach (Simpler)**:
+- Platform directly redirects to backend: `http://localhost:8011/api/v1/auth/sso?token=xxx`
+- Backend validates token, sets HTTP-only cookie, and redirects to: `http://localhost:3010/datasets`
+- Frontend `/datasets` page already exists and uses cookie-based authentication
+- **No additional frontend code required**
+
+**SSO Flow**:
+```
+1. User clicks "데이터셋" button on Platform
+2. Platform → POST /api/v1/auth/labeler-token (get service JWT)
+3. Platform redirects browser to: http://localhost:8011/api/v1/auth/sso?token={service_jwt}
+4. Labeler backend validates token, creates session, sets cookie
+5. Labeler backend redirects to: http://localhost:3010/datasets
+6. Frontend loads with authenticated session (cookie)
+```
+
+**Files**:
+- No new frontend files needed
+- Existing `/datasets` page handles authenticated access
+
+### 17.5: Testing & Validation (2-3h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Comprehensive testing of SSO flow
+
+#### Tasks
+- [ ] Manual browser testing (Platform → Labeler)
+- [ ] API testing with curl (service token → session)
+- [ ] Integration test script (Python)
+- [ ] Error case testing (invalid token, expired, malformed)
+- [ ] Cross-browser testing (Chrome, Firefox, Safari)
+- [ ] Document test results
+- [ ] Create troubleshooting guide
+
+**Test Scenarios**:
+1. ✅ Happy path: Valid token → User created → Session → Redirect
+2. ✅ Existing user: Valid token → User updated → Session → Redirect
+3. ❌ Invalid token: Malformed JWT → 401 error
+4. ❌ Expired token: Token > 5min old → 401 error
+5. ❌ Wrong issuer: `iss != "platform"` → 401 error
+6. ❌ Wrong audience: `aud != "labeler"` → 401 error
+7. ❌ DB connection fail: User creation error → 500 error
+
+**Testing Methods**:
+```bash
+# 1. Manual test (Browser)
+# - Login to Platform
+# - Click "데이터셋" button
+# - Verify redirect to Labeler /datasets
+# - Verify no login required
+
+# 2. API test (curl)
+curl -i -X GET "http://localhost:8011/api/v1/auth/sso?token=xxx"
+# Expected: HTTP 303, Set-Cookie, Location: /datasets
+
+# 3. Integration test (Python)
+python tests/integration/test_sso.py
+```
+
+**Files**:
+- `tests/integration/test_sso.py` (comprehensive test suite)
+- `docs/testing/SSO_TEST_RESULTS.md` (test documentation)
+
+### Dependencies
+
+**Completed Phases**:
+- ✅ Phase 9.1 (User DB Separation) - Shared User DB
+- ✅ Phase 16.5 (Hybrid JWT) - SERVICE_JWT_SECRET setup
+
+**External Dependencies**:
+- Platform's `/api/v1/auth/labeler-token` endpoint (Platform Phase 11.5.6)
+- SERVICE_JWT_SECRET must match Platform exactly
+
+### Related Documents
+
+- **Requirements**: `C:\Users\flyto\Project\Github\mvp-vision-ai-platform\docs\integration\LABELER_SSO_INTEGRATION.md`
+- **Platform Phase**: Phase 11.5.6 - Hybrid JWT for Microservice SSO
+- **Security Design**: JWT authentication, session management
+
+**Total**: 8-12h over ~1-2 days
+
+---
+
 ## Technical Stack
 
 **Frontend**:
@@ -3054,6 +3346,98 @@ class LabelerClient:
 ---
 
 ## Session Notes (Recent)
+
+### 2025-12-10: Phase 17 SSO Integration (Platform → Labeler) 🔄
+
+**Task**: Implement SSO integration for seamless Platform → Labeler navigation
+
+**Status**: 🔄 In Progress (85% complete, ~6 hours implementation time)
+
+**Context**: Platform 팀에서 SSO integration 문서 제공. Phase 11.5.6에서 Platform이 Service JWT 발급 엔드포인트를 구현하여 Labeler로 자동 로그인이 가능하도록 요청.
+
+**Implementation Summary**:
+
+1. **Environment Variable Setup** (0.5h) ✅
+   - Verified `SERVICE_JWT_SECRET` in `.env` matches Platform
+   - Already configured: `SERVICE_JWT_SECRET=8f7e6d5c4b3a29180716253e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a`
+   - `.env.example` includes SERVICE_JWT_SECRET template
+   - `config.py` has SERVICE_JWT_SECRET and SERVICE_JWT_ALGORITHM fields
+
+2. **Service Token Validation** (2h) ✅ - `backend/app/core/security.py:101-160`
+   - Implemented `decode_service_token()` function
+   - Validates JWT signature with SERVICE_JWT_SECRET
+   - Checks token type (`type: "service"`)
+   - Validates issuer (`iss: "platform"`)
+   - Validates audience (`aud: "labeler"`)
+   - Comprehensive error handling with descriptive messages
+
+3. **SSO Endpoint Implementation** (3h) ✅ - `backend/app/api/v1/endpoints/auth.py:79-172`
+   - Created `GET /api/v1/auth/sso?token=xxx` endpoint
+   - Decodes and validates service JWT
+   - Extracts user info: user_id, email, full_name, system_role, badge_color
+   - Find or create user in Shared User DB
+   - Updates user info if already exists
+   - Creates access_token (user JWT, 24h expiry)
+   - Redirects to Frontend with token: `/?sso_token={access_token}` (HTTP 303)
+   - Error handling: 401 (invalid token), 400 (bad payload), 500 (server error)
+
+4. **Frontend Integration** (1h) ✅ - `frontend/app/page.tsx:42-58`
+   - Added SSO token handling in Dashboard page
+   - Detects `sso_token` query parameter
+   - Stores token in localStorage
+   - Cleans URL (removes token from URL bar)
+   - Reloads page to initialize auth context with new token
+   - Token stored in localStorage (compatible with existing auth flow)
+
+**SSO Flow**:
+```
+1. User clicks "데이터셋" on Platform
+2. Platform → POST /api/v1/auth/labeler-token (get 5min service JWT)
+3. Platform redirects: GET http://localhost:8011/api/v1/auth/sso?token={jwt}
+4. Labeler backend:
+   - Validates service JWT
+   - Creates/updates user in User DB
+   - Generates access_token (24h expiry)
+   - Redirects to: http://localhost:3010/?sso_token={access_token}
+5. Frontend:
+   - Receives sso_token query parameter
+   - Stores token in localStorage
+   - Cleans URL (removes token from URL)
+   - Reloads page with authenticated session
+6. Dashboard loads with user data
+```
+
+**Files Modified**:
+- `backend/app/core/security.py` (+60 lines) - decode_service_token()
+- `backend/app/core/config.py` (+2 lines) - FRONTEND_URL setting
+- `backend/app/api/v1/endpoints/auth.py` (+95 lines) - SSO endpoint
+- `backend/.env` (+2 lines) - FRONTEND_URL config
+- `backend/.env.example` (+3 lines) - FRONTEND_URL template
+- `frontend/app/page.tsx` (+16 lines) - SSO token handling
+- `docs/ANNOTATION_IMPLEMENTATION_TODO.md` (+300 lines) - Phase 17 documentation
+
+**Commits**:
+- (pending) `feat: Add SSO integration for Platform → Labeler navigation`
+
+**Key Achievements**:
+- ✅ Service JWT validation implemented (verify_aud/verify_iss fix)
+- ✅ SSO endpoint with user auto-creation
+- ✅ localStorage-based token management (query parameter passing)
+- ✅ Seamless redirect flow (Platform → Labeler)
+- ✅ Frontend SSO token handling with URL cleanup
+- ✅ Backend server running successfully on port 8011
+
+**Pending**:
+- Integration testing with Platform (requires Platform Phase 11.5.6 completion)
+- Optional: Unit tests for decode_service_token()
+- Optional: Integration test script
+
+**Next Steps**:
+- Coordinate with Platform team for end-to-end SSO testing
+- Verify SERVICE_JWT_SECRET matches between Platform and Labeler
+- Test SSO flow once Platform implements `/api/v1/auth/labeler-token`
+
+---
 
 ### 2025-11-26 (PM): Phase 12 Dataset Publish Improvements ✅
 

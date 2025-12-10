@@ -35,6 +35,9 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(',')]
         return v
 
+    # Frontend URL (for SSO redirect - Phase 17)
+    FRONTEND_URL: str = "http://localhost:3010"
+
     # Platform Database (Read-Only)
     PLATFORM_DB_HOST: str = "localhost"
     PLATFORM_DB_PORT: int = 5432

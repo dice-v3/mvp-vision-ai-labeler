@@ -98,6 +98,70 @@ def decode_access_token(token: str) -> dict:
         )
 
 
+def decode_service_token(token: str) -> dict:
+    """
+    Decode and validate service JWT token from Platform.
+
+    Phase 17: SSO Integration - Service token validation for Platform → Labeler SSO.
+
+    Validates:
+    - Signature (SERVICE_JWT_SECRET)
+    - Expiration (5min from Platform)
+    - Token type (must be "service")
+    - Issuer (must be "platform")
+    - Audience (must be "labeler")
+
+    Args:
+        token: Service JWT token from Platform
+
+    Returns:
+        Decoded token payload containing:
+        - user_id: Platform user ID
+        - email: User email
+        - full_name: User full name
+        - system_role: User system role (admin/manager/user/guest)
+        - badge_color: User badge color
+        - exp: Expiration timestamp
+        - type: Token type ("service")
+        - iss: Issuer ("platform")
+        - aud: Audience ("labeler")
+
+    Raises:
+        JWTError: If token is invalid, expired, or not a service token
+
+    Example:
+        >>> payload = decode_service_token(service_token)
+        >>> user_id = payload["user_id"]
+        >>> email = payload["email"]
+    """
+    try:
+        # Decode with SERVICE_JWT_SECRET
+        # Disable default audience/issuer validation, we'll check manually
+        payload = jwt.decode(
+            token,
+            settings.SERVICE_JWT_SECRET,
+            algorithms=[settings.SERVICE_JWT_ALGORITHM],
+            options={"verify_aud": False, "verify_iss": False}
+        )
+
+        # Verify token type
+        if payload.get("type") != "service":
+            raise JWTError("Not a service token")
+
+        # Verify issuer
+        if payload.get("iss") != "platform":
+            raise JWTError("Invalid issuer - expected 'platform'")
+
+        # Verify audience
+        if payload.get("aud") != "labeler":
+            raise JWTError("Invalid audience - expected 'labeler'")
+
+        return payload
+
+    except JWTError as e:
+        raise JWTError(f"Invalid service token: {str(e)}")
+
+
 # =============================================================================
 # User Caching for Performance
 # =============================================================================
