@@ -18,6 +18,7 @@ export default function TopBar() {
   const {
     project,
     images,
+    totalImages,
     currentIndex,
     preferences,
     setPreference,
@@ -183,7 +184,7 @@ export default function TopBar() {
                     <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 px-2">Select task type:</p>
                       <div className="space-y-1">
-                        {['classification', 'detection', 'segmentation'].map((taskType) => {
+                        {['classification', 'detection', 'segmentation', 'geometry'].map((taskType) => {
                           const isDisabled = project.taskTypes?.includes(taskType);
                           return (
                             <button
@@ -210,14 +211,14 @@ export default function TopBar() {
           )}
         </div>
         <span className="text-sm text-gray-600 dark:text-gray-400">
-          Image {currentIndex + 1} / {images.length}
+          Image {currentIndex + 1} / {totalImages || images.length}
         </span>
         <div className="flex-1">
           <div className="w-full max-w-xs bg-gray-300 dark:bg-gray-700 rounded-full h-1.5">
             <div
               className="h-full bg-gradient-to-r from-violet-600 to-purple-600 rounded-full transition-all"
               style={{
-                width: `${images.length > 0 ? ((currentIndex + 1) / images.length) * 100 : 0}%`,
+                width: `${(totalImages || images.length) > 0 ? ((currentIndex + 1) / (totalImages || images.length)) * 100 : 0}%`,
               }}
             ></div>
           </div>

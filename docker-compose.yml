@@ -1,38 +1,107 @@
 version: '3.8'
 
-services:
-  # Note: Platform DB (postgres) and MinIO are provided by the Platform
-  # Platform services should be running on:
-  #   - PostgreSQL: localhost:5432
-  #   - MinIO: localhost:9000-9001
-  #   - Redis: localhost:6379
+# =============================================================================
+# Vision AI Labeler - Development Environment
+# =============================================================================
+#
+# IMPORTANT: Database Architecture Update (2025-12-09)
+#
+# The Platform team now manages a single PostgreSQL instance with 3 databases:
+# - platform (Platform team)
+# - users (Platform team, shared with Labeler)
+# - labeler (Labeler team)
+#
+# For local development, use Platform's infrastructure instead of this file:
+#   cd ../mvp-vision-ai-platform/infrastructure
+#   docker-compose up -d
+#
+# This creates:
+#   - PostgreSQL 16 (port 5432) with all 3 databases
+#   - Redis (port 6379)
+#
+# Then run Labeler schema initialization:
+#   cd backend
+#   python scripts/init_database.py
+#
+# =============================================================================
+#
+# LEGACY: This file is kept for reference only.
+# If you need to run Labeler independently (not recommended), uncomment below.
+#
+# =============================================================================
 
-  # PostgreSQL - Labeler DB (Independent)
-  # This is the Labeler's own database
-  postgres-labeler:
-    image: postgres:16-alpine
-    container_name: labeler-postgres-labeler
-    environment:
-      POSTGRES_DB: labeler
-      POSTGRES_USER: labeler_user
-      POSTGRES_PASSWORD: labeler_password
+services:
+  # Redis (Labeler-specific caching)
+  redis:
+    image: redis:7-alpine
+    container_name: labeler-redis
     ports:
-      - "5435:5432"
+      - "6379:6379"
     volumes:
-      - postgres_labeler_data:/var/lib/postgresql/data
+      - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U labeler_user -d labeler"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
     networks:
       - labeler-network
 
-  # Note: Redis and MinIO are provided by the Platform
+  # =============================================================================
+  # LEGACY: PostgreSQL Containers (NOT USED - Use Platform's infrastructure)
+  # =============================================================================
+  #
+  # The sections below are kept for reference only.
+  # DO NOT start these containers - they will conflict with Platform's PostgreSQL.
+  #
+  # # Platform Database (Managed by Platform team)
+  # postgres-platform:
+  #   image: postgres:16-alpine
+  #   container_name: labeler-postgres-platform
+  #   environment:
+  #     POSTGRES_DB: platform
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: devpass
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_platform_data:/var/lib/postgresql/data
+  #
+  # # User Database (Managed by Platform team)
+  # postgres-user:
+  #   image: postgres:16-alpine
+  #   container_name: labeler-postgres-user
+  #   environment:
+  #     POSTGRES_DB: users
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: devpass
+  #   ports:
+  #     - "5433:5432"
+  #   volumes:
+  #     - postgres_user_data:/var/lib/postgresql/data
+  #
+  # # Labeler Database (Schema managed by Labeler team)
+  # postgres-labeler:
+  #   image: postgres:16-alpine
+  #   container_name: labeler-postgres-labeler
+  #   environment:
+  #     POSTGRES_DB: labeler
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: devpass
+  #   ports:
+  #     - "5435:5432"
+  #   volumes:
+  #     - postgres_labeler_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_labeler_data:
+  redis_data:
     driver: local
+  # postgres_platform_data:
+  #   driver: local
+  # postgres_user_data:
+  #   driver: local
+  # postgres_labeler_data:
+  #   driver: local
 
 networks:
   labeler-network:

@@ -44,54 +44,89 @@ class StorageClient:
         self,
         dataset_id: str,
         prefix: str = "images/",
-        max_keys: int = 1000
-    ) -> List[Dict[str, any]]:
+        max_keys: int = 1000,
+        offset: int = 0
+    ) -> Dict[str, any]:
         """
-        List all images in a dataset.
+        List images in a dataset with pagination support.
+
+        Performance optimization:
+        - Fetches all image metadata first (fast)
+        - Generates presigned URLs only for requested page (slow operation)
+        - Supports offset/limit pagination
 
         Args:
             dataset_id: Dataset ID
             prefix: Folder prefix (default: "images/")
-            max_keys: Maximum number of objects to return
+            max_keys: Maximum number of images to return in this page
+            offset: Number of images to skip (for pagination)
 
         Returns:
-            List of image metadata dicts with keys:
-            - key: S3 object key
-            - filename: Original filename
-            - size: File size in bytes
-            - last_modified: Last modified timestamp
-            - url: Presigned URL (valid for 1 hour)
+            Dict with keys:
+            - images: List of image metadata dicts
+            - total: Total number of images in dataset
+            - offset: Current offset
+            - limit: Current limit
         """
         try:
             # Storage structure: datasets/{dataset_id}/images/xxx.jpg
             s3_prefix = f"datasets/{dataset_id}/{prefix}"
 
-            logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}")
+            logger.info(f"Listing images: bucket={self.datasets_bucket}, prefix={s3_prefix}, offset={offset}, limit={max_keys}")
 
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.datasets_bucket,
-                Prefix=s3_prefix,
-                MaxKeys=max_keys
-            )
+            # Phase 1: Get all image keys (fast - no URL generation)
+            all_objects = []
+            continuation_token = None
 
-            if 'Contents' not in response:
-                logger.warning(f"No images found in {s3_prefix}")
-                return []
+            while True:
+                list_params = {
+                    'Bucket': self.datasets_bucket,
+                    'Prefix': s3_prefix,
+                    'MaxKeys': 1000
+                }
+                if continuation_token:
+                    list_params['ContinuationToken'] = continuation_token
 
-            images = []
-            for obj in response['Contents']:
+                response = self.s3_client.list_objects_v2(**list_params)
+
+                if 'Contents' in response:
+                    all_objects.extend(response['Contents'])
+
+                if not response.get('IsTruncated'):
+                    break
+
+                continuation_token = response.get('NextContinuationToken')
+
+            # Filter image files only
+            image_objects = []
+            for obj in all_objects:
                 key = obj['Key']
 
-                # Skip folders (keys ending with /)
+                # Skip folders
                 if key.endswith('/'):
                     continue
 
-                # Extract filename from key (e.g., "ds_123/images/photo.jpg" -> "photo.jpg")
+                # Extract filename
                 filename = key.split('/')[-1]
 
                 # Skip non-image files
                 if not self._is_image_file(filename):
                     continue
+
+                image_objects.append(obj)
+
+            total_images = len(image_objects)
+
+            # Phase 2: Apply pagination (slice)
+            paginated_objects = image_objects[offset:offset + max_keys]
+
+            # Phase 3: Generate presigned URLs only for paginated images (slow)
+            images = []
+            dataset_prefix = f"datasets/{dataset_id}/"
+
+            for obj in paginated_objects:
+                key = obj['Key']
+                filename = key.split('/')[-1]
 
                 # Generate presigned URL (valid for 1 hour)
                 presigned_url = self.generate_presigned_url(
@@ -100,16 +135,30 @@ class StorageClient:
                     expiration=3600
                 )
 
+                # Phase 11: Use relative path from dataset root (includes images/ prefix and full path)
+                # This matches the format stored in DB: "images/zipper/squeezed_teeth/001.png"
+                # key format: "datasets/{dataset_id}/images/zipper/squeezed_teeth/001.png"
+                # image_id format: "images/zipper/squeezed_teeth/001.png"
+                image_id = key[len(dataset_prefix):] if key.startswith(dataset_prefix) else filename
+
                 images.append({
+                    'id': image_id,
                     'key': key,
                     'filename': filename,
+                    'file_name': filename,  # Frontend expects file_name
                     'size': obj['Size'],
                     'last_modified': obj['LastModified'].isoformat(),
                     'url': presigned_url
                 })
 
-            logger.info(f"Found {len(images)} images in {dataset_id}")
-            return images
+            logger.info(f"Found {total_images} total images, returning {len(images)} (offset={offset}, limit={max_keys})")
+
+            return {
+                'images': images,
+                'total': total_images,
+                'offset': offset,
+                'limit': max_keys
+            }
 
         except ClientError as e:
             logger.error(f"Failed to list images in {dataset_id}: {e}")
@@ -122,7 +171,14 @@ class StorageClient:
         expiration: int = 3600
     ) -> str:
         """
-        Generate a presigned URL for accessing an object.
+        Generate a URL for accessing an object.
+
+        Hybrid approach:
+        - If R2_PUBLIC_URL is set: Use public R2.dev URL (for R2 development)
+        - If R2_PUBLIC_URL is empty: Use presigned URL (for S3/MinIO compatibility)
+
+        This allows the same code to work in both R2 and on-prem S3 environments
+        without any code changes - just configure R2_PUBLIC_URL environment variable.
 
         Args:
             bucket: Bucket name
@@ -130,8 +186,15 @@ class StorageClient:
             expiration: URL expiration time in seconds (default: 1 hour)
 
         Returns:
-            Presigned URL string
+            URL string (either public R2.dev URL or presigned S3 URL)
         """
+        # Check if R2 public URL is configured (for R2 development only)
+        if settings.R2_PUBLIC_URL and bucket == self.datasets_bucket:
+            # Use R2 public development URL
+            # Format: https://pub-xxx.r2.dev/{key}
+            return f"{settings.R2_PUBLIC_URL}/{key}"
+
+        # Fall back to presigned URL (S3/MinIO/on-prem compatible)
         try:
             url = self.s3_client.generate_presigned_url(
                 'get_object',

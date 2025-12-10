@@ -6,7 +6,7 @@ Shares JWT secret with the Platform for seamless authentication.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -15,7 +15,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_platform_db
+from app.core.database import get_platform_db, get_user_db, get_labeler_db
 
 
 # Password hashing
@@ -98,18 +98,112 @@ def decode_access_token(token: str) -> dict:
         )
 
 
+def decode_service_token(token: str) -> dict:
+    """
+    Decode and validate service JWT token from Platform.
+
+    Phase 17: SSO Integration - Service token validation for Platform → Labeler SSO.
+
+    Validates:
+    - Signature (SERVICE_JWT_SECRET)
+    - Expiration (5min from Platform)
+    - Token type (must be "service")
+    - Issuer (must be "platform")
+    - Audience (must be "labeler")
+
+    Args:
+        token: Service JWT token from Platform
+
+    Returns:
+        Decoded token payload containing:
+        - user_id: Platform user ID
+        - email: User email
+        - full_name: User full name
+        - system_role: User system role (admin/manager/user/guest)
+        - badge_color: User badge color
+        - exp: Expiration timestamp
+        - type: Token type ("service")
+        - iss: Issuer ("platform")
+        - aud: Audience ("labeler")
+
+    Raises:
+        JWTError: If token is invalid, expired, or not a service token
+
+    Example:
+        >>> payload = decode_service_token(service_token)
+        >>> user_id = payload["user_id"]
+        >>> email = payload["email"]
+    """
+    try:
+        # Decode with SERVICE_JWT_SECRET
+        # Disable default audience/issuer validation, we'll check manually
+        payload = jwt.decode(
+            token,
+            settings.SERVICE_JWT_SECRET,
+            algorithms=[settings.SERVICE_JWT_ALGORITHM],
+            options={"verify_aud": False, "verify_iss": False}
+        )
+
+        # Verify token type
+        if payload.get("type") != "service":
+            raise JWTError("Not a service token")
+
+        # Verify issuer
+        if payload.get("iss") != "platform":
+            raise JWTError("Invalid issuer - expected 'platform'")
+
+        # Verify audience
+        if payload.get("aud") != "labeler":
+            raise JWTError("Invalid audience - expected 'labeler'")
+
+        return payload
+
+    except JWTError as e:
+        raise JWTError(f"Invalid service token: {str(e)}")
+
+
+# =============================================================================
+# User Caching for Performance
+# =============================================================================
+
+# In-memory user cache with TTL
+# Format: {user_id: (user_object, expiry_timestamp)}
+_user_cache: Dict[int, Tuple[any, datetime]] = {}
+USER_CACHE_TTL = 30  # seconds
+
+
+def _get_cached_user(user_id: int):
+    """Get user from cache if not expired."""
+    if user_id in _user_cache:
+        user_obj, expiry = _user_cache[user_id]
+        if datetime.utcnow() < expiry:
+            return user_obj
+        else:
+            # Remove expired entry
+            del _user_cache[user_id]
+    return None
+
+
+def _cache_user(user_id: int, user_obj):
+    """Cache user object with TTL."""
+    expiry = datetime.utcnow() + timedelta(seconds=USER_CACHE_TTL)
+    _user_cache[user_id] = (user_obj, expiry)
+
+
 # =============================================================================
 # Authentication Dependencies
 # =============================================================================
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_platform_db),
+    db: Session = Depends(get_user_db),
 ):
     """
     Dependency to get current authenticated user.
 
-    Validates JWT token and retrieves user from Platform database.
+    Phase 9: Validates JWT token and retrieves user from User database (PostgreSQL).
+
+    Performance: Uses in-memory cache with 30-second TTL to reduce DB queries.
 
     Usage:
         @app.get("/me")
@@ -127,8 +221,13 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Check cache first
+    cached_user = _get_cached_user(user_id)
+    if cached_user is not None:
+        return cached_user
+
     # Import here to avoid circular imports
-    from app.db.models.platform import User
+    from app.db.models.user import User
 
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
@@ -143,6 +242,9 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
         )
+
+    # Cache user for future requests
+    _cache_user(user_id, user)
 
     return user
 
@@ -184,3 +286,176 @@ async def get_current_admin_user(
             detail="Admin privileges required",
         )
     return current_user
+
+
+# =============================================================================
+# Dataset Permission Middleware (2025-11-21)
+# =============================================================================
+
+def require_dataset_permission(required_role: str = "member"):
+    """
+    Dependency factory to check dataset permissions.
+
+    Args:
+        required_role: Required permission role ('owner' or 'member')
+                      - 'owner': Only dataset owner can access
+                      - 'member': Dataset owner or members can access
+
+    Returns:
+        Dependency function that validates dataset access
+
+    Usage:
+        @router.delete("/datasets/{dataset_id}")
+        async def delete_dataset(
+            dataset_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_dataset_permission("owner")),
+        ):
+            # Only owners can delete
+            pass
+
+        @router.get("/datasets/{dataset_id}/images")
+        async def list_images(
+            dataset_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_dataset_permission("member")),
+        ):
+            # Owners and members can view
+            pass
+    """
+    async def check_permission(
+        dataset_id: str,
+        current_user = Depends(get_current_user),
+        labeler_db: Session = Depends(get_labeler_db),
+    ):
+        # Import here to avoid circular imports
+        from app.db.models.labeler import DatasetPermission
+
+        # Check if user has permission
+        permission = (
+            labeler_db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.dataset_id == dataset_id,
+                DatasetPermission.user_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to dataset {dataset_id}",
+            )
+
+        # Check role requirement
+        if required_role == "owner" and permission.role != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Owner permission required",
+            )
+
+        return permission
+
+    return check_permission
+
+
+# =============================================================================
+# Project Permission Middleware (Phase 8.1 - 2025-11-23)
+# =============================================================================
+
+# Role hierarchy: owner > admin > reviewer > annotator > viewer
+ROLE_HIERARCHY = {
+    'owner': 5,
+    'admin': 4,
+    'reviewer': 3,
+    'annotator': 2,
+    'viewer': 1,
+}
+
+
+def require_project_permission(required_role: str = "viewer"):
+    """
+    Dependency factory to check project permissions with role hierarchy.
+
+    Args:
+        required_role: Minimum required permission role
+                      - 'owner': Full control (delete dataset, manage all)
+                      - 'admin': Manage members, classes, review
+                      - 'reviewer': Annotate + review others' work
+                      - 'annotator': Annotate own work only
+                      - 'viewer': Read-only access
+
+    Role hierarchy: owner > admin > reviewer > annotator > viewer
+    Higher roles automatically have lower role permissions.
+
+    Returns:
+        Dependency function that validates project access
+
+    Usage:
+        @router.delete("/projects/{project_id}")
+        async def delete_project(
+            project_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_project_permission("owner")),
+        ):
+            # Only owners can delete
+            pass
+
+        @router.post("/projects/{project_id}/annotations")
+        async def create_annotation(
+            project_id: str,
+            current_user = Depends(get_current_user),
+            _permission = Depends(require_project_permission("annotator")),
+        ):
+            # Annotators and above can create annotations
+            pass
+    """
+    async def check_permission(
+        project_id: str,
+        current_user = Depends(get_current_user),
+        labeler_db: Session = Depends(get_labeler_db),
+    ):
+        # Import here to avoid circular imports
+        from app.db.models.labeler import ProjectPermission, AnnotationProject
+
+        # Support both dataset_id (ds_xxx) and project_id (proj_xxx)
+        # If project_id starts with 'ds_', it's a dataset_id, find the actual project
+        actual_project_id = project_id
+        if project_id.startswith('ds_'):
+            project = (
+                labeler_db.query(AnnotationProject)
+                .filter(AnnotationProject.dataset_id == project_id)
+                .first()
+            )
+            if project:
+                actual_project_id = project.id
+
+        # Check if user has permission
+        permission = (
+            labeler_db.query(ProjectPermission)
+            .filter(
+                ProjectPermission.project_id == actual_project_id,
+                ProjectPermission.user_id == current_user.id,
+            )
+            .first()
+        )
+
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have access to project {project_id}",
+            )
+
+        # Check role hierarchy
+        user_role_level = ROLE_HIERARCHY.get(permission.role, 0)
+        required_role_level = ROLE_HIERARCHY.get(required_role, 0)
+
+        if user_role_level < required_role_level:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Required role: {required_role}, your role: {permission.role}",
+            )
+
+        return permission
+
+    return check_permission

@@ -63,6 +63,9 @@ export interface Annotation {
   confirmed_by?: number;
   confirmed_by_name?: string;
 
+  // Phase 8.5.1: Optimistic locking
+  version?: number;
+
   created_by?: number;
   created_by_name?: string;
   updated_by?: number;
@@ -156,6 +159,9 @@ export interface AnnotationUpdateRequest {
   confidence?: number;
   is_verified?: boolean;
   notes?: string;
+
+  // Phase 8.5.1: Optimistic locking
+  version?: number;  // Current version for conflict detection
 }
 
 /**

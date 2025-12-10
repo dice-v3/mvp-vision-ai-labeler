@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.core.database import get_platform_db, get_labeler_db
-from app.core.security import get_current_user
+from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.security import get_current_user, require_project_permission
 from app.core.storage import storage_client
-from app.db.models.platform import User
+from app.db.models.user import User
 from app.db.models.labeler import AnnotationProject, AnnotationVersion, AnnotationSnapshot, Annotation
 from app.schemas.version import (
     ExportRequest,
@@ -36,10 +36,14 @@ async def export_annotations(
     export_request: ExportRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("admin")),
 ):
     """
     Export annotations in specified format (COCO or YOLO).
+
+    Requires: admin role or higher
 
     This endpoint generates an export file, uploads it to S3, and returns a presigned download URL.
 
@@ -48,7 +52,7 @@ async def export_annotations(
     - **include_draft**: Include draft annotations (default: False)
     - **image_ids**: Export specific images only (None = all)
     """
-    # Verify project exists and user has access
+    # Verify project exists
     project = labeler_db.query(AnnotationProject).filter(
         AnnotationProject.id == project_id
     ).first()
@@ -59,12 +63,6 @@ async def export_annotations(
             detail=f"Project {project_id} not found",
         )
 
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to export this project",
-        )
-
     # Generate export data based on format
     export_format = export_request.export_format.lower()
 
@@ -73,6 +71,7 @@ async def export_annotations(
             export_data, stats, filename = _export_dice(
                 labeler_db=labeler_db,
                 platform_db=platform_db,
+                user_db=user_db,
                 project_id=project_id,
                 include_draft=export_request.include_draft,
                 image_ids=export_request.image_ids,
@@ -129,6 +128,7 @@ async def export_annotations(
 def _export_dice(
     labeler_db: Session,
     platform_db: Session,
+    user_db: Session,
     project_id: str,
     include_draft: bool,
     image_ids: Optional[list[str]],
@@ -139,6 +139,7 @@ def _export_dice(
     dice_data = export_to_dice(
         db=labeler_db,
         platform_db=platform_db,
+        user_db=user_db,
         project_id=project_id,
         include_draft=include_draft,
         image_ids=image_ids,
@@ -238,10 +239,14 @@ async def publish_version(
     publish_request: VersionPublishRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("admin")),
 ):
     """
     Publish a new version of annotations.
+
+    Requires: admin role or higher
 
     This creates an immutable snapshot of all annotations and exports them to the specified format.
 
@@ -250,7 +255,7 @@ async def publish_version(
     - **export_format**: Export format (coco, yolo, voc)
     - **include_draft**: Include draft annotations (default: False)
     """
-    # Verify project exists and user has access
+    # Verify project exists
     project = labeler_db.query(AnnotationProject).filter(
         AnnotationProject.id == project_id
     ).first()
@@ -259,12 +264,6 @@ async def publish_version(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
-        )
-
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to publish versions for this project",
         )
 
     try:
@@ -345,6 +344,7 @@ async def publish_version(
         dice_data, dice_stats, dice_filename = _export_dice(
             labeler_db=labeler_db,
             platform_db=platform_db,
+            user_db=user_db,
             project_id=project_id,
             include_draft=publish_request.include_draft,
             image_ids=None,
@@ -449,16 +449,25 @@ async def publish_version(
                 version_number=new_version_number
             )
 
-            # Update Platform DB with new annotation_path and labeled status
-            from app.db.models.platform import Dataset
-            dataset = platform_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
+            # Update Labeler DB with new annotation_path and labeled status
+            # NOTE (Phase 5): Dataset moved from Platform DB to Labeler DB (2025-11-20)
+            from app.db.models.labeler import Dataset
+            dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
             if dataset:
                 dataset.annotation_path = annotation_path
                 dataset.labeled = True
-                platform_db.commit()
-                logger.info(f"Updated Platform DB: annotation_path={annotation_path}, labeled=True")
+
+                # Phase 16.6: Track which task types have been published
+                if dataset.published_task_types is None:
+                    dataset.published_task_types = []
+                if task_type not in dataset.published_task_types:
+                    dataset.published_task_types = dataset.published_task_types + [task_type]
+                    logger.info(f"Added {task_type} to published_task_types: {dataset.published_task_types}")
+
+                # Don't commit here - will be committed with version below (line 468)
+                logger.info(f"Updated Labeler DB: annotation_path={annotation_path}, labeled=True")
             else:
-                logger.warning(f"Dataset {project.dataset_id} not found in Platform DB")
+                logger.warning(f"Dataset {project.dataset_id} not found in Labeler DB")
 
         except Exception as e:
             # Log error but don't fail the publish
@@ -503,15 +512,21 @@ async def list_versions(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
+    user_db: Session = Depends(get_user_db),
     current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
 ):
     """
-    Get list of published versions for a project.
+    Get list of versions for a project (published + working).
 
-    Returns all published versions, ordered by creation date (newest first).
+    Requires: viewer role or higher
+
+    Returns all published and working versions, ordered by creation date (newest first).
     Automatically regenerates expired presigned URLs.
+
+    Phase 11: Includes working versions for diff comparison.
     """
-    # Verify project exists and user has access
+    # Verify project exists
     project = labeler_db.query(AnnotationProject).filter(
         AnnotationProject.id == project_id
     ).first()
@@ -522,16 +537,10 @@ async def list_versions(
             detail=f"Project {project_id} not found",
         )
 
-    if project.owner_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this project",
-        )
-
-    # Get all versions
+    # Phase 11: Get all versions (published + working)
     versions = labeler_db.query(AnnotationVersion).filter(
         AnnotationVersion.project_id == project_id,
-        AnnotationVersion.version_type == "published"
+        AnnotationVersion.version_type.in_(["published", "working"])
     ).order_by(AnnotationVersion.created_at.desc()).all()
 
     # Check and regenerate expired URLs
@@ -550,8 +559,8 @@ async def list_versions(
     # Build response
     version_responses = []
     for version in versions:
-        # Get user info from platform DB
-        user = platform_db.query(User).filter(User.id == version.created_by).first() if version.created_by else None
+        # Get user info (Phase 9: from User DB)
+        user = user_db.query(User).filter(User.id == version.created_by).first() if version.created_by else None
 
         # Debug: Print task_type value
         print(f"[list_versions] Version {version.version_number}: task_type={version.task_type}")

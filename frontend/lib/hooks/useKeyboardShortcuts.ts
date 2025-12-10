@@ -7,6 +7,8 @@
 import { useEffect } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { deleteAnnotation as deleteAnnotationAPI } from '@/lib/api/annotations';
+import { confirm } from '@/lib/stores/confirmStore';
+import { toast } from '@/lib/stores/toastStore';
 
 export function useKeyboardShortcuts() {
   const {
@@ -15,6 +17,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
@@ -27,6 +30,10 @@ export function useKeyboardShortcuts() {
     setPan,
     toggleLeftPanel,
     toggleRightPanel,
+    currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   } = useAnnotationStore();
 
   useEffect(() => {
@@ -79,6 +86,21 @@ export function useKeyboardShortcuts() {
             e.preventDefault();
             fitToScreen();
             break;
+          case 'c':
+            // Copy selected annotation
+            if (selectedAnnotationId) {
+              e.preventDefault();
+              const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
+              if (selectedAnn) {
+                copyAnnotation(selectedAnn);
+              }
+            }
+            break;
+          case 'v':
+            // Paste annotation
+            e.preventDefault();
+            pasteAnnotation();
+            break;
         }
         return;
       }
@@ -86,22 +108,26 @@ export function useKeyboardShortcuts() {
       // Regular shortcuts (no modifiers)
       switch (e.key.toLowerCase()) {
         case 'arrowup':
-          // Previous image (when in list view or general navigation)
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowdown':
-          // Next image (when in list view or general navigation)
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
         case 'arrowleft':
-          // Previous image
+          // Previous image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToPrevImage();
           break;
         case 'arrowright':
-          // Next image
+          // Next image (skip if annotation/vertex is selected - handled by Canvas)
+          if (selectedVertexIndex !== null || selectedAnnotationId !== null) return;
           e.preventDefault();
           goToNextImage();
           break;
@@ -115,32 +141,73 @@ export function useKeyboardShortcuts() {
           e.preventDefault();
           goToNextImage();
           break;
-        case 'q':
-          // Tool slot 1: Select tool
+        case '1':
+          // Slot 1: Select tool (all tasks)
           e.preventDefault();
           setTool('select');
           break;
-        case 'w':
-          // Tool slot 2: Bbox tool
+        case '2':
+          // Slot 2: Primary task tool
+          e.preventDefault();
+          if (currentTask === 'classification') {
+            setTool('classification');
+          } else if (currentTask === 'detection') {
+            setTool('bbox');
+          } else if (currentTask === 'segmentation') {
+            setTool('polygon');
+          } else if (currentTask === 'geometry') {
+            setTool('polyline');
+          } else {
+            // Default to bbox for unknown tasks
+            setTool('bbox');
+          }
+          break;
+        case '3':
+          // Slot 3: Circle 2-point (geometry only)
+          e.preventDefault();
+          if (currentTask === 'geometry') {
+            setTool('circle');
+          }
+          break;
+        case '4':
+          // Slot 4: Circle 3-point (geometry only)
+          e.preventDefault();
+          if (currentTask === 'geometry') {
+            setTool('circle3p');
+          }
+          break;
+        case 'b':
+          // BBox tool (detection shortcut)
           e.preventDefault();
           setTool('bbox');
+          break;
+        case 'p':
+          // Polygon tool (segmentation shortcut)
+          e.preventDefault();
+          setTool('polygon');
           break;
         case 'delete':
         case 'backspace':
           // Delete selected annotation
           if (selectedAnnotationId) {
             e.preventDefault();
-            if (confirm('Delete selected annotation?')) {
-              // Delete from backend first, then from store
-              deleteAnnotationAPI(selectedAnnotationId)
-                .then(() => {
+            confirm({
+              title: '레이블 삭제',
+              message: '선택한 레이블을 삭제하시겠습니까?',
+              confirmText: '삭제',
+              cancelText: '취소',
+              onConfirm: async () => {
+                try {
+                  // Delete from backend first, then from store
+                  await deleteAnnotationAPI(selectedAnnotationId);
                   deleteAnnotation(selectedAnnotationId);
-                })
-                .catch((err) => {
+                  toast.success('레이블을 삭제했습니다.');
+                } catch (err) {
                   console.error('Failed to delete annotation:', err);
-                  // TODO: Show error toast
-                });
-            }
+                  toast.error('레이블 삭제에 실패했습니다.');
+                }
+              },
+            });
           }
           break;
         case 'escape':
@@ -169,6 +236,7 @@ export function useKeyboardShortcuts() {
     goToNextImage,
     goToPrevImage,
     selectedAnnotationId,
+    selectedVertexIndex,
     deleteAnnotation,
     selectAnnotation,
     zoomIn,
@@ -181,5 +249,9 @@ export function useKeyboardShortcuts() {
     setPan,
     toggleLeftPanel,
     toggleRightPanel,
+    currentTask,
+    annotations,
+    copyAnnotation,
+    pasteAnnotation,
   ]);
 }

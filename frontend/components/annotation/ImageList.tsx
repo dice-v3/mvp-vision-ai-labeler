@@ -8,30 +8,48 @@
 
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { useState, useEffect, useRef } from 'react';
+import { getProjectImages, getProjectImageStatuses } from '@/lib/api/projects';
+import { useAuth } from '@/lib/auth/context';
+// Phase 8.5.2: Image Locks
+import { imageLockAPI } from '@/lib/api/image-locks';
+import type { LockInfo } from '@/lib/api/image-locks';
+import { LockClosedIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 
 type FilterType = 'all' | 'not-started' | 'in-progress' | 'completed';
 
 export default function ImageList() {
+  const { user } = useAuth();
   const {
+    project,
     images,
+    totalImages,
     currentIndex,
     setCurrentIndex,
     annotations,
     preferences,
     setPreference,
     currentTask, // Phase 2.9: Task context
+    loadMoreImages, // Phase 2.12: Load more images
+    backgroundLoading, // Phase 2.12: Background loading state
     // Multi-image selection
     selectedImageIds,
     toggleImageSelection,
     selectImageRange,
     clearImageSelection,
     isImageSelected,
+    // Phase 11: Diff mode
+    diffMode,
   } = useAnnotationStore();
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);  // Phase 2.12: Loading state for pagination
   const currentImageRef = useRef<HTMLDivElement | HTMLTableRowElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Phase 8.5.2: Image locks state
+  const [projectLocks, setProjectLocks] = useState<Record<string, LockInfo>>({});
+  const [locksLoading, setLocksLoading] = useState(false);
 
   // Phase 2.7: Get image status from real data
   // Phase 2.9: TODO - Filter status by currentTask
@@ -47,6 +65,78 @@ export default function ImageList() {
     if (img.is_confirmed) return 'completed';
     if (count > 0) return 'in-progress';
     return 'not-started';
+  };
+
+  // Phase 2.12: Load more images function
+  const handleLoadMore = async () => {
+    if (!project?.id || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const offset = images.length;
+      const limit = 50;
+
+      // Fetch next batch of images
+      const imageResponse = await getProjectImages(project.id, limit, offset);
+
+      // Fetch image statuses for the new images
+      const imageStatusesResponse = await getProjectImageStatuses(project.id, currentTask || undefined, limit, offset);
+      const imageStatusMap = new Map(
+        imageStatusesResponse.statuses.map(s => [s.image_id, s])
+      );
+
+      // Convert to ImageData format with status info
+      const convertedImages = imageResponse.images.map(img => {
+        const imgId = String(img.id);
+        const status = imageStatusMap.get(imgId);
+        return {
+          ...img,
+          id: imgId,
+          annotation_count: status?.total_annotations || 0,
+          is_confirmed: status?.is_image_confirmed || false,
+          status: status?.status || 'not-started',
+          confirmed_at: status?.confirmed_at,
+          has_no_object: status?.has_no_object || false,
+        };
+      });
+
+      // Append new images to the store
+      loadMoreImages(convertedImages);
+    } catch (error) {
+      console.error('Failed to load more images:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Phase 11: Check if image has changes in diff mode
+  const getImageDiffInfo = (imageId: string) => {
+    if (!diffMode.enabled || !diffMode.diffData) {
+      return null;
+    }
+
+    const imageDiff = diffMode.diffData.image_diffs?.[imageId];
+    if (!imageDiff) {
+      return null;
+    }
+
+    const added = imageDiff.added?.length || 0;
+    const removed = imageDiff.removed?.length || 0;
+    const modified = imageDiff.modified?.length || 0;
+    const changeCount = added + removed + modified;
+
+    // Debug: Log first few images to understand the data
+    if (Math.random() < 0.1) { // Log ~10% of images to avoid spam
+      console.log('[ImageList] Diff info for', imageId, ':', { added, removed, modified, changeCount });
+    }
+
+    return {
+      hasChanges: changeCount > 0,
+      changeCount,
+      added,
+      removed,
+      modified,
+    };
   };
 
   // Phase 2.7: Enhanced Status Badge Component
@@ -73,6 +163,20 @@ export default function ImageList() {
       <div className="bg-gray-400 dark:bg-gray-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm" title="Not Started">
         <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="3" />
+        </svg>
+      </div>
+    );
+  };
+
+  // Phase 11: Diff Badge Component
+  const DiffBadge = ({ diffInfo }: { diffInfo: { added: number; removed: number; modified: number; changeCount: number } }) => {
+    return (
+      <div
+        className="bg-violet-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm ring-2 ring-violet-400 ring-opacity-50"
+        title={`${diffInfo.changeCount} changes: +${diffInfo.added} -${diffInfo.removed} ~${diffInfo.modified}`}
+      >
+        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
         </svg>
       </div>
     );
@@ -119,6 +223,37 @@ export default function ImageList() {
     }
   };
 
+  // Phase 8.5.2: Load project locks
+  useEffect(() => {
+    if (!project?.id) return;
+
+    const loadProjectLocks = async () => {
+      try {
+        setLocksLoading(true);
+        const locks = await imageLockAPI.getProjectLocks(project.id);
+
+        // Convert array to map for easy lookup
+        const lockMap: Record<string, LockInfo> = {};
+        locks.forEach(lock => {
+          lockMap[lock.image_id] = lock;
+        });
+
+        setProjectLocks(lockMap);
+      } catch (error) {
+        console.error('[ImageList] Failed to load project locks:', error);
+      } finally {
+        setLocksLoading(false);
+      }
+    };
+
+    loadProjectLocks();
+
+    // Phase 8.5.2: Refresh locks every 5 seconds (improved real-time responsiveness)
+    const interval = setInterval(loadProjectLocks, 5 * 1000);
+
+    return () => clearInterval(interval);
+  }, [project?.id]);
+
   // Auto-scroll to current image
   useEffect(() => {
     if (currentImageRef.current && containerRef.current) {
@@ -128,6 +263,26 @@ export default function ImageList() {
       });
     }
   }, [currentIndex]);
+
+  // Infinite scroll: Auto-load more images when scrolled to bottom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !project?.id) return;
+
+    const handleScroll = () => {
+      // Check if scrolled near bottom (within 100px of the end)
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+      // If within 100px of bottom and there are more images, load them
+      if (distanceFromBottom < 100 && images.length < totalImages && !loadingMore && !backgroundLoading) {
+        handleLoadMore();
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [project?.id, images.length, totalImages, loadingMore, backgroundLoading]);
 
   return (
     <div className="flex flex-col h-full">
@@ -212,6 +367,14 @@ export default function ImageList() {
               const isSelected = isImageSelected(img.id);
               const status = getImageStatus(img);
 
+              // Phase 8.5.2: Get lock info for this image
+              const lock = projectLocks[img.id];
+              const isLocked = !!lock;
+              const isMyLock = lock?.user_id === user?.id;
+
+              // Phase 11: Get diff info for this image
+              const diffInfo = getImageDiffInfo(img.id);
+
               return (
                 <div
                   key={img.id}
@@ -228,12 +391,18 @@ export default function ImageList() {
                     }`}
                     title={`${img.file_name}${isSelected ? ' (Selected)' : ''}`}
                   >
-                  {/* Thumbnail image */}
+                  {/* Thumbnail image - Phase 2.12: Use thumbnail for performance */}
                   <img
-                    src={img.url}
+                    src={img.thumbnail_url || img.url}
                     alt={img.file_name}
                     className="w-full h-full object-cover bg-gray-900"
                     loading="lazy"
+                    onError={(e) => {
+                      // Fallback to original image if thumbnail fails
+                      if ((e.target as HTMLImageElement).src !== img.url) {
+                        (e.target as HTMLImageElement).src = img.url;
+                      }
+                    }}
                   />
 
                   {/* Image number badge */}
@@ -252,6 +421,22 @@ export default function ImageList() {
 
                   {/* Status indicator */}
                   <div className="absolute top-1 right-1 flex items-center gap-1">
+                    {/* Phase 8.5.2: Lock indicator */}
+                    {isLocked ? (
+                      <div
+                        className={`rounded-full w-5 h-5 flex items-center justify-center shadow-sm ${
+                          isMyLock ? 'bg-green-600' : 'bg-red-600'
+                        }`}
+                        title={isMyLock ? 'Locked by you' : `Locked by ${lock.user_name}`}
+                      >
+                        <LockClosedIcon className="w-3 h-3 text-white" />
+                      </div>
+                    ) : (
+                      <div className="bg-gray-400 rounded-full w-5 h-5 flex items-center justify-center shadow-sm opacity-40" title="Available">
+                        <LockOpenIcon className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+
                     {/* No Object indicator */}
                     {(img as any).has_no_object && (
                       <div className="bg-gray-600 rounded-full w-5 h-5 flex items-center justify-center shadow-sm" title="No Object">
@@ -260,7 +445,15 @@ export default function ImageList() {
                         </svg>
                       </div>
                     )}
-                    <StatusBadge status={status} />
+
+                    {/* Phase 11: Diff badge - show only in diff mode */}
+                    {diffMode.enabled ? (
+                      diffInfo && diffInfo.hasChanges ? (
+                        <DiffBadge diffInfo={diffInfo} />
+                      ) : null
+                    ) : (
+                      <StatusBadge status={status} />
+                    )}
                   </div>
 
                   {/* Current image indicator */}
@@ -291,6 +484,14 @@ export default function ImageList() {
                   const annCount = img.annotation_count || 0;
                   const status = getImageStatus(img);
 
+                  // Phase 8.5.2: Get lock info for this image
+                  const lock = projectLocks[img.id];
+                  const isLocked = !!lock;
+                  const isMyLock = lock?.user_id === user?.id;
+
+                  // Phase 11: Get diff info for this image
+                  const diffInfo = getImageDiffInfo(img.id);
+
                   return (
                     <tr
                       key={img.id}
@@ -316,6 +517,22 @@ export default function ImageList() {
                       </td>
                       <td className="py-1.5 px-2">
                         <div className="flex justify-center items-center gap-1">
+                          {/* Phase 8.5.2: Lock indicator */}
+                          {isLocked ? (
+                            <div
+                              className={`rounded-full w-4 h-4 flex items-center justify-center ${
+                                isMyLock ? 'bg-green-600' : 'bg-red-600'
+                              }`}
+                              title={isMyLock ? 'Locked by you' : `Locked by ${lock.user_name}`}
+                            >
+                              <LockClosedIcon className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          ) : (
+                            <div className="bg-gray-400 rounded-full w-4 h-4 flex items-center justify-center opacity-40" title="Available">
+                              <LockOpenIcon className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+
                           {/* No Object indicator */}
                           {(img as any).has_no_object && (
                             <div className="bg-gray-600 rounded-full w-4 h-4 flex items-center justify-center" title="No Object">
@@ -324,7 +541,15 @@ export default function ImageList() {
                               </svg>
                             </div>
                           )}
-                          <StatusBadge status={status} />
+
+                          {/* Phase 11: Diff badge - show only in diff mode */}
+                          {diffMode.enabled ? (
+                            diffInfo && diffInfo.hasChanges ? (
+                              <DiffBadge diffInfo={diffInfo} />
+                            ) : null
+                          ) : (
+                            <StatusBadge status={status} />
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -332,6 +557,48 @@ export default function ImageList() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Phase 2.12: Load More Button */}
+        {images.length < totalImages && (
+          <div className="mt-4 flex justify-center">
+            {/* Load More button - compact with border */}
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore || backgroundLoading}
+              className={`
+                w-8 h-8 flex items-center justify-center rounded-full transition-all relative
+                ${(loadingMore || backgroundLoading)
+                  ? 'cursor-not-allowed'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'
+                }
+              `}
+              title={`Load More (${images.length} / ${totalImages})`}
+            >
+              {(loadingMore || backgroundLoading) ? (
+                /* Spinner filling entire button area */
+                <svg className="animate-spin w-full h-full text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <>
+                  {/* Dashed border */}
+                  <div className="absolute inset-0 rounded-full border border-dashed border-gray-400 dark:border-gray-500" />
+                  {/* + icon */}
+                  <svg
+                    className="w-3 h-3 text-gray-500 dark:text-gray-400 relative z-10"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </>
+              )}
+            </button>
           </div>
         )}
       </div>

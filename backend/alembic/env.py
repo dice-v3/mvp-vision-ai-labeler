@@ -15,6 +15,8 @@ from alembic import context
 from app.core.config import settings
 from app.core.database import LabelerBase
 from app.db.models.labeler import (
+    Dataset,  # NEW: Moved from Platform DB
+    DatasetPermission,  # NEW: Moved from Platform DB
     AnnotationProject,
     Annotation,
     AnnotationHistory,

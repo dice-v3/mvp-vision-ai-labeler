@@ -118,7 +118,17 @@ export default function ClassSelectorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+      tabIndex={-1}
+    >
       <div
         ref={modalRef}
         className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl w-[400px] max-h-[600px] flex flex-col"
@@ -151,6 +161,35 @@ export default function ClassSelectorModal({
               setSearch(e.target.value);
               setSelectedIndex(0);
             }}
+            onKeyDown={(e) => {
+              switch (e.key) {
+                case 'Escape':
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                  break;
+                case 'ArrowDown':
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedIndex((prev) =>
+                    prev < filteredClasses.length - 1 ? prev + 1 : prev
+                  );
+                  break;
+                case 'ArrowUp':
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                  break;
+                case 'Enter':
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (filteredClasses.length > 0) {
+                    const [classId, classInfo] = filteredClasses[selectedIndex];
+                    onSelect(classId, classInfo.name);
+                  }
+                  break;
+              }
+            }}
             placeholder="Search classes..."
             className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:border-violet-500"
           />
@@ -167,7 +206,9 @@ export default function ClassSelectorModal({
               {filteredClasses.map(([classId, classInfo], index) => (
                 <button
                   key={classId}
-                  onClick={() => onSelect(classId, classInfo.name)}
+                  onClick={() => {
+                    onSelect(classId, classInfo.name);
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                     index === selectedIndex
                       ? 'bg-violet-500/20 border border-violet-500'
