@@ -2,6 +2,7 @@
 
 import json
 import io
+import os
 import zipfile
 import logging
 from datetime import datetime
@@ -212,11 +213,10 @@ def _export_yolo(
 
         # Add annotation files
         for image_id, annotations_str in image_annotations.items():
-            # Use image_id as filename (without extension) + .txt
-            txt_filename = f"{image_id}.txt" if not image_id.endswith('.txt') else image_id
-            # Remove image extension if present
-            txt_filename = txt_filename.replace('.jpg', '').replace('.png', '').replace('.jpeg', '')
-            txt_filename = f"{txt_filename}.txt"
+            # image_id now includes extension (e.g., "train/good/001.png")
+            # Replace image extension with .txt
+            base_name = os.path.splitext(image_id)[0]  # Remove extension
+            txt_filename = f"{base_name}.txt"
 
             zip_file.writestr(f"labels/{txt_filename}", annotations_str)
 

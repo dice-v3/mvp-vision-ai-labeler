@@ -197,7 +197,7 @@ class ImageMetadata(LabelerBase):
     __tablename__ = "image_metadata"
 
     # Primary key
-    id = Column(String(200), primary_key=True)  # Image ID (filename without extension)
+    id = Column(String(200), primary_key=True)  # Image ID (relative path with extension, e.g., "train/good/001.png")
 
     # Foreign keys
     dataset_id = Column(

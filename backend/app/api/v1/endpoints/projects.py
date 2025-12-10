@@ -229,17 +229,13 @@ async def list_project_images(
             except Exception as e:
                 logger.debug(f"Thumbnail not available for {db_img.id}: {e}")
 
-            # Generate full relative path for display
-            # ID is relative path without extension (e.g., "train/good/001")
-            # Extract extension from file_name and append to ID
-            file_extension = db_img.file_name.split('.')[-1] if '.' in db_img.file_name else ''
-            display_filename = f"{db_img.id}.{file_extension}" if file_extension else db_img.id
-
+            # ID now includes extension (e.g., "train/good/001.png")
+            # Use it directly as display filename
             images.append(ImageMetadata(
                 id=db_img.id,
                 key=db_img.s3_key,
-                filename=display_filename,
-                file_name=display_filename,
+                filename=db_img.id,
+                file_name=db_img.id,
                 size=db_img.size,
                 last_modified=db_img.last_modified.isoformat(),
                 url=presigned_url,
