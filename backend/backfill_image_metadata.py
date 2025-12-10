@@ -105,9 +105,9 @@ def backfill_dataset_images(db: Session, dataset: Dataset):
         else:
             folder_path = None
 
-        # Generate unique image ID (relative path without extension)
-        # e.g., "train/good/001.jpg" -> "train/good/001"
-        image_id = relative_path.rsplit('.', 1)[0] if '.' in relative_path else relative_path
+        # Generate unique image ID (relative path with extension for S3 key compatibility)
+        # e.g., "train/good/001.jpg" -> "train/good/001.jpg"
+        image_id = relative_path
 
         # Check if already exists
         existing = db.query(ImageMetadata).filter(
