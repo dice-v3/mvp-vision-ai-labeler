@@ -8,6 +8,12 @@ backend:
   replicas: 1
   port: 8001
 
+  # Security context (internal network - relaxed)
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
   env:
     # App
     ENVIRONMENT: "production"
@@ -75,6 +81,12 @@ frontend:
     tag: "latest"
   replicas: 1
   port: 3000
+
+  # Security context for dev mode (.next folder write access)
+  securityContext:
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
 
   env:
     NEXT_PUBLIC_API_URL: ""  # Auto-set to backend service if empty
