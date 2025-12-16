@@ -1,262 +1,29 @@
-# Vision AI Labeler Helm Chart Values
-# 내부망 쿠버네티스 배포용 설정 (외부 서비스 연결)
+# Vision AI Labeler - Simplified Helm Values
 
-# =============================================================================
-# Global Settings
-# =============================================================================
-global:
-  # 이미지 레지스트리 (내부망 레지스트리 주소로 변경)
-  imageRegistry: ""
-  # 이미지 pull secret (private registry 사용시)
-  imagePullSecrets: []
-  # - name: my-registry-secret
-
-# =============================================================================
-# Backend Configuration
-# =============================================================================
+# Backend
 backend:
-  enabled: true
-
-  replicaCount: 1
-
   image:
     repository: vision-ai-labeler-backend
     tag: "latest"
-    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8001
+  env: {}
+  # DATABASE_URL: "postgresql://user:pass@host:5432/db"
 
-  service:
-    type: ClusterIP
-    port: 8001
-    targetPort: 8001
-
-  resources:
-    requests:
-      cpu: "500m"
-      memory: "512Mi"
-    limits:
-      cpu: "2000m"
-      memory: "2Gi"
-
-  # Probes
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 8001
-    initialDelaySeconds: 10
-    periodSeconds: 30
-    timeoutSeconds: 10
-    failureThreshold: 3
-
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 8001
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-
-  # Node selector, tolerations, affinity
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-  # Pod annotations
-  podAnnotations: {}
-
-  # Security context
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-
-# =============================================================================
-# Frontend Configuration
-# =============================================================================
+# Frontend
 frontend:
-  enabled: true
-
-  replicaCount: 1
-
   image:
     repository: vision-ai-labeler-frontend
     tag: "latest"
-    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 3000
 
-  service:
-    type: ClusterIP
-    port: 3000
-    targetPort: 3000
-
-  resources:
-    requests:
-      cpu: "200m"
-      memory: "256Mi"
-    limits:
-      cpu: "1000m"
-      memory: "1Gi"
-
-  # Probes
-  livenessProbe:
-    httpGet:
-      path: /
-      port: 3000
-    initialDelaySeconds: 15
-    periodSeconds: 30
-    timeoutSeconds: 10
-    failureThreshold: 3
-
-  readinessProbe:
-    httpGet:
-      path: /
-      port: 3000
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-
-  # Node selector, tolerations, affinity
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-  # Pod annotations
-  podAnnotations: {}
-
-  # Security context
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1001
-
-# =============================================================================
-# External Services Configuration (이미 배포된 외부 서비스 연결)
-# =============================================================================
-
-# Platform Database (읽기 전용)
-platformDatabase:
-  host: "platform-postgres-svc"
-  port: 5432
-  name: "platform"
-  user: "labeler_readonly"
-  # password는 secret에서 관리
-
-# User Database (읽기 전용)
-userDatabase:
-  host: "user-postgres-svc"
-  port: 5432
-  name: "users"
-  user: "admin"
-  # password는 secret에서 관리
-
-# Labeler Database (전체 권한)
-labelerDatabase:
-  host: "labeler-postgres-svc"
-  port: 5432
-  name: "labeler"
-  user: "labeler_user"
-  # password는 secret에서 관리
-
-# Database Pool Settings
-databasePool:
-  size: 5
-  maxOverflow: 10
-  timeout: 30
-  recycle: 3600
-
-# Redis Configuration
-redis:
-  host: "redis-svc"
-  port: 6379
-  db: 0
-  # password는 secret에서 관리 (없으면 빈 문자열)
-
-# S3/MinIO Storage Configuration
-storage:
-  endpoint: "http://minio-svc:9000"
-  region: "us-east-1"
-  useSSL: false
-  bucketDatasets: "training-datasets"
-  bucketAnnotations: "annotations"
-  # accessKey, secretKey는 secret에서 관리
-
-# =============================================================================
-# Application Settings
-# =============================================================================
-app:
-  environment: "production"
-  debug: false
-  logLevel: "INFO"
-
-  # API Configuration
-  apiHost: "0.0.0.0"
-  apiPort: 8001
-  apiWorkers: 2
-
-  # CORS Origins (쉼표로 구분)
-  corsOrigins: "http://localhost:3000"
-
-  # JWT Settings
-  jwtAlgorithm: "HS256"
-  jwtExpireMinutes: 1440
-
-# =============================================================================
-# Secrets (base64 encoded values or use existing secret)
-# =============================================================================
-secrets:
-  # 기존 secret 사용시 설정
-  existingSecret: ""
-
-  # 새로 생성할 경우 아래 값들 설정 (base64 인코딩 필요 없음, 템플릿에서 처리)
-  platformDbPassword: "change_me"
-  userDbPassword: "change_me"
-  labelerDbPassword: "change_me"
-  redisPassword: ""
-  s3AccessKey: "change_me"
-  s3SecretKey: "change_me"
-  jwtSecretKey: "your-super-secret-key-change-this-in-production"
-  serviceJwtSecret: "match-platform-service-jwt-secret"
-
-# =============================================================================
-# Ingress Configuration
-# =============================================================================
+# Ingress (optional)
 ingress:
   enabled: false
-  className: "nginx"
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
+  host: ""
+  # annotations: {}
 
-  # Backend ingress
-  backend:
-    host: "labeler-api.internal.example.com"
-    path: /
-    pathType: Prefix
-    tls: []
-    # - secretName: labeler-api-tls
-    #   hosts:
-    #     - labeler-api.internal.example.com
-
-  # Frontend ingress
-  frontend:
-    host: "labeler.internal.example.com"
-    path: /
-    pathType: Prefix
-    tls: []
-    # - secretName: labeler-frontend-tls
-    #   hosts:
-    #     - labeler.internal.example.com
-
-# =============================================================================
-# ServiceAccount
-# =============================================================================
-serviceAccount:
-  create: true
-  name: ""
-  annotations: {}
-
-# =============================================================================
-# Migration Job (데이터베이스 마이그레이션)
-# =============================================================================
-migration:
-  enabled: true
-  # 마이그레이션이 완료된 후 Pod를 유지할지 여부
-  ttlSecondsAfterFinished: 300
+# Image pull secrets (optional)
+imagePullSecrets: []
+# - name: my-registry-secret

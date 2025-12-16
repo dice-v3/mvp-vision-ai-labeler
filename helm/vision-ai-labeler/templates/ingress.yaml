@@ -2,49 +2,30 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "vision-ai-labeler.fullname" . }}
+  name: {{ include "app.fullname" . }}
   labels:
-    {{- include "vision-ai-labeler.labels" . | nindent 4 }}
+    {{- include "app.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if or .Values.ingress.backend.tls .Values.ingress.frontend.tls }}
-  tls:
-    {{- with .Values.ingress.backend.tls }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-    {{- with .Values.ingress.frontend.tls }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-  {{- end }}
   rules:
-    {{- if .Values.backend.enabled }}
-    - host: {{ .Values.ingress.backend.host | quote }}
+    - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: {{ .Values.ingress.backend.path }}
-            pathType: {{ .Values.ingress.backend.pathType }}
+          - path: /api
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "vision-ai-labeler.fullname" . }}-backend
+                name: {{ include "app.fullname" . }}-backend
                 port:
-                  number: {{ .Values.backend.service.port }}
-    {{- end }}
-    {{- if .Values.frontend.enabled }}
-    - host: {{ .Values.ingress.frontend.host | quote }}
-      http:
-        paths:
-          - path: {{ .Values.ingress.frontend.path }}
-            pathType: {{ .Values.ingress.frontend.pathType }}
+                  number: {{ .Values.backend.port }}
+          - path: /
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "vision-ai-labeler.fullname" . }}-frontend
+                name: {{ include "app.fullname" . }}-frontend
                 port:
-                  number: {{ .Values.frontend.service.port }}
-    {{- end }}
+                  number: {{ .Values.frontend.port }}
 {{- end }}
