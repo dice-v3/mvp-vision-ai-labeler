@@ -14,10 +14,10 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Copy source code
-COPY --chown=nextjs:nodejs . .
+COPY . .
 
-# Create .next directory with proper permissions
-RUN mkdir -p .next && chown -R nextjs:nodejs .next
+# Set full permissions for dev mode (internal network)
+RUN chmod -R 777 /app
 
 # Switch to non-root user
 USER nextjs
