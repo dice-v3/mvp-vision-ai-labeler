@@ -28,7 +28,13 @@ spec:
             - containerPort: {{ .Values.frontend.port }}
           env:
             - name: NEXT_PUBLIC_API_URL
-              value: "http://{{ include "app.fullname" . }}-backend:{{ .Values.backend.port }}"
+              value: {{ .Values.frontend.env.NEXT_PUBLIC_API_URL | default (printf "http://%s-backend:%d" (include "app.fullname" .) (.Values.backend.port | int)) | quote }}
+            {{- range $key, $value := .Values.frontend.env }}
+            {{- if ne $key "NEXT_PUBLIC_API_URL" }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /

@@ -1,4 +1,4 @@
-# Vision AI Labeler - Simplified Helm Values
+# Vision AI Labeler - Helm Values
 
 # Backend
 backend:
@@ -7,8 +7,66 @@ backend:
     tag: "latest"
   replicas: 1
   port: 8001
-  env: {}
-  # DATABASE_URL: "postgresql://user:pass@host:5432/db"
+
+  env:
+    # App
+    ENVIRONMENT: "production"
+    DEBUG: "false"
+    LOG_LEVEL: "INFO"
+    API_HOST: "0.0.0.0"
+    API_PORT: "8001"
+    API_WORKERS: "2"
+    CORS_ORIGINS: "http://localhost:3000"
+
+    # Platform Database
+    PLATFORM_DB_HOST: "platform-postgres"
+    PLATFORM_DB_PORT: "5432"
+    PLATFORM_DB_NAME: "platform"
+    PLATFORM_DB_USER: "labeler_readonly"
+
+    # User Database
+    USER_DB_HOST: "user-postgres"
+    USER_DB_PORT: "5432"
+    USER_DB_NAME: "users"
+    USER_DB_USER: "admin"
+
+    # Labeler Database
+    LABELER_DB_HOST: "labeler-postgres"
+    LABELER_DB_PORT: "5432"
+    LABELER_DB_NAME: "labeler"
+    LABELER_DB_USER: "labeler_user"
+
+    # Redis
+    REDIS_HOST: "redis"
+    REDIS_PORT: "6379"
+    REDIS_DB: "0"
+
+    # S3/R2 Storage
+    S3_ENDPOINT: "https://your-account.r2.cloudflarestorage.com"
+    S3_REGION: "auto"
+    S3_USE_SSL: "true"
+    S3_BUCKET_DATASETS: "training-datasets"
+    S3_BUCKET_ANNOTATIONS: "annotations"
+    R2_PUBLIC_URL: ""
+
+    # JWT
+    JWT_ALGORITHM: "HS256"
+    JWT_EXPIRE_MINUTES: "1440"
+    SERVICE_JWT_ALGORITHM: "HS256"
+
+  # Secrets (sensitive values)
+  secrets:
+    PLATFORM_DB_PASSWORD: ""
+    USER_DB_PASSWORD: ""
+    LABELER_DB_PASSWORD: ""
+    REDIS_PASSWORD: ""
+    S3_ACCESS_KEY: ""
+    S3_SECRET_KEY: ""
+    JWT_SECRET_KEY: ""
+    SERVICE_JWT_SECRET: ""
+
+  # Use existing secret instead of creating one
+  existingSecret: ""
 
 # Frontend
 frontend:
@@ -18,12 +76,16 @@ frontend:
   replicas: 1
   port: 3000
 
+  env:
+    NEXT_PUBLIC_API_URL: ""  # Auto-set to backend service if empty
+    NEXT_PUBLIC_APP_NAME: "Vision AI Labeler"
+    NEXT_PUBLIC_APP_VERSION: "0.1.0"
+
 # Ingress (optional)
 ingress:
   enabled: false
   host: ""
-  # annotations: {}
+  annotations: {}
 
 # Image pull secrets (optional)
 imagePullSecrets: []
-# - name: my-registry-secret

@@ -26,13 +26,18 @@ spec:
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
           ports:
             - containerPort: {{ .Values.backend.port }}
-          {{- if .Values.backend.env }}
           env:
             {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-          {{- end }}
+            {{- range $key, $value := .Values.backend.secrets }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.backend.existingSecret | default (printf "%s-backend" (include "app.fullname" $)) }}
+                  key: {{ $key }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
