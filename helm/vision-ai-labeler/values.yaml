@@ -8,6 +8,10 @@ backend:
   replicas: 1
   port: 8001
 
+  # Override container command (optional)
+  # command: ["./docker-entrypoint.sh"]
+  # args: []
+
   # Security context (internal network - relaxed)
   securityContext:
     runAsUser: 1000
@@ -81,6 +85,10 @@ frontend:
     tag: "latest"
   replicas: 1
   port: 3000
+
+  # Override container command (optional)
+  # command: ["npm", "run", "dev"]
+  # args: []
 
   # Security context for dev mode (.next folder write access)
   securityContext:
