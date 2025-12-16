@@ -1,6 +1,6 @@
 # Frontend Dockerfile for Development (npm run dev)
-ARG REGISTRY=""
-FROM ${REGISTRY}node:20-alpine
+ARG REGISTRY_MIRROR=""
+FROM ${REGISTRY_MIRROR}node:20-alpine
 
 WORKDIR /app
 

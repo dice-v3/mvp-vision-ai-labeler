@@ -1,14 +1,14 @@
 # Backend Dockerfile for Vision AI Labeler
 # Multi-stage build with uv for fast package installation
 
-ARG REGISTRY=""
+ARG REGISTRY_MIRROR=""
 ARG UV_IMAGE="ghcr.io/astral-sh/uv:latest"
 
 # UV image stage (for registry mirror support)
 FROM ${UV_IMAGE} AS uv
 
 # Stage 1: Builder
-FROM ${REGISTRY}python:3.11-slim AS builder
+FROM ${REGISTRY_MIRROR}python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     fi
 
 # Stage 2: Runner
-FROM ${REGISTRY}python:3.11-slim AS runner
+FROM ${REGISTRY_MIRROR}python:3.11-slim AS runner
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
