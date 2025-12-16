@@ -47,15 +47,3 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
             {{- end }}
-          livenessProbe:
-            httpGet:
-              path: /
-              port: {{ .Values.frontend.port }}
-            initialDelaySeconds: 15
-            periodSeconds: 30
-          readinessProbe:
-            httpGet:
-              path: /
-              port: {{ .Values.frontend.port }}
-            initialDelaySeconds: 10
-            periodSeconds: 10
