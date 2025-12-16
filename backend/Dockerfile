@@ -1,8 +1,14 @@
 # Backend Dockerfile for Vision AI Labeler
 # Multi-stage build with uv for fast package installation
 
+ARG REGISTRY_MIRROR=""
+ARG UV_IMAGE="ghcr.io/astral-sh/uv:latest"
+
+# UV image stage (for registry mirror support)
+FROM ${UV_IMAGE} AS uv
+
 # Stage 1: Builder
-FROM python:3.11-slim AS builder
+FROM ${REGISTRY_MIRROR}python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -17,14 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 # Copy dependency files first for caching
 COPY pyproject.toml uv.lock* ./
 
 # Install dependencies using uv
-# If uv.lock exists, use it for reproducible builds
-# Otherwise fall back to requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv && \
     . /opt/venv/bin/activate && \
@@ -37,13 +41,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     fi
 
 # Stage 2: Runner
-FROM python:3.11-slim AS runner
+FROM ${REGISTRY_MIRROR}python:3.11-slim AS runner
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
-    # DB initialization options (set to "true" to enable)
     WAIT_FOR_DB=false \
     RUN_MIGRATIONS=false
 
@@ -55,8 +58,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy uv from builder
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Copy uv from uv stage
+COPY --from=uv /uv /usr/local/bin/uv
 
 # Copy virtual env from builder
 COPY --from=builder /opt/venv /opt/venv
@@ -79,5 +82,5 @@ EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
-# Run the application (use entrypoint for DB init support)
+# Run the application
 ENTRYPOINT ["./docker-entrypoint.sh"]
