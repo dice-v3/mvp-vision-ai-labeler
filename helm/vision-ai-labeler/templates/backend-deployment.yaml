@@ -43,13 +43,6 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- range $key, $value := .Values.backend.secrets }}
-            - name: {{ $key }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.backend.existingSecret | default (printf "%s-backend" (include "app.fullname" $)) }}
-                  key: {{ $key }}
-            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

@@ -64,19 +64,6 @@ backend:
     JWT_EXPIRE_MINUTES: "1440"
     SERVICE_JWT_ALGORITHM: "HS256"
 
-  # Secrets (sensitive values)
-  secrets:
-    PLATFORM_DB_PASSWORD: ""
-    USER_DB_PASSWORD: ""
-    LABELER_DB_PASSWORD: ""
-    REDIS_PASSWORD: ""
-    S3_ACCESS_KEY: ""
-    S3_SECRET_KEY: ""
-    JWT_SECRET_KEY: ""
-    SERVICE_JWT_SECRET: ""
-
-  # Use existing secret instead of creating one
-  existingSecret: ""
 
 # Frontend
 frontend:
