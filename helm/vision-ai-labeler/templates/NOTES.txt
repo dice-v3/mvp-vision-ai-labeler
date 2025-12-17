@@ -1,56 +1,12 @@
-================================================================================
-  Vision AI Labeler has been deployed!
-================================================================================
+Vision AI Labeler deployed!
 
-{{- if .Values.backend.enabled }}
-Backend:
-  Service: {{ include "vision-ai-labeler.fullname" . }}-backend
-  Port: {{ .Values.backend.service.port }}
-  {{- if .Values.ingress.enabled }}
-  URL: http{{ if .Values.ingress.backend.tls }}s{{ end }}://{{ .Values.ingress.backend.host }}
-  {{- end }}
+Backend:  {{ include "app.fullname" . }}-backend:{{ .Values.backend.port }}
+Frontend: {{ include "app.fullname" . }}-frontend:{{ .Values.frontend.port }}
+
+{{- if .Values.ingress.enabled }}
+URL: http://{{ .Values.ingress.host }}
+{{- else }}
+
+Port-forward:
+  kubectl port-forward svc/{{ include "app.fullname" . }}-frontend {{ .Values.frontend.port }}:{{ .Values.frontend.port }}
 {{- end }}
-
-{{- if .Values.frontend.enabled }}
-Frontend:
-  Service: {{ include "vision-ai-labeler.fullname" . }}-frontend
-  Port: {{ .Values.frontend.service.port }}
-  {{- if .Values.ingress.enabled }}
-  URL: http{{ if .Values.ingress.frontend.tls }}s{{ end }}://{{ .Values.ingress.frontend.host }}
-  {{- end }}
-{{- end }}
-
-{{- if not .Values.ingress.enabled }}
-
-To access the application, you can use port-forward:
-
-  # Frontend
-  kubectl port-forward svc/{{ include "vision-ai-labeler.fullname" . }}-frontend {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }}
-
-  # Backend API
-  kubectl port-forward svc/{{ include "vision-ai-labeler.fullname" . }}-backend {{ .Values.backend.service.port }}:{{ .Values.backend.service.port }}
-
-{{- end }}
-
-Health Check Endpoints:
-  - Backend: GET /health
-  - Backend DB: GET /health/db
-
-================================================================================
-  Configuration Notes
-================================================================================
-
-Make sure to update the following before production deployment:
-  1. All database passwords in secrets
-  2. JWT secret keys
-  3. S3/MinIO credentials
-  4. CORS origins for your domain
-
-External Services Configuration:
-  - Platform DB: {{ .Values.platformDatabase.host }}:{{ .Values.platformDatabase.port }}
-  - User DB: {{ .Values.userDatabase.host }}:{{ .Values.userDatabase.port }}
-  - Labeler DB: {{ .Values.labelerDatabase.host }}:{{ .Values.labelerDatabase.port }}
-  - Redis: {{ .Values.redis.host }}:{{ .Values.redis.port }}
-  - S3/MinIO: {{ .Values.storage.endpoint }}
-
-================================================================================

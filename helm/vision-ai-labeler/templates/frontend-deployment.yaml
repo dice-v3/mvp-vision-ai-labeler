@@ -1,58 +1,49 @@
-{{- if .Values.frontend.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "vision-ai-labeler.fullname" . }}-frontend
+  name: {{ include "app.fullname" . }}-frontend
   labels:
-    {{- include "vision-ai-labeler.frontend.labels" . | nindent 4 }}
+    {{- include "app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
 spec:
-  replicas: {{ .Values.frontend.replicaCount }}
+  replicas: {{ .Values.frontend.replicas }}
   selector:
     matchLabels:
-      {{- include "vision-ai-labeler.frontend.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/name: {{ include "app.name" . }}
+      app.kubernetes.io/component: frontend
   template:
     metadata:
-      {{- with .Values.frontend.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       labels:
-        {{- include "vision-ai-labeler.frontend.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/name: {{ include "app.name" . }}
+        app.kubernetes.io/component: frontend
     spec:
-      {{- with .Values.global.imagePullSecrets }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "vision-ai-labeler.serviceAccountName" . }}
+      {{- with .Values.frontend.securityContext }}
       securityContext:
-        {{- toYaml .Values.frontend.securityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: frontend
-          image: {{ include "vision-ai-labeler.image" (dict "global" .Values.global "image" .Values.frontend.image) }}
-          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          {{- with .Values.frontend.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.frontend.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
-            - name: http
-              containerPort: {{ .Values.frontend.service.targetPort }}
-              protocol: TCP
+            - containerPort: {{ .Values.frontend.port }}
           env:
             - name: NEXT_PUBLIC_API_URL
-              value: "http://{{ include "vision-ai-labeler.fullname" . }}-backend:{{ .Values.backend.service.port }}"
-          livenessProbe:
-            {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
-          resources:
-            {{- toYaml .Values.frontend.resources | nindent 12 }}
-      {{- with .Values.frontend.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.frontend.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.frontend.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-{{- end }}
+              value: {{ .Values.frontend.env.NEXT_PUBLIC_API_URL | default (printf "http://%s-backend:%d" (include "app.fullname" .) (.Values.backend.port | int)) | quote }}
+            {{- range $key, $value := .Values.frontend.env }}
+            {{- if ne $key "NEXT_PUBLIC_API_URL" }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}

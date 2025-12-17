@@ -1,17 +1,15 @@
-{{- if .Values.frontend.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "vision-ai-labeler.fullname" . }}-frontend
+  name: {{ include "app.fullname" . }}-frontend
   labels:
-    {{- include "vision-ai-labeler.frontend.labels" . | nindent 4 }}
+    {{- include "app.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.frontend.service.type }}
+  type: ClusterIP
   ports:
-    - port: {{ .Values.frontend.service.port }}
-      targetPort: {{ .Values.frontend.service.targetPort }}
+    - port: {{ .Values.frontend.port }}
+      targetPort: {{ .Values.frontend.port }}
       protocol: TCP
-      name: http
   selector:
-    {{- include "vision-ai-labeler.frontend.selectorLabels" . | nindent 4 }}
-{{- end }}
+    app.kubernetes.io/name: {{ include "app.name" . }}
+    app.kubernetes.io/component: frontend
