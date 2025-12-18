@@ -40,6 +40,15 @@ import {
   getCursorForHandle,
   getPointOnEdge,
 } from '@/lib/annotation/utils';
+// Phase 18.3: Custom Hooks
+import {
+  useCanvasState,
+  useImageManagement,
+  useToolState,
+  useCanvasTransform,
+  useAnnotationSync,
+  useMagnifier,
+} from '@/lib/annotation/hooks';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -92,68 +101,125 @@ export default function Canvas() {
     getDiffForCurrentImage,
   } = useAnnotationStore();
 
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
-  const [showClassSelector, setShowClassSelector] = useState(false);
-  const [pendingBbox, setPendingBbox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Phase 18.3: Custom Hooks for State Management
+
+  // Image loading and locking
+  const {
+    image,
+    imageLoaded,
+    isImageLocked,
+    lockedByUser,
+    showLockedDialog,
+    setShowLockedDialog,
+    acquireLock,
+    releaseLock,
+  } = useImageManagement({
+    currentImage,
+    project,
+    imageRef,
+  });
+
+  // Canvas UI state
+  const {
+    showClassSelector,
+    setShowClassSelector,
+    canvasCursor,
+    setCanvasCursor,
+    cursorPos,
+    setCursorPos,
+    batchProgress,
+    setBatchProgress,
+  } = useCanvasState();
+
+  // Tool-specific state
+  const {
+    // Bbox
+    pendingBbox,
+    setPendingBbox,
+    isResizing,
+    setIsResizing,
+    resizeHandle,
+    setResizeHandle,
+    resizeStart,
+    setResizeStart,
+    // Polygon
+    polygonVertices,
+    setPolygonVertices,
+    isDraggingVertex,
+    setIsDraggingVertex,
+    draggedVertexIndex,
+    setDraggedVertexIndex,
+    isDraggingPolygon,
+    setIsDraggingPolygon,
+    polygonDragStart,
+    setPolygonDragStart,
+    // Polyline
+    polylineVertices,
+    setPolylineVertices,
+    // Circle
+    circleCenter,
+    setCircleCenter,
+    isDraggingCircle,
+    setIsDraggingCircle,
+    circleDragStart,
+    setCircleDragStart,
+    isResizingCircle,
+    setIsResizingCircle,
+    circleResizeStart,
+    setCircleResizeStart,
+    selectedCircleHandle,
+    setSelectedCircleHandle,
+    // Circle 3-point
+    circle3pPoints,
+    setCircle3pPoints,
+    // Reset actions
+    resetAllToolState,
+  } = useToolState();
+
+  // Pan/zoom transform state
+  const {
+    isPanning,
+    setIsPanning,
+    panStart,
+    setPanStart,
+  } = useCanvasTransform();
+
+  // Annotation sync and version conflicts
+  const {
+    conflictDialogOpen,
+    setConflictDialogOpen,
+    conflictInfo,
+    setConflictInfo,
+    pendingAnnotationUpdate,
+    setPendingAnnotationUpdate,
+    updateAnnotationWithVersionCheck,
+  } = useAnnotationSync();
+
+  // Magnifier state
+  const {
+    manualMagnifierActive,
+    setManualMagnifierActive,
+    magnifierForceOff,
+    setMagnifierForceOff,
+    magnification,
+    setMagnification,
+    shouldShowMagnifier,
+    isDrawingTool,
+  } = useMagnifier({
+    preferences,
+    currentTool: tool,
+  });
+
+  // Local state not yet extracted to hooks
   const [isSaving, setIsSaving] = useState(false);
   const [confirmingImage, setConfirmingImage] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
-  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; bbox: number[] } | null>(null);
-  const [canvasCursor, setCanvasCursor] = useState('default');
-  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
-  const [polygonVertices, setPolygonVertices] = useState<[number, number][]>([]);
-  // Polygon editing state
-  const [isDraggingVertex, setIsDraggingVertex] = useState(false);
-  const [draggedVertexIndex, setDraggedVertexIndex] = useState<number | null>(null);
-  const [isDraggingPolygon, setIsDraggingPolygon] = useState(false);
-  const [polygonDragStart, setPolygonDragStart] = useState<{ x: number; y: number; points: [number, number][] } | null>(null);
-  // Polyline drawing state (canvas coordinates)
-  const [polylineVertices, setPolylineVertices] = useState<[number, number][]>([]);
-  // Circle drawing state (canvas coordinates)
-  const [circleCenter, setCircleCenter] = useState<[number, number] | null>(null);
-  // Circle 3-point drawing state (canvas coordinates)
-  const [circle3pPoints, setCircle3pPoints] = useState<[number, number][]>([]);
-  // Circle editing state
-  const [isDraggingCircle, setIsDraggingCircle] = useState(false);
-  const [circleDragStart, setCircleDragStart] = useState<{ x: number; y: number; center: [number, number] } | null>(null);
-  const [isResizingCircle, setIsResizingCircle] = useState(false);
-
-  // Phase 2.10.2: Magnifier state
-  const [manualMagnifierActive, setManualMagnifierActive] = useState(false);
-  const [magnifierForceOff, setMagnifierForceOff] = useState(false);
-  const [magnification, setMagnification] = useState(preferences.magnificationLevel);
-
-  // Phase 8.5.2: Image Lock state
-  const [heartbeatInterval, setHeartbeatInterval] = useState<NodeJS.Timeout | null>(null);
-  const [isImageLocked, setIsImageLocked] = useState(false);
-  const [lockedByUser, setLockedByUser] = useState<string | null>(null);
-  const [showLockedDialog, setShowLockedDialog] = useState(false);
-
-  // Phase 8.5.1: Version Conflict state
-  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
-  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
-  const [pendingAnnotationUpdate, setPendingAnnotationUpdate] = useState<{
-    annotationId: string;
-    data: any;
-  } | null>(null);
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
-  const [circleResizeStart, setCircleResizeStart] = useState<{ x: number; y: number; radius: number; handle: string } | null>(null);
-  const [selectedCircleHandle, setSelectedCircleHandle] = useState<string | null>(null);
 
   // Phase 2.10.3: Store canvas refs for Minimap in RightPanel
   useEffect(() => {
     useAnnotationStore.setState({ canvasRef, imageRef });
   }, []);
 
-  // Phase 2.10.2: Reset magnifier force-off when tool changes
-  useEffect(() => {
-    setMagnifierForceOff(false);
-    setManualMagnifierActive(false);
-  }, [tool]);
+  // Phase 18.3: Magnifier reset and shouldShowMagnifier now in useMagnifier hook
 
   // Helper to set selectedVertexIndex in store
   const setSelectedVertexIndex = (index: number | null) => {
@@ -172,18 +238,11 @@ export default function Canvas() {
     updateAnnotationStore(annotationId, { geometry: updateData.geometry });
   };
 
-  // Phase 2.10.2: Helper to check if current tool is a drawing tool
-  const isDrawingTool = (toolName: string | null) => {
-    if (!toolName) return false;
-    return ['detection', 'polygon', 'polyline', 'circle', 'circle3p'].includes(toolName);
+  // Phase 18.3: updateAnnotationWithVersionCheck now in useAnnotationSync hook
+  // Wrapper for compatibility with existing code
+  const updateAnnotationWithVersionCheckCompat = async (annotationId: string, updateData: AnnotationUpdateRequest) => {
+    return updateAnnotationWithVersionCheck(annotationId, updateData, annotations);
   };
-
-  // Phase 2.10.2: Determine if magnifier should be shown
-  const shouldShowMagnifier =
-    !magnifierForceOff && ( // Not force disabled by user
-      manualMagnifierActive || // Z key pressed
-      (isDrawingTool(tool) && preferences.autoMagnifier) // Auto mode
-    );
 
   // Phase 2.7: Calculate draft annotation count
   const draftAnnotations = annotations.filter(ann => {
@@ -192,45 +251,6 @@ export default function Canvas() {
   });
   const draftCount = draftAnnotations.length;
   const isImageConfirmed = currentImage ? (currentImage as any).is_confirmed : false;
-
-  // Phase 8.5.1: Helper function to update annotation with version check
-  const updateAnnotationWithVersionCheck = async (annotationId: string, updateData: AnnotationUpdateRequest) => {
-    try {
-      // Find annotation in store to get current version
-      const annotation = annotations.find(ann => ann.id === annotationId);
-
-      // Include version in update request
-      const dataWithVersion = {
-        ...updateData,
-        version: annotation?.version,
-      };
-
-      await updateAnnotation(annotationId, dataWithVersion);
-
-    } catch (error: any) {
-      // Handle version conflict (409 Conflict)
-      if (error.response?.status === 409) {
-        const detail = error.response.data.detail;
-
-        setConflictInfo({
-          annotationId,
-          currentVersion: detail.current_version,
-          yourVersion: detail.your_version,
-          lastUpdatedBy: detail.last_updated_by,
-          lastUpdatedAt: detail.last_updated_at,
-          message: detail.message,
-        });
-
-        setPendingAnnotationUpdate({ annotationId, data: updateData });
-        setConflictDialogOpen(true);
-
-        throw error; // Re-throw so caller knows it failed
-      } else {
-        // Other error
-        throw error;
-      }
-    }
-  };
 
   // Phase 18.2: Helper functions moved to @/lib/annotation/utils
   // - getHandleAtPosition → geometryHelpers.getHandleAtPosition
@@ -247,131 +267,7 @@ export default function Canvas() {
     }
   }, [tool]);
 
-  // Phase 8.5.2: Acquire image lock and load image when currentImage changes
-  useEffect(() => {
-    if (!currentImage?.url || !project?.id) {
-      setImage(null);
-      imageRef.current = null;
-      setImageLoaded(false);
-      setIsImageLocked(false);
-      return;
-    }
-
-    // Phase 8.5.2: Capture current image/project IDs for cleanup
-    const capturedImageId = currentImage.id;
-    const capturedProjectId = project.id;
-    let lockAcquired = false;
-
-    // Phase 8.5.2: Acquire lock on image
-    const acquireImageLock = async () => {
-      try {
-        const result: LockAcquireResponse = await imageLockAPI.acquireLock(
-          project.id,
-          currentImage.id
-        );
-
-        if (result.status === 'already_locked' && result.locked_by) {
-          // Image is locked by another user
-          // Phase 8.5.2: Show lock overlay instead of dialog
-          setLockedByUser(result.locked_by.user_name || 'another user');
-          setIsImageLocked(false);
-          lockAcquired = false;
-          return;
-        }
-
-        // Lock acquired or refreshed
-        setIsImageLocked(true);
-        setLockedByUser(null);
-        lockAcquired = true;  // Mark lock as acquired for cleanup
-
-        if (result.status === 'acquired') {
-          // toast.success('Image locked for editing');
-        }
-
-        // Phase 8.5.2: Update project locks immediately for real-time sync
-        if (result.lock) {
-          useAnnotationStore.setState((state) => {
-            const existingLocks = state.projectLocks || [];
-            const updatedLocks = existingLocks.filter(lock => lock.image_id !== currentImage.id);
-            return { projectLocks: [...updatedLocks, result.lock!] };
-          });
-        }
-
-        // Start heartbeat
-        startHeartbeat();
-
-      } catch (error) {
-        console.error('Failed to acquire lock:', error);
-        toast.error('Failed to lock image');
-        setIsImageLocked(false);
-        lockAcquired = false;
-      }
-    };
-
-    // Start heartbeat to keep lock alive (every 2 minutes)
-    const startHeartbeat = () => {
-      // Clear existing interval
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
-
-      // Send heartbeat every 2 minutes (lock expires after 5 minutes)
-      const interval = setInterval(async () => {
-        try {
-          await imageLockAPI.sendHeartbeat(project.id, currentImage.id);
-        } catch (error) {
-          console.error('[Lock] Heartbeat failed:', error);
-          toast.error('Lost lock on image');
-          clearInterval(interval);
-          setIsImageLocked(false);
-        }
-      }, 2 * 60 * 1000); // Every 2 minutes
-
-      setHeartbeatInterval(interval);
-    };
-
-    // Acquire lock first
-    acquireImageLock();
-
-    // Load image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      setImage(img);
-      imageRef.current = img;
-      setImageLoaded(true);
-    };
-    img.onerror = () => {
-      console.error('Failed to load image:', currentImage.url);
-      setImageLoaded(false);
-    };
-    img.src = currentImage.url;
-
-    // Cleanup: Release lock when unmounting or changing image
-    return () => {
-      // Clear heartbeat
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        setHeartbeatInterval(null);
-      }
-
-      // Phase 8.5.2: Release lock using captured IDs
-      if (lockAcquired) {
-        imageLockAPI.releaseLock(capturedProjectId, capturedImageId)
-          .then(() => {
-            // Phase 8.5.2: Update project locks immediately for real-time sync
-            useAnnotationStore.setState((state) => {
-              const existingLocks = state.projectLocks || [];
-              const updatedLocks = existingLocks.filter(lock => lock.image_id !== capturedImageId);
-              return { projectLocks: updatedLocks };
-            });
-          })
-          .catch((error) => {
-            console.error('[Lock] Failed to release:', error);
-          });
-      }
-    };
-  }, [currentImage, project]);
+  // Phase 18.3: Image loading and locking now handled by useImageManagement hook
 
   // Render canvas
   useEffect(() => {
