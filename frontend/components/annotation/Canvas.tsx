@@ -29,6 +29,17 @@ import type { ConflictInfo } from '../annotations/AnnotationConflictDialog';
 import DiffToolbar from './DiffToolbar';
 import DiffActions from './DiffActions';
 import DiffViewModeSelector from './DiffViewModeSelector';
+// Phase 18.2: Utility Functions
+import {
+  drawGrid,
+  drawCrosshair,
+  drawNoObjectBadge,
+  snapshotToAnnotation,
+  getHandleAtPosition,
+  pointInBbox,
+  getCursorForHandle,
+  getPointOnEdge,
+} from '@/lib/annotation/utils';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -221,107 +232,11 @@ export default function Canvas() {
     }
   };
 
-  // Helper function to check if mouse is over a handle
-  const getHandleAtPosition = (
-    x: number,
-    y: number,
-    bboxX: number,
-    bboxY: number,
-    bboxW: number,
-    bboxH: number,
-    handleSize: number = 8
-  ): string | null => {
-    // Increase threshold for easier handle detection
-    const threshold = handleSize / 2 + 6;
-
-    // Corner handles
-    if (Math.abs(x - bboxX) < threshold && Math.abs(y - bboxY) < threshold) return 'nw';
-    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - bboxY) < threshold) return 'ne';
-    if (Math.abs(x - bboxX) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 'sw';
-    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 'se';
-
-    // Edge handles
-    if (Math.abs(x - (bboxX + bboxW / 2)) < threshold && Math.abs(y - bboxY) < threshold) return 'n';
-    if (Math.abs(x - (bboxX + bboxW / 2)) < threshold && Math.abs(y - (bboxY + bboxH)) < threshold) return 's';
-    if (Math.abs(x - bboxX) < threshold && Math.abs(y - (bboxY + bboxH / 2)) < threshold) return 'w';
-    if (Math.abs(x - (bboxX + bboxW)) < threshold && Math.abs(y - (bboxY + bboxH / 2)) < threshold) return 'e';
-
-    return null;
-  };
-
-  // Helper function to check if point is inside bbox
-  const isPointInBbox = (
-    x: number,
-    y: number,
-    bboxX: number,
-    bboxY: number,
-    bboxW: number,
-    bboxH: number
-  ): boolean => {
-    return x >= bboxX && x <= bboxX + bboxW && y >= bboxY && y <= bboxY + bboxH;
-  };
-
-  // Get cursor style based on handle position
-  const getCursorForHandle = (handle: string | null): string => {
-    if (!handle) return 'default';
-    switch (handle) {
-      case 'nw':
-      case 'se':
-        return 'nwse-resize';
-      case 'ne':
-      case 'sw':
-        return 'nesw-resize';
-      case 'n':
-      case 's':
-        return 'ns-resize';
-      case 'w':
-      case 'e':
-        return 'ew-resize';
-      default:
-        return 'default';
-    }
-  };
-
-  // Helper function to find closest point on polygon edge
-  const getPointOnEdge = (
-    x: number,
-    y: number,
-    points: [number, number][],
-    threshold: number = 8
-  ): { edgeIndex: number; point: [number, number] } | null => {
-    for (let i = 0; i < points.length; i++) {
-      const [x1, y1] = points[i];
-      const [x2, y2] = points[(i + 1) % points.length];
-
-      // Calculate closest point on line segment
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const lengthSq = dx * dx + dy * dy;
-
-      if (lengthSq === 0) continue;
-
-      // Parameter t for closest point on line
-      let t = ((x - x1) * dx + (y - y1) * dy) / lengthSq;
-      t = Math.max(0, Math.min(1, t));
-
-      // Closest point on edge
-      const closestX = x1 + t * dx;
-      const closestY = y1 + t * dy;
-
-      // Distance from click to closest point
-      const distX = x - closestX;
-      const distY = y - closestY;
-      const distance = Math.sqrt(distX * distX + distY * distY);
-
-      if (distance < threshold) {
-        // Round to 2 decimal places
-        const roundedX = Math.round(closestX * 100) / 100;
-        const roundedY = Math.round(closestY * 100) / 100;
-        return { edgeIndex: i, point: [roundedX, roundedY] };
-      }
-    }
-    return null;
-  };
+  // Phase 18.2: Helper functions moved to @/lib/annotation/utils
+  // - getHandleAtPosition → geometryHelpers.getHandleAtPosition
+  // - isPointInBbox → geometryHelpers.pointInBbox
+  // - getCursorForHandle → geometryHelpers.getCursorForHandle
+  // - getPointOnEdge → geometryHelpers.getPointOnEdge
 
   // Update cursor when tool changes
   useEffect(() => {
@@ -625,99 +540,9 @@ export default function Canvas() {
   }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices, selectedVertexIndex, selectedBboxHandle, polylineVertices, circleCenter, circle3pPoints, selectedCircleHandle]);
 
   // Draw grid
-  const drawGrid = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    imgX: number,
-    imgY: number,
-    imgWidth: number,
-    imgHeight: number,
-    zoom: number
-  ) => {
-    ctx.strokeStyle = 'rgba(75, 85, 99, 0.3)'; // gray-600
-    ctx.lineWidth = 1;
-
-    const gridSize = 20 * zoom;
-
-    // Vertical lines
-    for (let x = imgX; x < imgX + imgWidth; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, imgY);
-      ctx.lineTo(x, imgY + imgHeight);
-      ctx.stroke();
-    }
-
-    // Horizontal lines
-    for (let y = imgY; y < imgY + imgHeight; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(imgX, y);
-      ctx.lineTo(imgX + imgWidth, y);
-      ctx.stroke();
-    }
-  };
-
-  // Phase 11: Helper to convert AnnotationSnapshot to Annotation format
-  const snapshotToAnnotation = (snapshot: any, tempId: string): any => {
-    // Convert backend geometry format to frontend format
-    let geometry: any;
-
-    if (snapshot.annotation_type === 'bbox' && snapshot.geometry) {
-      // Handle both formats:
-      // - DB/Working: {x, y, width, height}
-      // - R2/Published: {bbox: [x, y, w, h], type, image_width, image_height}
-      if (snapshot.geometry.bbox && Array.isArray(snapshot.geometry.bbox)) {
-        // R2 format: already has bbox array
-        geometry = {
-          type: 'bbox',
-          bbox: snapshot.geometry.bbox
-        };
-      } else {
-        // DB format: convert {x, y, width, height} to bbox array
-        geometry = {
-          type: 'bbox',
-          bbox: [
-            snapshot.geometry.x || 0,
-            snapshot.geometry.y || 0,
-            snapshot.geometry.width || 0,
-            snapshot.geometry.height || 0
-          ]
-        };
-      }
-    } else if (snapshot.annotation_type === 'polygon' && snapshot.geometry) {
-      // Polygon: {points: [[x,y], ...]} → same format
-      geometry = {
-        type: 'polygon',
-        points: snapshot.geometry.points || []
-      };
-    } else if (snapshot.annotation_type === 'polyline' && snapshot.geometry) {
-      geometry = {
-        type: 'polyline',
-        points: snapshot.geometry.points || []
-      };
-    } else if (snapshot.annotation_type === 'circle' && snapshot.geometry) {
-      geometry = {
-        type: 'circle',
-        center: snapshot.geometry.center || [0, 0],
-        radius: snapshot.geometry.radius || 0
-      };
-    } else {
-      // Fallback: spread as-is
-      geometry = {
-        type: snapshot.annotation_type,
-        ...snapshot.geometry,
-      };
-    }
-
-    return {
-      id: tempId,
-      image_id: snapshot.image_id,
-      geometry,
-      class_id: snapshot.class_id,
-      class_name: snapshot.class_name,
-      annotationType: snapshot.annotation_type,
-    };
-  };
+  // Phase 18.2: Drawing helper functions moved to @/lib/annotation/utils
+  // - drawGrid → renderHelpers.drawGrid
+  // - snapshotToAnnotation → annotationHelpers.snapshotToAnnotation
 
   // Draw annotations using Tool system
   const drawAnnotations = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
@@ -845,45 +670,7 @@ export default function Canvas() {
     });
   };
 
-  // Draw No Object badge (similar to classification badge)
-  const drawNoObjectBadge = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number) => {
-    const badgeX = offsetX + 10;
-    const badgeY = offsetY + 10;
-    const padding = 8;
-    const fontSize = 14;
-
-    const labelText = 'No Object';
-
-    // Measure text
-    ctx.font = `${fontSize}px sans-serif`;
-    const textWidth = ctx.measureText(labelText).width;
-
-    // Draw badge background (gray color for no object)
-    ctx.fillStyle = 'rgba(107, 114, 128, 0.8)'; // gray-500
-
-    const badgeWidth = textWidth + padding * 2;
-    const badgeHeight = fontSize + padding * 2;
-
-    // Rounded rectangle
-    const radius = 4;
-    ctx.beginPath();
-    ctx.moveTo(badgeX + radius, badgeY);
-    ctx.lineTo(badgeX + badgeWidth - radius, badgeY);
-    ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY, badgeX + badgeWidth, badgeY + radius);
-    ctx.lineTo(badgeX + badgeWidth, badgeY + badgeHeight - radius);
-    ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY + badgeHeight, badgeX + badgeWidth - radius, badgeY + badgeHeight);
-    ctx.lineTo(badgeX + radius, badgeY + badgeHeight);
-    ctx.quadraticCurveTo(badgeX, badgeY + badgeHeight, badgeX, badgeY + badgeHeight - radius);
-    ctx.lineTo(badgeX, badgeY + radius);
-    ctx.quadraticCurveTo(badgeX, badgeY, badgeX + radius, badgeY);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw text
-    ctx.fillStyle = '#ffffff';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelText, badgeX + padding, badgeY + badgeHeight / 2);
-  };
+  // Phase 18.2: drawNoObjectBadge moved to renderHelpers.drawNoObjectBadge
 
   // Draw bbox preview while drawing using Tool system
   const drawBboxPreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
@@ -1039,25 +826,7 @@ export default function Canvas() {
     circle3pTool.renderPreview(renderCtx, toolState);
   };
 
-  // Draw crosshair
-  const drawCrosshair = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const { cursor } = canvasState;
-
-    ctx.strokeStyle = 'rgba(147, 51, 234, 0.3)'; // violet-600
-    ctx.lineWidth = 1;
-
-    // Vertical line
-    ctx.beginPath();
-    ctx.moveTo(cursor.x, 0);
-    ctx.lineTo(cursor.x, height);
-    ctx.stroke();
-
-    // Horizontal line
-    ctx.beginPath();
-    ctx.moveTo(0, cursor.y);
-    ctx.lineTo(width, cursor.y);
-    ctx.stroke();
-  };
+  // Phase 18.2: drawCrosshair moved to renderHelpers.drawCrosshair
 
   // Mouse down handler
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1395,7 +1164,7 @@ export default function Canvas() {
           const scaledW = bboxW * zoom;
           const scaledH = bboxH * zoom;
 
-          if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+          if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
             clickedAnnotation = ann;
             break;
           }
@@ -1647,7 +1416,7 @@ export default function Canvas() {
           const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
           if (handle) {
             newCursor = getCursorForHandle(handle);
-          } else if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+          } else if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
             newCursor = 'move';
           }
         }
@@ -1694,7 +1463,7 @@ export default function Canvas() {
             const scaledW = bboxW * zoom;
             const scaledH = bboxH * zoom;
 
-            if (isPointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
+            if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
               newCursor = 'pointer';
               break;
             }
