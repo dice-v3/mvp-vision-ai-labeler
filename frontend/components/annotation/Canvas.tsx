@@ -48,6 +48,7 @@ import {
   useCanvasTransform,
   useAnnotationSync,
   useMagnifier,
+  useMouseHandlers,
 } from '@/lib/annotation/hooks';
 // Phase 18.4: Overlay Components
 import { LockOverlay } from './overlays/LockOverlay';
@@ -255,10 +256,10 @@ export default function Canvas() {
   const isImageConfirmed = currentImage ? (currentImage as any).is_confirmed : false;
 
   // Phase 18.2: Helper functions moved to @/lib/annotation/utils
-  // - getHandleAtPosition → geometryHelpers.getHandleAtPosition
-  // - isPointInBbox → geometryHelpers.pointInBbox
-  // - getCursorForHandle → geometryHelpers.getCursorForHandle
-  // - getPointOnEdge → geometryHelpers.getPointOnEdge
+  // - getHandleAtPosition ??geometryHelpers.getHandleAtPosition
+  // - isPointInBbox ??geometryHelpers.pointInBbox
+  // - getCursorForHandle ??geometryHelpers.getCursorForHandle
+  // - getPointOnEdge ??geometryHelpers.getPointOnEdge
 
   // Update cursor when tool changes
   useEffect(() => {
@@ -268,6 +269,77 @@ export default function Canvas() {
       setCanvasCursor('default');
     }
   }, [tool]);
+
+  // Phase 18.5: Mouse event handlers
+  const { handleMouseDown, handleMouseMove, handleMouseUp } = useMouseHandlers({
+    canvasRef,
+    image,
+    currentImage,
+    project,
+    annotations,
+    selectedAnnotationId,
+    canvasState,
+    tool,
+    currentTask,
+    selectedImageIds,
+    isImageLocked,
+    selectAnnotation,
+    setPan,
+    setCursor,
+    startDrawing,
+    updateDrawing,
+    finishDrawing,
+    addAnnotation,
+    deleteAnnotation,
+    isAnnotationVisible,
+    clearImageSelection,
+    getCurrentClasses,
+    showClassSelector,
+    setShowClassSelector,
+    canvasCursor,
+    setCanvasCursor,
+    setCursorPos,
+    setBatchProgress,
+    pendingBbox,
+    setPendingBbox,
+    isResizing,
+    setIsResizing,
+    setResizeHandle,
+    resizeStart,
+    setResizeStart,
+    polygonVertices,
+    setPolygonVertices,
+    isDraggingVertex,
+    setIsDraggingVertex,
+    setDraggedVertexIndex,
+    isDraggingPolygon,
+    setIsDraggingPolygon,
+    polygonDragStart,
+    setPolygonDragStart,
+    polylineVertices,
+    setPolylineVertices,
+    circleCenter,
+    setCircleCenter,
+    isDraggingCircle,
+    setIsDraggingCircle,
+    circleDragStart,
+    setCircleDragStart,
+    isResizingCircle,
+    setIsResizingCircle,
+    circleResizeStart,
+    setCircleResizeStart,
+    setSelectedCircleHandle,
+    circle3pPoints,
+    setCircle3pPoints,
+    isPanning,
+    setIsPanning,
+    panStart,
+    setPanStart,
+    setSelectedVertexIndex,
+    setSelectedBboxHandle,
+    isDrawing,
+    drawingStart,
+  });
 
   // Phase 18.3: Image loading and locking now handled by useImageManagement hook
 
@@ -439,8 +511,8 @@ export default function Canvas() {
 
   // Draw grid
   // Phase 18.2: Drawing helper functions moved to @/lib/annotation/utils
-  // - drawGrid → renderHelpers.drawGrid
-  // - snapshotToAnnotation → annotationHelpers.snapshotToAnnotation
+  // - drawGrid ??renderHelpers.drawGrid
+  // - snapshotToAnnotation ??annotationHelpers.snapshotToAnnotation
 
   // Draw annotations using Tool system
   const drawAnnotations = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
@@ -726,1256 +798,8 @@ export default function Canvas() {
 
   // Phase 18.2: drawCrosshair moved to renderHelpers.drawCrosshair
 
-  // Mouse down handler
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || !image) return;
+  // Phase 18.5: Mouse handlers moved to useMouseHandlers hook
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const { zoom, pan } = canvasState;
-    const scaledWidth = image.width * zoom;
-    const scaledHeight = image.height * zoom;
-    const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-    const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-    // Phase 8.5.2: Block annotation creation without lock (strict lock policy)
-    // Allow pan and selection (read-only), block creation tools
-    const isCreationTool = tool !== 'pan' && tool !== 'select';
-
-    if (!isImageLocked && isCreationTool) {
-      // Lock overlay is already visible, no need for toast
-      return;
-    }
-
-    // Only handle selection and resizing in select mode
-    if (tool === 'select') {
-      // Check if clicking on a handle of the selected annotation
-      if (selectedAnnotationId) {
-        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-
-        // Handle bbox resize
-        if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
-          const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
-
-          const scaledX = bboxX * zoom + imgX;
-          const scaledY = bboxY * zoom + imgY;
-          const scaledW = bboxW * zoom;
-          const scaledH = bboxH * zoom;
-
-          const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
-          if (handle) {
-            // Phase 8.5.2: Block resize without lock
-            if (!isImageLocked) {
-              return;
-            }
-            // Select handle and start resizing
-            setSelectedBboxHandle(handle);
-            setIsResizing(true);
-            setResizeHandle(handle);
-            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
-            setCanvasCursor(getCursorForHandle(handle));
-            return;
-          }
-        }
-
-        // Handle polygon vertex drag or polygon move
-        if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
-          const points = selectedAnn.geometry.points;
-
-          // Check if clicking on a vertex
-          const vertexThreshold = 8;
-          for (let i = 0; i < points.length; i++) {
-            const [px, py] = points[i];
-            const scaledPx = px * zoom + imgX;
-            const scaledPy = py * zoom + imgY;
-            const dx = x - scaledPx;
-            const dy = y - scaledPy;
-            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
-              // Phase 8.5.2: Block vertex drag without lock
-              if (!isImageLocked) {
-                return;
-              }
-              // Select and start vertex drag
-              setSelectedVertexIndex(i);
-              setIsDraggingVertex(true);
-              setDraggedVertexIndex(i);
-              setCanvasCursor('move');
-              return;
-            }
-          }
-
-          // Check if clicking on an edge (to add vertex)
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          const edgeResult = getPointOnEdge(imageX, imageY, points, vertexThreshold / zoom);
-          if (edgeResult && image) {
-            // Phase 8.5.2: Block vertex addition without lock
-            if (!isImageLocked) {
-              return;
-            }
-            // Insert new vertex after the edge's first vertex
-            const newPoints = [...points];
-            newPoints.splice(edgeResult.edgeIndex + 1, 0, edgeResult.point);
-
-            // Update store
-            useAnnotationStore.setState({
-              annotations: annotations.map(ann =>
-                ann.id === selectedAnnotationId
-                  ? {
-                      ...ann,
-                      geometry: {
-                        ...ann.geometry,
-                        points: newPoints,
-                      },
-                    }
-                  : ann
-              ),
-            });
-
-            // Select the new vertex
-            setSelectedVertexIndex(edgeResult.edgeIndex + 1);
-
-            // Save to backend
-            const updateData: AnnotationUpdateRequest = {
-              geometry: {
-                type: 'polygon',
-                points: newPoints,
-                image_width: image.width,
-                image_height: image.height,
-              },
-            };
-            updateAnnotation(selectedAnnotationId, updateData)
-              .then(() => {
-                if (currentImage) {
-                  const updatedCurrentImage = {
-                    ...currentImage,
-                    is_confirmed: false,
-                    status: 'in-progress',
-                  };
-                  useAnnotationStore.setState((state) => ({
-                    currentImage: state.currentImage?.id === currentImage.id
-                      ? updatedCurrentImage
-                      : state.currentImage,
-                    images: state.images.map(img =>
-                      img.id === currentImage.id
-                        ? updatedCurrentImage
-                        : img
-                    ),
-                  }));
-                }
-              })
-              .catch((error) => {
-                console.error('Failed to add vertex:', error);
-                toast.error('Vertex 추가에 실패했습니다.');
-              });
-
-            return;
-          }
-
-          // Check if clicking inside polygon (for moving)
-          // imageX, imageY already calculated above for edge detection
-          if (polygonTool.isPointInside(imageX, imageY, selectedAnn)) {
-            // Start polygon drag (clear vertex selection)
-            setSelectedVertexIndex(null);
-            setIsDraggingPolygon(true);
-            setPolygonDragStart({ x, y, points: points.map(p => [...p] as [number, number]) });
-            setCanvasCursor('move');
-            return;
-          }
-        }
-
-        // Handle polyline vertex drag or polyline move
-        if (selectedAnn && selectedAnn.geometry.type === 'polyline') {
-          const points = selectedAnn.geometry.points;
-
-          // Check if clicking on a vertex
-          const vertexThreshold = 8;
-          for (let i = 0; i < points.length; i++) {
-            const [px, py] = points[i];
-            const scaledPx = px * zoom + imgX;
-            const scaledPy = py * zoom + imgY;
-            const dx = x - scaledPx;
-            const dy = y - scaledPy;
-            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
-              // Select and start vertex drag
-              setSelectedVertexIndex(i);
-              setIsDraggingVertex(true);
-              setDraggedVertexIndex(i);
-              setCanvasCursor('move');
-              return;
-            }
-          }
-
-          // Check if clicking on an edge (to add vertex)
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          const edgeResult = getPointOnEdge(imageX, imageY, points, vertexThreshold / zoom);
-          if (edgeResult && image) {
-            // Phase 8.5.2: Block vertex addition without lock
-            if (!isImageLocked) {
-              return;
-            }
-            // Insert new vertex after the edge's first vertex
-            const newPoints = [...points];
-            newPoints.splice(edgeResult.edgeIndex + 1, 0, edgeResult.point);
-
-            // Update store
-            useAnnotationStore.setState({
-              annotations: annotations.map(ann =>
-                ann.id === selectedAnnotationId
-                  ? {
-                      ...ann,
-                      geometry: {
-                        ...ann.geometry,
-                        points: newPoints,
-                      },
-                    }
-                  : ann
-              ),
-            });
-
-            // Select the new vertex
-            setSelectedVertexIndex(edgeResult.edgeIndex + 1);
-
-            // Save to backend
-            const updateData: AnnotationUpdateRequest = {
-              geometry: {
-                type: 'polyline',
-                points: newPoints,
-                image_width: image.width,
-                image_height: image.height,
-              },
-            };
-            updateAnnotation(selectedAnnotationId, updateData)
-              .then(() => {
-                if (currentImage) {
-                  const updatedCurrentImage = {
-                    ...currentImage,
-                    is_confirmed: false,
-                    status: 'in-progress',
-                  };
-                  useAnnotationStore.setState((state) => ({
-                    currentImage: state.currentImage?.id === currentImage.id
-                      ? updatedCurrentImage
-                      : state.currentImage,
-                    images: state.images.map(img =>
-                      img.id === currentImage.id
-                        ? updatedCurrentImage
-                        : img
-                    ),
-                  }));
-                }
-              })
-              .catch((error) => {
-                console.error('Failed to add vertex:', error);
-                toast.error('Vertex 추가에 실패했습니다.');
-              });
-
-            return;
-          }
-
-          // Check if clicking on polyline (for moving)
-          if (polylineTool.isPointInside(imageX, imageY, selectedAnn)) {
-            // Start polyline drag (clear vertex selection)
-            setSelectedVertexIndex(null);
-            setIsDraggingPolygon(true); // Reuse polygon drag state for polyline
-            setPolygonDragStart({ x, y, points: points.map(p => [...p] as [number, number]) });
-            setCanvasCursor('move');
-            return;
-          }
-        }
-
-        // Handle circle move or resize
-        if (selectedAnn && selectedAnn.geometry.type === 'circle') {
-          const center = selectedAnn.geometry.center;
-          const radius = selectedAnn.geometry.radius;
-
-          // Convert to canvas coordinates
-          const scaledCenterX = center[0] * zoom + imgX;
-          const scaledCenterY = center[1] * zoom + imgY;
-          const scaledRadius = radius * zoom;
-
-          // Check if clicking on radius handles (N, S, E, W)
-          const handleThreshold = 8;
-          const handles = [
-            { name: 'n', x: scaledCenterX, y: scaledCenterY - scaledRadius }, // N
-            { name: 's', x: scaledCenterX, y: scaledCenterY + scaledRadius }, // S
-            { name: 'e', x: scaledCenterX + scaledRadius, y: scaledCenterY }, // E
-            { name: 'w', x: scaledCenterX - scaledRadius, y: scaledCenterY }, // W
-          ];
-
-          for (const handle of handles) {
-            const dx = x - handle.x;
-            const dy = y - handle.y;
-            if (Math.sqrt(dx * dx + dy * dy) < handleThreshold) {
-              // Start circle resize
-              setIsResizingCircle(true);
-              setCircleResizeStart({ x, y, radius, handle: handle.name });
-              setSelectedCircleHandle(handle.name);
-              setCanvasCursor('pointer');
-              return;
-            }
-          }
-
-          // Check if clicking on center (for moving)
-          const dxCenter = x - scaledCenterX;
-          const dyCenter = y - scaledCenterY;
-          if (Math.sqrt(dxCenter * dxCenter + dyCenter * dyCenter) < handleThreshold) {
-            // Start circle move (clear handle selection)
-            setSelectedCircleHandle(null);
-            setIsDraggingCircle(true);
-            setCircleDragStart({ x, y, center: [...center] as [number, number] });
-            setCanvasCursor('move');
-            return;
-          }
-
-          // Check if clicking inside circle (for moving)
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          if (circleTool.isPointInside(imageX, imageY, selectedAnn)) {
-            // Start circle move (clear handle selection)
-            setSelectedCircleHandle(null);
-            setIsDraggingCircle(true);
-            setCircleDragStart({ x, y, center: [...center] as [number, number] });
-            setCanvasCursor('move');
-            return;
-          }
-        }
-      }
-
-      // Clear vertex/handle selection when clicking elsewhere
-      setSelectedVertexIndex(null);
-      setSelectedBboxHandle(null);
-      setSelectedCircleHandle(null);
-
-      // Check if clicking on any annotation to select it
-      let clickedAnnotation: typeof annotations[0] | null = null;
-      for (const ann of annotations) {
-        if (!isAnnotationVisible(ann.id)) continue;
-
-        if (ann.geometry.type === 'bbox') {
-          const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
-          const scaledX = bboxX * zoom + imgX;
-          const scaledY = bboxY * zoom + imgY;
-          const scaledW = bboxW * zoom;
-          const scaledH = bboxH * zoom;
-
-          if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
-            clickedAnnotation = ann;
-            break;
-          }
-        } else if (ann.geometry.type === 'polygon') {
-          // Convert canvas coords to image coords
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          if (polygonTool.isPointInside(imageX, imageY, ann)) {
-            clickedAnnotation = ann;
-            break;
-          }
-        } else if (ann.geometry.type === 'polyline') {
-          // Convert canvas coords to image coords
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          if (polylineTool.isPointInside(imageX, imageY, ann)) {
-            clickedAnnotation = ann;
-            break;
-          }
-        } else if (ann.geometry.type === 'circle') {
-          // Convert canvas coords to image coords
-          const imageX = (x - imgX) / zoom;
-          const imageY = (y - imgY) / zoom;
-          if (circleTool.isPointInside(imageX, imageY, ann)) {
-            clickedAnnotation = ann;
-            break;
-          }
-        }
-      }
-
-      if (clickedAnnotation) {
-        // Select the clicked annotation
-        selectAnnotation(clickedAnnotation.id);
-        // Set cursor to move since we're inside the annotation
-        setCanvasCursor('move');
-        return;
-      }
-
-      // If nothing clicked, deselect
-      if (selectedAnnotationId) {
-        selectAnnotation(null);
-      }
-    }
-
-    // If select tool is active, start panning
-    if (tool === 'select') {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    // If middle button or shift+click, start panning
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    // Check if click is within image bounds
-    const isInImage = x >= imgX && x <= imgX + scaledWidth && y >= imgY && y <= imgY + scaledHeight;
-
-    // Check if classes are available for the current task
-    const currentClasses = getCurrentClasses();
-    const hasClasses = Object.keys(currentClasses).length > 0;
-
-    // If bbox tool is active, start drawing (only within image)
-    if (tool === 'bbox' && isInImage) {
-      if (!hasClasses) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-      startDrawing({ x, y });
-    }
-
-    // If polygon tool is active, add vertex or close polygon (only within image)
-    if (tool === 'polygon' && isInImage) {
-      if (!hasClasses && polygonVertices.length === 0) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-      const closeThreshold = 15;
-
-      // Check if closing polygon (click near first vertex)
-      if (polygonVertices.length >= 3) {
-        const [firstX, firstY] = polygonVertices[0];
-        const dx = x - firstX;
-        const dy = y - firstY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < closeThreshold) {
-          // Close polygon - convert canvas coords to image coords
-          const imagePoints = polygonVertices.map(([vx, vy]): [number, number] => [
-            (vx - imgX) / zoom,
-            (vy - imgY) / zoom,
-          ]);
-
-          // Store pending polygon and show class selector
-          setPendingBbox(null); // Clear any pending bbox
-          // Store polygon points in a temporary state (reuse pendingBbox pattern)
-          (window as any).__pendingPolygon = imagePoints;
-          setShowClassSelector(true);
-          setPolygonVertices([]);
-          return;
-        }
-      }
-
-      // Add vertex
-      setPolygonVertices([...polygonVertices, [x, y]]);
-    }
-
-    // If classification tool is active, show class selector (only within image)
-    if (tool === 'classification' && isInImage) {
-      if (!hasClasses) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-      setShowClassSelector(true);
-    }
-
-    // If polyline tool is active, add vertex (only within image)
-    if (tool === 'polyline' && isInImage) {
-      if (!hasClasses && polylineVertices.length === 0) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-      // Add vertex
-      setPolylineVertices([...polylineVertices, [x, y]]);
-    }
-
-    // If circle tool is active (center-edge mode)
-    if (tool === 'circle' && isInImage) {
-      if (!hasClasses) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-
-      if (!circleCenter) {
-        // First click: set center
-        setCircleCenter([x, y]);
-      } else {
-        // Second click: complete circle
-        const dx = x - circleCenter[0];
-        const dy = y - circleCenter[1];
-        const radius = Math.sqrt(dx * dx + dy * dy);
-
-        if (radius > 5) {
-          // Convert canvas coords to image coords
-          const centerImageX = (circleCenter[0] - imgX) / zoom;
-          const centerImageY = (circleCenter[1] - imgY) / zoom;
-          const radiusImage = radius / zoom;
-
-          // Store pending circle and show class selector
-          const pendingCircleData = {
-            center: [
-              Math.round(centerImageX * 100) / 100,
-              Math.round(centerImageY * 100) / 100,
-            ] as [number, number],
-            radius: Math.round(radiusImage * 100) / 100,
-          };
-          (window as any).__pendingCircle = pendingCircleData;
-          console.log('[Circle] Set pending circle:', pendingCircleData);
-          setShowClassSelector(true);
-        }
-        setCircleCenter(null);
-      }
-    }
-
-    // If circle3p tool is active (3-point mode)
-    if (tool === 'circle3p' && isInImage) {
-      if (!hasClasses && circle3pPoints.length === 0) {
-        toast.warning(`'${currentTask}' task에 등록된 클래스가 없습니다. 먼저 클래스를 추가해주세요.`, 4000);
-        return;
-      }
-
-      if (circle3pPoints.length < 2) {
-        // Add point
-        setCircle3pPoints([...circle3pPoints, [x, y]]);
-      } else {
-        // Third click: complete circle
-        const p1: [number, number] = [(circle3pPoints[0][0] - imgX) / zoom, (circle3pPoints[0][1] - imgY) / zoom];
-        const p2: [number, number] = [(circle3pPoints[1][0] - imgX) / zoom, (circle3pPoints[1][1] - imgY) / zoom];
-        const p3: [number, number] = [(x - imgX) / zoom, (y - imgY) / zoom];
-
-        const result = Circle3pTool.calculateCircleFrom3Points(p1, p2, p3);
-
-        if (result) {
-          // Store pending circle and show class selector
-          (window as any).__pendingCircle = result;
-          console.log('[Circle3P] Set pending circle:', result);
-          setShowClassSelector(true);
-        } else {
-          toast.warning('세 점이 일직선상에 있어 원을 만들 수 없습니다.', 3000);
-        }
-        setCircle3pPoints([]);
-      }
-    }
-  };
-
-  // Mouse move handler
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || !image) return;
-
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Phase 2.10.2: Update cursor position for magnifier
-    setCursorPos({ x, y });
-
-    // Update cursor style based on position (before setCursor to avoid render race)
-    if (!isResizing && !isDrawing && !isPanning && !isDraggingVertex && !isDraggingPolygon && !isDraggingCircle && !isResizingCircle) {
-      const { zoom, pan } = canvasState;
-      const scaledWidth = image.width * zoom;
-      const scaledHeight = image.height * zoom;
-      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-      // Check if mouse is within image bounds
-      const isInImage = x >= imgX && x <= imgX + scaledWidth && y >= imgY && y <= imgY + scaledHeight;
-
-      // Default cursor based on tool and image position
-      let newCursor = 'default';
-      if (isInImage) {
-        newCursor = (tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') ? 'crosshair' : 'default';
-      }
-
-      // Check if near first vertex for polygon closing
-      if (tool === 'polygon' && polygonVertices.length >= 3) {
-        const [firstX, firstY] = polygonVertices[0];
-        const dx = x - firstX;
-        const dy = y - firstY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 15) {
-          newCursor = 'pointer';
-        }
-      }
-
-      // Check if hovering over selected annotation's handle (only in select mode)
-      if (tool === 'select' && selectedAnnotationId) {
-        const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-
-        if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
-          const [bboxX, bboxY, bboxW, bboxH] = selectedAnn.geometry.bbox;
-          const scaledX = bboxX * zoom + imgX;
-          const scaledY = bboxY * zoom + imgY;
-          const scaledW = bboxW * zoom;
-          const scaledH = bboxH * zoom;
-
-          const handle = getHandleAtPosition(x, y, scaledX, scaledY, scaledW, scaledH);
-          if (handle) {
-            newCursor = getCursorForHandle(handle);
-          } else if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
-            newCursor = 'move';
-          }
-        }
-
-        // Check polygon vertices and inside
-        if (selectedAnn && selectedAnn.geometry.type === 'polygon') {
-          const points = selectedAnn.geometry.points;
-          const vertexThreshold = 8;
-
-          // Check vertices first
-          let onVertex = false;
-          for (const [px, py] of points) {
-            const scaledPx = px * zoom + imgX;
-            const scaledPy = py * zoom + imgY;
-            const dx = x - scaledPx;
-            const dy = y - scaledPy;
-            if (Math.sqrt(dx * dx + dy * dy) < vertexThreshold) {
-              newCursor = 'move';
-              onVertex = true;
-              break;
-            }
-          }
-
-          // Check inside polygon
-          if (!onVertex) {
-            const imageX = (x - imgX) / zoom;
-            const imageY = (y - imgY) / zoom;
-            if (polygonTool.isPointInside(imageX, imageY, selectedAnn)) {
-              newCursor = 'move';
-            }
-          }
-        }
-      }
-
-      // Check if hovering over any annotation (for click to select) - only in select mode
-      if (tool === 'select' && isInImage && newCursor === 'default') {
-        for (const ann of annotations) {
-          if (!isAnnotationVisible(ann.id)) continue;
-
-          if (ann.geometry.type === 'bbox') {
-            const [bboxX, bboxY, bboxW, bboxH] = ann.geometry.bbox;
-            const scaledX = bboxX * zoom + imgX;
-            const scaledY = bboxY * zoom + imgY;
-            const scaledW = bboxW * zoom;
-            const scaledH = bboxH * zoom;
-
-            if (pointInBbox(x, y, scaledX, scaledY, scaledW, scaledH)) {
-              newCursor = 'pointer';
-              break;
-            }
-          } else if (ann.geometry.type === 'polygon') {
-            const imageX = (x - imgX) / zoom;
-            const imageY = (y - imgY) / zoom;
-            if (polygonTool.isPointInside(imageX, imageY, ann)) {
-              newCursor = 'pointer';
-              break;
-            }
-          } else if (ann.geometry.type === 'polyline') {
-            const imageX = (x - imgX) / zoom;
-            const imageY = (y - imgY) / zoom;
-            if (polylineTool.isPointInside(imageX, imageY, ann)) {
-              newCursor = 'pointer';
-              break;
-            }
-          } else if (ann.geometry.type === 'circle') {
-            const imageX = (x - imgX) / zoom;
-            const imageY = (y - imgY) / zoom;
-            if (circleTool.isPointInside(imageX, imageY, ann)) {
-              newCursor = 'pointer';
-              break;
-            }
-          }
-        }
-      }
-
-      // Update cursor state
-      setCanvasCursor(newCursor);
-    }
-
-    // Update cursor position for crosshair (after cursor style update)
-    setCursor({ x, y });
-
-    // Handle resizing
-    if (isResizing && resizeStart && resizeHandle && selectedAnnotationId) {
-      const { zoom, pan } = canvasState;
-      const scaledWidth = image.width * zoom;
-      const scaledHeight = image.height * zoom;
-      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-      // Calculate delta in image coordinates
-      const deltaX = (x - resizeStart.x) / zoom;
-      const deltaY = (y - resizeStart.y) / zoom;
-
-      let [newX, newY, newW, newH] = resizeStart.bbox;
-
-      // Apply delta based on handle type
-      switch (resizeHandle) {
-        case 'nw':
-          newX += deltaX;
-          newY += deltaY;
-          newW -= deltaX;
-          newH -= deltaY;
-          break;
-        case 'ne':
-          newY += deltaY;
-          newW += deltaX;
-          newH -= deltaY;
-          break;
-        case 'sw':
-          newX += deltaX;
-          newW -= deltaX;
-          newH += deltaY;
-          break;
-        case 'se':
-          newW += deltaX;
-          newH += deltaY;
-          break;
-        case 'n':
-          newY += deltaY;
-          newH -= deltaY;
-          break;
-        case 's':
-          newH += deltaY;
-          break;
-        case 'w':
-          newX += deltaX;
-          newW -= deltaX;
-          break;
-        case 'e':
-          newW += deltaX;
-          break;
-      }
-
-      // Ensure minimum size
-      if (newW < 10) newW = 10;
-      if (newH < 10) newH = 10;
-
-      // Update annotation geometry
-      const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnnotation) {
-        useAnnotationStore.setState({
-          annotations: annotations.map(ann =>
-            ann.id === selectedAnnotationId
-              ? {
-                  ...ann,
-                  geometry: {
-                    ...ann.geometry,
-                    bbox: [newX, newY, newW, newH],
-                  },
-                }
-              : ann
-          ),
-        });
-      }
-      return;
-    }
-
-    // Handle vertex dragging
-    if (isDraggingVertex && draggedVertexIndex !== null && selectedAnnotationId) {
-      const { zoom, pan } = canvasState;
-      const scaledWidth = image.width * zoom;
-      const scaledHeight = image.height * zoom;
-      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-      // Convert to image coordinates
-      const imageX = (x - imgX) / zoom;
-      const imageY = (y - imgY) / zoom;
-
-      // Clip to image bounds and round to 2 decimal places
-      const clippedX = Math.round(Math.max(0, Math.min(image.width, imageX)) * 100) / 100;
-      const clippedY = Math.round(Math.max(0, Math.min(image.height, imageY)) * 100) / 100;
-
-      // Update annotation geometry (polygon or polyline)
-      const updatedAnnotation = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnnotation && (updatedAnnotation.geometry.type === 'polygon' || updatedAnnotation.geometry.type === 'polyline')) {
-        const newPoints = [...updatedAnnotation.geometry.points];
-        newPoints[draggedVertexIndex] = [clippedX, clippedY];
-
-        useAnnotationStore.setState({
-          annotations: annotations.map(ann =>
-            ann.id === selectedAnnotationId
-              ? {
-                  ...ann,
-                  geometry: {
-                    ...ann.geometry,
-                    points: newPoints,
-                  },
-                }
-              : ann
-          ),
-        });
-      }
-      return;
-    }
-
-    // Handle polygon dragging
-    if (isDraggingPolygon && polygonDragStart && selectedAnnotationId) {
-      const { zoom, pan } = canvasState;
-      const scaledWidth = image.width * zoom;
-      const scaledHeight = image.height * zoom;
-      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-      // Calculate delta in image coordinates
-      const deltaX = (x - polygonDragStart.x) / zoom;
-      const deltaY = (y - polygonDragStart.y) / zoom;
-
-      // Move all vertices
-      const newPoints = polygonDragStart.points.map(([px, py]): [number, number] => {
-        // Clip to image bounds and round to 2 decimal places
-        const newX = Math.round(Math.max(0, Math.min(image.width, px + deltaX)) * 100) / 100;
-        const newY = Math.round(Math.max(0, Math.min(image.height, py + deltaY)) * 100) / 100;
-        return [newX, newY];
-      });
-
-      useAnnotationStore.setState({
-        annotations: annotations.map(ann =>
-          ann.id === selectedAnnotationId
-            ? {
-                ...ann,
-                geometry: {
-                  ...ann.geometry,
-                  points: newPoints,
-                },
-              }
-            : ann
-        ),
-      });
-      return;
-    }
-
-    // Handle circle dragging
-    if (isDraggingCircle && circleDragStart && selectedAnnotationId) {
-      const { zoom, pan } = canvasState;
-      const scaledWidth = image.width * zoom;
-      const scaledHeight = image.height * zoom;
-      const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-      const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-      // Calculate delta in image coordinates
-      const deltaX = (x - circleDragStart.x) / zoom;
-      const deltaY = (y - circleDragStart.y) / zoom;
-
-      // Move center
-      const newCenterX = Math.round(Math.max(0, Math.min(image.width, circleDragStart.center[0] + deltaX)) * 100) / 100;
-      const newCenterY = Math.round(Math.max(0, Math.min(image.height, circleDragStart.center[1] + deltaY)) * 100) / 100;
-
-      useAnnotationStore.setState({
-        annotations: annotations.map(ann =>
-          ann.id === selectedAnnotationId
-            ? {
-                ...ann,
-                geometry: {
-                  ...ann.geometry,
-                  center: [newCenterX, newCenterY],
-                },
-              }
-            : ann
-        ),
-      });
-      return;
-    }
-
-    // Handle circle resizing
-    if (isResizingCircle && circleResizeStart && selectedAnnotationId) {
-      const { zoom } = canvasState;
-
-      // Calculate delta based on handle direction
-      const deltaX = (x - circleResizeStart.x) / zoom;
-      const deltaY = (y - circleResizeStart.y) / zoom;
-
-      let delta = 0;
-      switch (circleResizeStart.handle) {
-        case 'n':
-          // N handle: up (negative deltaY) should increase radius
-          delta = -deltaY;
-          break;
-        case 's':
-          // S handle: down (positive deltaY) should increase radius
-          delta = deltaY;
-          break;
-        case 'e':
-          // E handle: right (positive deltaX) should increase radius
-          delta = deltaX;
-          break;
-        case 'w':
-          // W handle: left (negative deltaX) should increase radius
-          delta = -deltaX;
-          break;
-        default:
-          delta = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * Math.sign(deltaX + deltaY);
-      }
-
-      // New radius
-      const newRadius = Math.round(Math.max(5, circleResizeStart.radius + delta) * 100) / 100;
-
-      useAnnotationStore.setState({
-        annotations: annotations.map(ann =>
-          ann.id === selectedAnnotationId
-            ? {
-                ...ann,
-                geometry: {
-                  ...ann.geometry,
-                  radius: newRadius,
-                },
-              }
-            : ann
-        ),
-      });
-      return;
-    }
-
-    // Handle panning
-    if (isPanning && panStart) {
-      const deltaX = e.clientX - panStart.x;
-      const deltaY = e.clientY - panStart.y;
-      setPan({
-        x: canvasState.pan.x + deltaX,
-        y: canvasState.pan.y + deltaY,
-      });
-      setPanStart({ x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    // Handle drawing
-    if (isDrawing) {
-      updateDrawing({ x, y });
-    }
-  };
-
-  // Mouse up handler
-  const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Stop vertex dragging and save to backend
-    if (isDraggingVertex && selectedAnnotationId) {
-      setIsDraggingVertex(false);
-      setDraggedVertexIndex(null);
-      setCanvasCursor('move');
-
-      // Save updated polygon/polyline to backend
-      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && (updatedAnn.geometry.type === 'polygon' || updatedAnn.geometry.type === 'polyline') && project && currentImage && image) {
-        try {
-          const updateData: AnnotationUpdateRequest = {
-            geometry: {
-              ...updatedAnn.geometry,
-              image_width: image.width,
-              image_height: image.height,
-            },
-          };
-          await updateAnnotation(updatedAnn.id, updateData);
-
-          // Update image status to in-progress and unconfirm
-          const updatedCurrentImage = {
-            ...currentImage,
-            is_confirmed: false,
-            status: 'in-progress',
-          };
-
-          useAnnotationStore.setState((state) => ({
-            currentImage: state.currentImage?.id === currentImage.id
-              ? updatedCurrentImage
-              : state.currentImage,
-            images: state.images.map(img =>
-              img.id === currentImage.id
-                ? updatedCurrentImage
-                : img
-            ),
-          }));
-        } catch (error) {
-          console.error('Failed to save vertex change:', error);
-          toast.error('Failed to save changes');
-        }
-      }
-      return;
-    }
-
-    // Stop polygon/polyline dragging and save to backend
-    if (isDraggingPolygon && selectedAnnotationId) {
-      setIsDraggingPolygon(false);
-      setPolygonDragStart(null);
-      setCanvasCursor('move');
-
-      // Save updated polygon/polyline to backend
-      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && (updatedAnn.geometry.type === 'polygon' || updatedAnn.geometry.type === 'polyline') && project && currentImage && image) {
-        try {
-          const updateData: AnnotationUpdateRequest = {
-            geometry: {
-              ...updatedAnn.geometry,
-              image_width: image.width,
-              image_height: image.height,
-            },
-          };
-          await updateAnnotation(updatedAnn.id, updateData);
-
-          // Update image status to in-progress and unconfirm
-          const updatedCurrentImage = {
-            ...currentImage,
-            is_confirmed: false,
-            status: 'in-progress',
-          };
-
-          useAnnotationStore.setState((state) => ({
-            currentImage: state.currentImage?.id === currentImage.id
-              ? updatedCurrentImage
-              : state.currentImage,
-            images: state.images.map(img =>
-              img.id === currentImage.id
-                ? updatedCurrentImage
-                : img
-            ),
-          }));
-        } catch (error) {
-          console.error('Failed to save polygon/polyline move:', error);
-          toast.error('Failed to save changes');
-        }
-      }
-      return;
-    }
-
-    // Stop circle dragging and save to backend
-    if (isDraggingCircle && selectedAnnotationId) {
-      setIsDraggingCircle(false);
-      setCircleDragStart(null);
-      setCanvasCursor('move');
-
-      // Save updated circle to backend
-      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'circle' && project && currentImage && image) {
-        try {
-          const updateData: AnnotationUpdateRequest = {
-            geometry: {
-              ...updatedAnn.geometry,
-              image_width: image.width,
-              image_height: image.height,
-            },
-          };
-          await updateAnnotation(updatedAnn.id, updateData);
-
-          // Update image status to in-progress and unconfirm
-          const updatedCurrentImage = {
-            ...currentImage,
-            is_confirmed: false,
-            status: 'in-progress',
-          };
-
-          useAnnotationStore.setState((state) => ({
-            currentImage: state.currentImage?.id === currentImage.id
-              ? updatedCurrentImage
-              : state.currentImage,
-            images: state.images.map(img =>
-              img.id === currentImage.id
-                ? updatedCurrentImage
-                : img
-            ),
-          }));
-        } catch (error) {
-          console.error('Failed to save circle move:', error);
-          toast.error('Failed to save changes');
-        }
-      }
-      return;
-    }
-
-    // Stop circle resizing and save to backend
-    if (isResizingCircle && selectedAnnotationId) {
-      setIsResizingCircle(false);
-      setCircleResizeStart(null);
-      // Keep selectedCircleHandle for keyboard control
-      setCanvasCursor('move');
-
-      // Save updated circle to backend
-      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'circle' && project && currentImage && image) {
-        try {
-          const updateData: AnnotationUpdateRequest = {
-            geometry: {
-              ...updatedAnn.geometry,
-              image_width: image.width,
-              image_height: image.height,
-            },
-          };
-          await updateAnnotation(updatedAnn.id, updateData);
-
-          // Update image status to in-progress and unconfirm
-          const updatedCurrentImage = {
-            ...currentImage,
-            is_confirmed: false,
-            status: 'in-progress',
-          };
-
-          useAnnotationStore.setState((state) => ({
-            currentImage: state.currentImage?.id === currentImage.id
-              ? updatedCurrentImage
-              : state.currentImage,
-            images: state.images.map(img =>
-              img.id === currentImage.id
-                ? updatedCurrentImage
-                : img
-            ),
-          }));
-        } catch (error) {
-          console.error('Failed to save circle resize:', error);
-          toast.error('Failed to save changes');
-        }
-      }
-      return;
-    }
-
-    // Stop resizing and save to backend
-    if (isResizing && selectedAnnotationId) {
-      setIsResizing(false);
-      setResizeHandle(null);
-      setResizeStart(null);
-      // Reset cursor to move (still inside bbox)
-      setCanvasCursor('move');
-
-      // Save updated bbox to backend (with clipping)
-      const updatedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (updatedAnn && updatedAnn.geometry.type === 'bbox' && project && currentImage) {
-        try {
-          // Get bbox values
-          const bbox = updatedAnn.geometry.bbox as number[];
-          let [bx, by, bw, bh] = bbox;
-
-          // Clip to image bounds
-          const imgWidth = image?.width || currentImage.width || 0;
-          const imgHeight = image?.height || currentImage.height || 0;
-          let wasClipped = false;
-
-          // Clip left edge
-          if (bx < 0) {
-            bw += bx;
-            bx = 0;
-            wasClipped = true;
-          }
-          // Clip top edge
-          if (by < 0) {
-            bh += by;
-            by = 0;
-            wasClipped = true;
-          }
-          // Clip right edge
-          if (bx + bw > imgWidth) {
-            bw = imgWidth - bx;
-            wasClipped = true;
-          }
-          // Clip bottom edge
-          if (by + bh > imgHeight) {
-            bh = imgHeight - by;
-            wasClipped = true;
-          }
-
-          // Ensure positive dimensions
-          bw = Math.max(0, bw);
-          bh = Math.max(0, bh);
-
-          // Round to 2 decimal places
-          bx = Math.round(bx * 100) / 100;
-          by = Math.round(by * 100) / 100;
-          bw = Math.round(bw * 100) / 100;
-          bh = Math.round(bh * 100) / 100;
-
-          // Show warning if clipped
-          if (wasClipped) {
-            toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
-          }
-
-          // Update geometry with clipped values
-          const clippedGeometry = {
-            type: 'bbox',
-            bbox: [bx, by, bw, bh],
-            image_width: imgWidth,
-            image_height: imgHeight,
-          };
-
-          // Update local store with clipped geometry
-          useAnnotationStore.setState((state) => ({
-            annotations: state.annotations.map(ann =>
-              ann.id === selectedAnnotationId
-                ? { ...ann, geometry: clippedGeometry }
-                : ann
-            )
-          }));
-
-          const updateData: AnnotationUpdateRequest = {
-            geometry: clippedGeometry,
-          };
-          await updateAnnotation(selectedAnnotationId, updateData);
-
-          // Update image status to in_progress and unconfirm
-          // Update both images array and currentImage for immediate UI update
-          const updatedCurrentImage = {
-            ...currentImage,
-            is_confirmed: false,
-            status: 'in-progress',
-          };
-
-          useAnnotationStore.setState((state) => ({
-            currentImage: state.currentImage?.id === currentImage.id
-              ? updatedCurrentImage
-              : state.currentImage,
-            images: state.images.map(img =>
-              img.id === currentImage.id
-                ? updatedCurrentImage
-                : img
-            )
-          }));
-        } catch (err) {
-          console.error('Failed to update annotation:', err);
-          // TODO: Show error toast
-        }
-      }
-      return;
-    }
-
-    // Stop panning
-    if (isPanning) {
-      setIsPanning(false);
-      setPanStart(null);
-      return;
-    }
-
-    // Finish drawing
-    if (isDrawing && drawingStart && image) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const currentPos = canvasState.cursor;
-
-      // Calculate bbox in canvas coordinates
-      const x1 = Math.min(drawingStart.x, currentPos.x);
-      const y1 = Math.min(drawingStart.y, currentPos.y);
-      const w = Math.abs(currentPos.x - drawingStart.x);
-      const h = Math.abs(currentPos.y - drawingStart.y);
-
-      // Only create annotation if bbox has minimum size
-      if (w > 5 && h > 5) {
-        // Convert canvas coordinates to image coordinates
-        const { zoom, pan } = canvasState;
-        const scaledWidth = image.width * zoom;
-        const scaledHeight = image.height * zoom;
-        const imgX = (rect.width - scaledWidth) / 2 + pan.x;
-        const imgY = (rect.height - scaledHeight) / 2 + pan.y;
-
-        // Calculate bbox in image coordinates
-        const bboxX = (x1 - imgX) / zoom;
-        const bboxY = (y1 - imgY) / zoom;
-        const bboxW = w / zoom;
-        const bboxH = h / zoom;
-
-        // Store pending bbox and show class selector
-        setPendingBbox({ x: bboxX, y: bboxY, w: bboxW, h: bboxH });
-        setShowClassSelector(true);
-      }
-
-      finishDrawing();
-    }
-  };
 
   // Handle class selection (supports batch operation for classification)
   const handleClassSelect = async (classId: string, className: string) => {
@@ -2084,11 +908,11 @@ export default function Canvas() {
 
         setBatchProgress(null);
         clearImageSelection();
-        toast.success(`${selectedImageIds.length}개 이미지에 '${className}' 클래스를 할당했습니다.`, 3000);
+        toast.success(`${selectedImageIds.length}媛??대?吏??'${className}' ?대옒?ㅻ? ?좊떦?덉뒿?덈떎.`, 3000);
       } catch (err) {
         console.error('Failed to batch assign class:', err);
         setBatchProgress(null);
-        toast.error('클래스 할당에 실패했습니다.');
+        toast.error('?대옒???좊떦???ㅽ뙣?덉뒿?덈떎.');
       }
       return;
     }
@@ -2212,7 +1036,7 @@ export default function Canvas() {
 
         // Show warning if clipped
         if (wasClipped) {
-          toast.warning('BBox가 이미지 영역을 벗어나 자동으로 조정되었습니다.', 4000);
+          toast.warning('BBox媛 ?대?吏 ?곸뿭??踰쀬뼱???먮룞?쇰줈 議곗젙?섏뿀?듬땲??', 4000);
         }
 
         geometry = {
@@ -2298,7 +1122,7 @@ export default function Canvas() {
       setPendingBbox(null);
     } catch (err) {
       console.error('Failed to save annotation:', err);
-      toast.error('어노테이션 저장에 실패했습니다.');
+      toast.error('?대끂?뚯씠????μ뿉 ?ㅽ뙣?덉뒿?덈떎.');
     } finally {
       setIsSaving(false);
     }
@@ -2398,26 +1222,26 @@ export default function Canvas() {
 
         setBatchProgress(null);
         // Keep multi-selection after batch operation
-        toast.success(`${targetImageIds.length}개 이미지를 No Object로 처리했습니다.`, 3000);
+        toast.success(`${targetImageIds.length}媛??대?吏瑜?No Object濡?泥섎━?덉뒿?덈떎.`, 3000);
       } catch (err) {
         console.error('Failed to create no_object annotation:', err);
         setBatchProgress(null);
-        toast.error('No Object 처리에 실패했습니다.');
+        toast.error('No Object 泥섎━???ㅽ뙣?덉뒿?덈떎.');
       }
     };
 
     // Show confirm dialog
     const message = isBatch
-      ? `선택한 ${targetImageIds.length}개 이미지를 No Object로 처리합니다. 기존 레이블은 삭제됩니다.`
+      ? `?좏깮??${targetImageIds.length}媛??대?吏瑜?No Object濡?泥섎━?⑸땲?? 湲곗〈 ?덉씠釉붿? ??젣?⑸땲??`
       : annotations.length > 0
-        ? `기존 ${annotations.length}개의 레이블이 삭제됩니다. 계속하시겠습니까?`
-        : '이 이미지를 No Object로 처리하시겠습니까?';
+        ? `湲곗〈 ${annotations.length}媛쒖쓽 ?덉씠釉붿씠 ??젣?⑸땲?? 怨꾩냽?섏떆寃좎뒿?덇퉴?`
+        : '???대?吏瑜?No Object濡?泥섎━?섏떆寃좎뒿?덇퉴?';
 
     confirm({
-      title: 'No Object 설정',
+      title: 'No Object ?ㅼ젙',
       message,
-      confirmText: '확인',
-      cancelText: '취소',
+      confirmText: '?뺤씤',
+      cancelText: '痍⑥냼',
       onConfirm: processNoObject,
     });
   }, [currentImage, project, addAnnotation, annotations, deleteAnnotation, selectedImageIds]);
@@ -2489,24 +1313,24 @@ export default function Canvas() {
 
         setBatchProgress(null);
         // Keep multi-selection after batch operation
-        toast.success(`${targetImageIds.length}개 이미지에서 ${totalDeleted}개 레이블을 삭제했습니다.`, 3000);
+        toast.success(`${targetImageIds.length}媛??대?吏?먯꽌 ${totalDeleted}媛??덉씠釉붿쓣 ??젣?덉뒿?덈떎.`, 3000);
       } catch (err) {
         console.error('Failed to delete annotations:', err);
         setBatchProgress(null);
-        toast.error('삭제에 실패했습니다.');
+        toast.error('??젣???ㅽ뙣?덉뒿?덈떎.');
       }
     };
 
     // Show confirm dialog
     const message = isBatch
-      ? `선택한 ${targetImageIds.length}개 이미지의 모든 레이블을 삭제합니다.`
-      : `현재 이미지의 ${annotations.length}개 레이블을 모두 삭제하시겠습니까?`;
+      ? `?좏깮??${targetImageIds.length}媛??대?吏??紐⑤뱺 ?덉씠釉붿쓣 ??젣?⑸땲??`
+      : `?꾩옱 ?대?吏??${annotations.length}媛??덉씠釉붿쓣 紐⑤몢 ??젣?섏떆寃좎뒿?덇퉴?`;
 
     confirm({
-      title: '모든 레이블 삭제',
+      title: '紐⑤뱺 ?덉씠釉???젣',
       message,
-      confirmText: '삭제',
-      cancelText: '취소',
+      confirmText: '??젣',
+      cancelText: '痍⑥냼',
       onConfirm: processDelete,
     });
   }, [project, currentImage, annotations, deleteAnnotation, selectedImageIds]);
@@ -2562,7 +1386,7 @@ export default function Canvas() {
 
           setBatchProgress(null);
           clearImageSelection();
-          toast.success(`${targetImageIds.length}개 이미지를 확정했습니다.`, 3000);
+          toast.success(`${targetImageIds.length}媛??대?吏瑜??뺤젙?덉뒿?덈떎.`, 3000);
         } else {
         // Single image confirm (existing logic)
         if (!currentImage) return;
@@ -2608,7 +1432,7 @@ export default function Canvas() {
       } catch (err) {
         console.error('Failed to confirm image:', err);
         setBatchProgress(null);
-        toast.error('확정에 실패했습니다.');
+        toast.error('?뺤젙???ㅽ뙣?덉뒿?덈떎.');
       } finally {
         setConfirmingImage(false);
       }
@@ -2617,10 +1441,10 @@ export default function Canvas() {
     // Show confirm dialog for batch operations
     if (isBatch) {
       confirm({
-        title: '이미지 확정',
-        message: `선택한 ${targetImageIds.length}개 이미지를 확정하시겠습니까?`,
-        confirmText: '확정',
-        cancelText: '취소',
+        title: '?대?吏 ?뺤젙',
+        message: `?좏깮??${targetImageIds.length}媛??대?吏瑜??뺤젙?섏떆寃좎뒿?덇퉴?`,
+        confirmText: '?뺤젙',
+        cancelText: '痍⑥냼',
         onConfirm: processConfirm,
       });
     } else {
@@ -3113,7 +1937,7 @@ export default function Canvas() {
           // Must keep minimum vertices
           if (points.length <= minVertices) {
             const typeName = geometryType === 'polygon' ? 'Polygon' : 'Polyline';
-            toast.warning(`${typeName}은 최소 ${minVertices}개의 vertex가 필요합니다.`, 3000);
+            toast.warning(`${typeName}? 理쒖냼 ${minVertices}媛쒖쓽 vertex媛 ?꾩슂?⑸땲??`, 3000);
             return;
           }
 
@@ -3164,7 +1988,7 @@ export default function Canvas() {
             })
             .catch((error) => {
               console.error('Failed to delete vertex:', error);
-              toast.error('Vertex 삭제에 실패했습니다.');
+              toast.error('Vertex ??젣???ㅽ뙣?덉뒿?덈떎.');
             });
 
           // Clear vertex selection
@@ -3418,7 +2242,7 @@ export default function Canvas() {
           className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-900 dark:text-white"
           title="Zoom Out (Ctrl+-)"
         >
-          −
+          ??
         </button>
         <span className="text-xs text-gray-600 dark:text-gray-400 w-12 text-center">
           {Math.round(canvasState.zoom * 100)}%
@@ -3449,7 +2273,7 @@ export default function Canvas() {
           onClick={goToPrevImage}
           disabled={currentIndex === 0}
           className="text-gray-900 dark:text-white disabled:text-gray-400 dark:disabled:text-gray-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:cursor-not-allowed"
-          title="Previous Image (←)"
+          title="Previous Image (??"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -3462,7 +2286,7 @@ export default function Canvas() {
           onClick={goToNextImage}
           disabled={currentIndex >= images.length - 1}
           className="text-gray-900 dark:text-white disabled:text-gray-400 dark:disabled:text-gray-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:cursor-not-allowed"
-          title="Next Image (→)"
+          title="Next Image (??"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -3601,7 +2425,7 @@ export default function Canvas() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                처리 중... {batchProgress.current} / {batchProgress.total}
+                泥섎━ 以?.. {batchProgress.current} / {batchProgress.total}
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">

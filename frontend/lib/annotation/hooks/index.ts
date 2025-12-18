@@ -26,3 +26,6 @@ export * from './useAnnotationSync';
 
 // Magnifier state
 export * from './useMagnifier';
+
+// Mouse event handlers
+export * from './useMouseHandlers';
