@@ -3434,161 +3434,322 @@ Canvas.tsx (4,100 lines) → Modular Architecture
   - Test coverage: 0% → >70%
   - Component re-render: -50%
 
-### 18.2: Extract Custom Hooks (12-16h) ⏸️
+### 18.2: Extract Utility Functions (8-10h) ⏸️
 
 **Status**: ⏸️ Pending
-**Goal**: Extract state and logic into custom hooks
+**Goal**: Extract pure functions with no state dependencies (safest first step)
 
-#### 18.2.1: State Management Hooks (4-5h)
-- [ ] Create `hooks/useCanvasState.ts`
-  - Extract all useState declarations
-  - Group related states (tool state, UI state, annotation state)
-  - Define clear state interfaces
-- [ ] Create `hooks/useCanvasTransform.ts`
-  - Zoom, pan, offset state
-  - Coordinate transformation logic
-- [ ] Create `hooks/useToolState.ts`
-  - Current tool selection
-  - Tool-specific temporary state (vertices, circles, etc.)
+**Strategy**: Start with utilities because they are pure functions, easiest to test, and lowest risk.
 
-#### 18.2.2: Event Handling Hooks (4-5h)
-- [ ] Create `hooks/useCanvasEvents.ts`
-  - Mouse events (down, move, up, wheel)
-  - Keyboard events
-  - Touch events (if applicable)
-- [ ] Create `hooks/useCanvasGestures.ts`
-  - Pan gesture detection
-  - Zoom gesture detection
-  - Tool-specific gestures
+#### 18.2.1: Create Utility Modules (2h)
+- [ ] Create `utils/coordinateTransform.ts` (~100 lines)
+  - `screenToCanvas(x, y, canvasRect)` - Screen → canvas coordinates
+  - `canvasToImage(x, y, zoom, pan)` - Canvas → image coordinates
+  - `imageToCanvas(x, y, zoom, pan)` - Image → canvas coordinates
+  - `canvasToScreen(x, y, canvasRect)` - Canvas → screen coordinates
+  - `getTransformMatrix(zoom, pan)` - Compute transformation matrix
+  - `applyTransform(points, matrix)` - Apply transformation to points
 
-#### 18.2.3: Business Logic Hooks (4-6h)
-- [ ] Create `hooks/useImageManagement.ts`
-  - Image loading, error handling
-  - Lock acquisition and heartbeat
-  - Image navigation
-- [ ] Create `hooks/useAnnotationSync.ts`
-  - Save/update/delete operations
-  - Optimistic updates
-  - Conflict detection and resolution
+- [ ] Create `utils/geometryHelpers.ts` (~150 lines)
+  - `pointToLineDistance(point, lineStart, lineEnd)` - Distance from point to line
+  - `pointInPolygon(point, polygon)` - Point-in-polygon test (ray casting)
+  - `pointInBbox(point, bbox)` - Point-in-bounding-box test
+  - `pointNearCircle(point, circle, tolerance)` - Point near circle perimeter
+  - `bboxIntersection(bbox1, bbox2)` - Bbox intersection test
+  - `polygonIntersection(poly1, poly2)` - Polygon intersection (SAT algorithm)
+  - `calculatePolygonArea(polygon)` - Polygon area calculation
+  - `calculateBboxArea(bbox)` - Bbox area calculation
+  - `normalizeAngle(angle)` - Normalize angle to [0, 2π]
+  - `calculateCircleFrom3Points(p1, p2, p3)` - 3-point circle calculation
+
+- [ ] Create `utils/renderHelpers.ts` (~100 lines)
+  - `drawGrid(ctx, width, height, zoom, pan, gridSize)` - Draw canvas grid
+  - `drawCrosshair(ctx, x, y, size, color)` - Draw crosshair cursor
+  - `drawNoObjectBadge(ctx, x, y, width, height)` - Draw "No Object" badge
+  - `drawVertexHandle(ctx, x, y, size, selected)` - Draw polygon/polyline vertex
+  - `drawBboxHandle(ctx, x, y, size, handleType)` - Draw bbox resize handle
+  - `drawCircleHandle(ctx, x, y, size, handleType)` - Draw circle handle
+  - `setupCanvasContext(ctx, zoom)` - Set default canvas context properties
+
+- [ ] Create `utils/annotationHelpers.ts` (~50 lines)
+  - `snapshotToAnnotation(snapshot)` - Convert snapshot format to annotation
+  - `annotationToSnapshot(annotation)` - Convert annotation to snapshot format
+  - `isAnnotationVisible(annotation, filters)` - Check if annotation should be displayed
+  - `sortAnnotationsByZIndex(annotations)` - Sort annotations for rendering order
+  - `calculateAnnotationBounds(annotation)` - Get bounding box of any annotation type
+
+#### 18.2.2: Write Unit Tests (3h)
+- [ ] `coordinateTransform.test.ts` - Test all coordinate conversion functions
+- [ ] `geometryHelpers.test.ts` - Test geometry calculations
+- [ ] `renderHelpers.test.ts` - Test canvas drawing functions (with mock canvas)
+- [ ] `annotationHelpers.test.ts` - Test annotation transformations
+- **Target Coverage**: >90% for utility functions
+
+#### 18.2.3: Extract from Canvas.tsx (3h)
+- [ ] Extract functions from Canvas.tsx (~400 lines)
+- [ ] Import utilities in Canvas.tsx
+- [ ] Replace inline functions with imported utilities
+- [ ] Run integration tests
+- [ ] Manual smoke test (all tools work)
+
+#### 18.2.4: Verify Integration (2h)
+- [ ] All tools work correctly (manual testing)
+- [ ] Canvas rendering unchanged (visual regression)
+- [ ] No performance regression
+- [ ] Code review
+
+**Expected Outcome**:
+- Canvas.tsx: 4,100 → ~3,700 lines (-400 lines)
+- 4 new utility modules: ~400 lines
+- Test coverage: 0% → ~10%
 
 **Files Created**:
-- `frontend/components/annotation/hooks/useCanvasState.ts`
-- `frontend/components/annotation/hooks/useCanvasTransform.ts`
-- `frontend/components/annotation/hooks/useToolState.ts`
-- `frontend/components/annotation/hooks/useCanvasEvents.ts`
-- `frontend/components/annotation/hooks/useCanvasGestures.ts`
-- `frontend/components/annotation/hooks/useImageManagement.ts`
-- `frontend/components/annotation/hooks/useAnnotationSync.ts`
+- `frontend/lib/annotation/utils/coordinateTransform.ts`
+- `frontend/lib/annotation/utils/geometryHelpers.ts`
+- `frontend/lib/annotation/utils/renderHelpers.ts`
+- `frontend/lib/annotation/utils/annotationHelpers.ts`
+- `frontend/lib/annotation/utils/__tests__/*`
 
-### 18.3: Extract Rendering Logic (10-14h) ⏸️
+---
+
+### 18.3: Extract Custom Hooks (12-16h) ⏸️
 
 **Status**: ⏸️ Pending
-**Goal**: Separate rendering concerns into specialized components
+**Dependencies**: Phase 18.2 complete
+**Goal**: Extract state management and side effects into custom hooks
 
-#### 18.3.1: Core Renderer (4-5h)
-- [ ] Create `CanvasRenderer.tsx`
-  - Pure rendering component
-  - Takes annotations, transform, tool state as props
-  - No side effects
-  - Optimized with React.memo
+#### 18.3.1: useCanvasState (2h)
+- [ ] Extract local state management
+  - `showClassSelector`, `canvasCursor`, `cursorPos`
+  - Consolidate tool-specific states into single `toolState` object (replaces 20+ useState)
+- [ ] API: `{ showClassSelector, canvasCursor, cursorPos, toolState, updateToolState, resetToolState }`
+- [ ] Write hook tests
 
-#### 18.3.2: Overlay Components (3-4h)
-- [ ] Create `ToolOverlay.tsx`
-  - Renders tool-specific overlays (bbox handles, vertices, etc.)
-  - Conditional rendering based on active tool
-- [ ] Create `MagnifierOverlay.tsx`
-  - Magnifier rendering logic
-  - Position calculation
-  - Canvas cloning
-- [ ] Create `LockOverlay.tsx`
-  - Lock warning UI
-  - Lock status display
+#### 18.3.2: useCanvasTransform (2h)
+- [ ] Extract pan, zoom, coordinate transformation
+- [ ] Integrate with utils from Phase 18.2
+- [ ] API: `{ zoom, pan, zoomIn, zoomOut, resetView, fitToScreen, canvasToImage, imageToCanvas }`
+- [ ] Write hook tests
 
-#### 18.3.3: Diff Mode Components (3-5h)
-- [ ] Create `DiffRenderer.tsx`
-  - Version comparison rendering
-  - Overlay mode, side-by-side mode
-  - Color coding for changes
+#### 18.3.3: useToolState (2h)
+- [ ] Extract tool-specific state management
+- [ ] Tool lifecycle (enter, exit, reset)
+- [ ] API: `{ currentTool, toolConfig, toolState, updateToolState, resetTool, switchTool }`
+- [ ] Write hook tests
+
+#### 18.3.4: useCanvasEvents (3h)
+- [ ] Extract mouse and keyboard event handlers (still tool-based dispatch for now)
+- [ ] Uses extracted utilities for coordinate conversion
+- [ ] API: `{ handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleKeyDown, handleKeyUp }`
+- [ ] **Note**: Still large handlers, will be refactored in Phase 18.5
+- [ ] Write hook tests
+
+#### 18.3.5: useCanvasGestures (1h)
+- [ ] Extract high-level gesture handling (pan, pinch-zoom)
+- [ ] API: `{ isPanning, startPan, updatePan, endPan, handlePinchZoom }`
+- [ ] Write hook tests
+
+#### 18.3.6: useImageManagement (2h)
+- [ ] Extract image loading, caching, and locking (the 126-line useEffect)
+- [ ] API: `{ image, imageLoaded, isImageLocked, lockedByUser, showLockedDialog, lockImage, releaseImage }`
+- [ ] Write hook tests
+
+#### 18.3.7: useAnnotationSync (2h)
+- [ ] Extract annotation version conflict detection and resolution
+- [ ] Extract `updateAnnotationWithVersionCheck` function (133 lines)
+- [ ] API: `{ isSaving, conflictDialogOpen, conflictInfo, updateAnnotationWithVersionCheck, resolveConflict }`
+- [ ] Write hook tests
+
+**Expected Outcome**:
+- Canvas.tsx: ~3,700 → ~2,500 lines (-1,200 lines)
+- 7 new hooks: ~800 lines
+- Test coverage: ~10% → ~40%
 
 **Files Created**:
+- `frontend/lib/annotation/hooks/useCanvasState.ts`
+- `frontend/lib/annotation/hooks/useCanvasTransform.ts`
+- `frontend/lib/annotation/hooks/useToolState.ts`
+- `frontend/lib/annotation/hooks/useCanvasEvents.ts`
+- `frontend/lib/annotation/hooks/useCanvasGestures.ts`
+- `frontend/lib/annotation/hooks/useImageManagement.ts`
+- `frontend/lib/annotation/hooks/useAnnotationSync.ts`
+- `frontend/lib/annotation/hooks/__tests__/*`
+
+---
+
+### 18.4: Extract Renderer Components (8-10h) ⏸️
+
+**Status**: ⏸️ Pending
+**Dependencies**: Phase 18.3 complete
+**Goal**: Split rendering logic into specialized components
+
+#### 18.4.1: CanvasRenderer (3h)
+- [ ] Extract core canvas rendering (grid, image, annotations)
+- [ ] Extract from Canvas.tsx: rendering useEffect (166 lines), `drawAnnotations` (126 lines), `drawGrid` (32 lines)
+- [ ] Implement with React.memo and custom comparison
+- [ ] Props: `{ canvasRef, imageRef, width, height, zoom, pan, annotations, selectedAnnotationId, showGrid }`
+- [ ] Write component tests
+
+#### 18.4.2: ToolOverlay (2h)
+- [ ] Extract tool-specific drawing previews (separate canvas layer)
+- [ ] Extract: `drawBboxPreview`, `drawPolygonPreview`, `drawPolylinePreview`, `drawCirclePreview`, `drawCircle3pPreview` (154 lines total)
+- [ ] Props: `{ canvasRef, tool, toolState, zoom, pan }`
+- [ ] Write component tests
+
+#### 18.4.3: MagnifierOverlay (1h)
+- [ ] Refactor existing Magnifier component
+- [ ] Move from inline JSX to separate file
+- [ ] Add proper TypeScript types
+- [ ] Write component tests
+
+#### 18.4.4: LockOverlay (1h)
+- [ ] Extract lock warning overlay from Canvas.tsx JSX
+- [ ] Create dedicated component
+- [ ] Props: `{ lockedByUser, onClose }`
+- [ ] Write component tests
+
+#### 18.4.5: DiffRenderer (2h)
+- [ ] Refactor existing DiffRenderer (already exists, integrate with new architecture)
+- [ ] Use extracted utilities
+- [ ] Simplify prop passing
+- [ ] Write component tests
+
+#### 18.4.6: Update Canvas.tsx JSX (1h)
+- [ ] Replace 547 lines of JSX with component calls
+- [ ] Canvas.tsx JSX: 547 → ~100 lines
+
+**Expected Outcome**:
+- Canvas.tsx: ~2,500 → ~1,200 lines (-1,300 lines)
+- 5 renderer components: ~600 lines
+- Test coverage: ~40% → ~55%
+
+**Files Created/Modified**:
 - `frontend/components/annotation/renderers/CanvasRenderer.tsx`
 - `frontend/components/annotation/renderers/ToolOverlay.tsx`
 - `frontend/components/annotation/renderers/MagnifierOverlay.tsx`
 - `frontend/components/annotation/renderers/LockOverlay.tsx`
 - `frontend/components/annotation/renderers/DiffRenderer.tsx`
+- `frontend/components/annotation/renderers/__tests__/*`
 
-### 18.4: Extract Utilities (6-8h) ⏸️
+---
+
+### 18.5: Refactor Tool System (10-12h) ⏸️
 
 **Status**: ⏸️ Pending
-**Goal**: Create pure utility functions for common operations
+**Dependencies**: Phase 18.4 complete
+**Goal**: Implement Strategy Pattern for tool logic (highest risk phase)
 
-#### Tasks
-- [ ] Create `utils/coordinateTransform.ts`
-  - `canvasToImage()`, `imageToCanvas()`
-  - `getCanvasRect()`, `getImageRect()`
-  - Transform matrix operations
-- [ ] Create `utils/geometryHelpers.ts`
-  - `getBboxHandles()`, `isInsideBbox()`
-  - `getPolygonCenter()`, `getCircleRadius()`
-  - Collision detection, distance calculations
-- [ ] Create `utils/renderHelpers.ts`
-  - `drawBbox()`, `drawPolygon()`, `drawCircle()`
-  - `drawHandles()`, `drawVertices()`
-  - Stroke/fill styling helpers
-- [ ] Create `utils/annotationHelpers.ts`
-  - `snapshotToAnnotation()`, `annotationToSnapshot()`
-  - Annotation validation, normalization
+**Note**: This is the **most critical** phase. Requires careful planning.
+
+#### 18.5.1: Design Tool Interface (2h)
+- [ ] Create `BaseTool` abstract class
+- [ ] Define `ToolContext` interface (canvas state, methods, callbacks)
+- [ ] Design tool lifecycle (onActivate, onDeactivate)
+- [ ] Design event handler interface (onMouseDown, onMouseMove, onMouseUp, onKeyDown)
+- [ ] Write interface documentation
+
+#### 18.5.2: Implement Tool Classes (6h)
+- [ ] Create `SelectTool.ts` - Selection, vertex drag, bbox resize (~150 lines)
+- [ ] Create `BboxTool.ts` - Bbox drawing (~60 lines)
+- [ ] Create `PolygonTool.ts` - Polygon drawing (~80 lines)
+- [ ] Create `PolylineTool.ts` - Polyline drawing (~70 lines)
+- [ ] Create `CircleTool.ts` - Circle drawing (center + radius) (~60 lines)
+- [ ] Create `Circle3pTool.ts` - Circle drawing (3 points) (~70 lines)
+- [ ] Create `PanTool.ts` - Pan gesture (~40 lines)
+- [ ] Create `ToolRegistry.ts` - Tool factory + registry (~50 lines)
+
+#### 18.5.3: Update Canvas Event Handlers (2h)
+- [ ] Replace 1,253 lines of tool-specific if-else chains
+- [ ] Implement tool delegation pattern: `toolInstance.onMouseDown(e)`
+- [ ] Add tool instance caching (create once, reuse)
+- [ ] Canvas event handlers: 1,253 → ~50 lines
+
+#### 18.5.4: Testing (2h)
+- [ ] Unit test each tool class
+- [ ] Integration test tool switching
+- [ ] Manual testing: All tools work
+- [ ] Performance test: No regression
+
+**Expected Outcome**:
+- Canvas.tsx: ~1,200 → ~500 lines (-700 lines)
+- Tool classes: ~600 lines
+- Test coverage: ~55% → ~65%
 
 **Files Created**:
-- `frontend/components/annotation/utils/coordinateTransform.ts`
-- `frontend/components/annotation/utils/geometryHelpers.ts`
-- `frontend/components/annotation/utils/renderHelpers.ts`
-- `frontend/components/annotation/utils/annotationHelpers.ts`
+- `frontend/lib/annotation/tools/BaseTool.ts`
+- `frontend/lib/annotation/tools/SelectTool.ts`
+- `frontend/lib/annotation/tools/BboxTool.ts`
+- `frontend/lib/annotation/tools/PolygonTool.ts`
+- `frontend/lib/annotation/tools/PolylineTool.ts`
+- `frontend/lib/annotation/tools/CircleTool.ts`
+- `frontend/lib/annotation/tools/Circle3pTool.ts`
+- `frontend/lib/annotation/tools/PanTool.ts`
+- `frontend/lib/annotation/tools/ToolRegistry.ts`
+- `frontend/lib/annotation/tools/__tests__/*`
 
-### 18.5: Integration & Testing (8-12h) ⏸️
+---
 
-**Status**: ⏸️ Pending
-**Goal**: Integrate refactored modules and ensure functionality
-
-#### 18.5.1: Incremental Integration (4-6h)
-- [ ] Update Canvas.tsx to use new hooks
-- [ ] Replace inline rendering with components
-- [ ] Migrate utilities to new helpers
-- [ ] Maintain backward compatibility during migration
-- [ ] Remove old code after validation
-
-#### 18.5.2: Testing (4-6h)
-- [ ] Unit tests for utility functions
-- [ ] Hook testing with @testing-library/react-hooks
-- [ ] Component testing for renderers
-- [ ] Integration testing for full Canvas
-- [ ] Manual testing for all tools and modes
-
-**Testing Coverage**:
-- ✅ Coordinate transformations (zoom, pan)
-- ✅ Geometry calculations (bbox, polygon, circle)
-- ✅ Tool state transitions
-- ✅ Lock acquisition and release
-- ✅ Annotation save/update/delete
-- ✅ Diff mode rendering
-
-### 18.6: Documentation & Cleanup (4-6h) ⏸️
+### 18.6: Add Comprehensive Tests (6-8h) ⏸️
 
 **Status**: ⏸️ Pending
-**Goal**: Document new architecture and remove dead code
+**Dependencies**: Phase 18.5 complete
+**Goal**: Achieve >70% test coverage
 
-#### Tasks
-- [ ] Add JSDoc to all hooks, components, utilities
-- [ ] Create architecture diagram
-- [ ] Write migration guide for future developers
-- [ ] Update component README
-- [ ] Remove deprecated code
-- [ ] Performance benchmarking (before/after)
+#### Test Coverage Targets
+- [ ] Utility functions: >90% coverage (2h)
+- [ ] Custom hooks: >80% coverage (2h)
+- [ ] Renderer components: >70% coverage (2h)
+- [ ] Tool classes: >80% coverage (2h)
 
-**Documentation**:
-- `docs/architecture/canvas-architecture.md` - New architecture overview
-- `docs/architecture/canvas-hooks-guide.md` - Hook usage guide
-- `docs/architecture/canvas-testing-guide.md` - Testing guidelines
+#### Test Strategy
+- **Unit Tests**: All utility functions, hooks, tools
+- **Integration Tests**: Canvas with all hooks, tool switching, annotation flow
+- **Visual Regression Tests** (Optional): Canvas snapshot tests
+
+**Expected Outcome**:
+- Test coverage: ~65% → >70%
+- 125+ tests total
+- All critical paths covered
+
+**Testing Tools**:
+- Vitest or Jest
+- @testing-library/react, @testing-library/react-hooks
+- canvas-mock or jest-canvas-mock
+- Coverage: c8 or jest --coverage
+
+---
+
+### 18.7: Performance Optimization (4-6h) ⏸️
+
+**Status**: ⏸️ Pending
+**Dependencies**: Phase 18.6 complete
+**Goal**: Improve rendering performance and reduce re-renders
+
+#### 18.7.1: Memoization (2h)
+- [ ] Wrap all renderer components with `React.memo` + custom comparison
+- [ ] Use `useMemo` for expensive calculations
+- [ ] Use `useCallback` for event handlers passed as props
+
+#### 18.7.2: Canvas Optimization (2h)
+- [ ] Implement dirty rect tracking (only redraw changed regions)
+- [ ] Use offscreen canvas for static content (grid, image)
+- [ ] Debounce/throttle mouse move events
+
+#### 18.7.3: State Update Optimization (1h)
+- [ ] Batch state updates where possible
+- [ ] Reduce unnecessary store subscriptions
+- [ ] Use Zustand selectors efficiently
+
+#### 18.7.4: Performance Monitoring (1h)
+- [ ] Add React DevTools Profiler
+- [ ] Measure render times
+- [ ] Set performance budgets (e.g., <16ms per frame for 60fps)
+- [ ] Compare before/after metrics
+
+**Expected Outcome**:
+- Component re-render frequency: -50%
+- Build time: -20%
+- Smooth 60fps rendering
 
 ### Dependencies
 
