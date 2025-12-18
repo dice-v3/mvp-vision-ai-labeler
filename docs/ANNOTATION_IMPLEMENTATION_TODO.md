@@ -27,6 +27,7 @@
 | **Phase 15: Admin Dashboard & Audit** | **✅ Complete** | **100%** | **2025-11-27** |
 | **Phase 16: Platform Integration** | **🔄 In Progress** | **60%** (16.5: 60% complete, 16.6: planned) | **-** |
 | **Phase 17: SSO Integration** | **🔄 In Progress** | **95%** | **2025-12-10** |
+| **Phase 18: Canvas Architecture Refactoring** | **🔄 In Progress** | **0%** | **2025-12-10** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -46,6 +47,7 @@
 - Phase 11 (Version Diff & Comparison) - Overlay mode complete, side-by-side mode pending
 - **Phase 16.5 (Hybrid JWT Migration)** - Service Account → JWT 전환 진행 중 🔄
 - **Phase 17 (SSO Integration)** - Platform → Labeler 자동 로그인 구현 중 🔄
+- **Phase 18 (Canvas Refactoring)** - 4100라인 Canvas.tsx 모듈화 시작 🆕
 
 ---
 
@@ -3320,6 +3322,285 @@ python tests/integration/test_sso.py
 - **Security Design**: JWT authentication, session management
 
 **Total**: 8-12h over ~1-2 days
+
+---
+
+## Phase 18: Canvas Architecture Refactoring 🆕
+
+**Duration**: 2-3 weeks (40-60h)
+**Status**: 🔄 In Progress
+**Priority**: 🟡 Medium (Technical Debt, Maintainability)
+**Start Date**: 2025-12-10
+
+### Overview
+
+Canvas.tsx가 4,100 라인으로 비대해져 유지보수가 어려운 상태입니다. 이를 모듈화하고 관심사를 분리하여 코드 품질을 개선하고 향후 확장성을 확보합니다.
+
+**Current Issues**:
+- 📏 **4,100 lines**: Single component with excessive complexity
+- 🔄 **40+ useState hooks**: State management scattered throughout
+- 🎨 **Multiple responsibilities**: Rendering, event handling, tool logic, lock management, diff mode
+- 🔧 **Hard to test**: Tightly coupled logic
+- 📚 **Poor maintainability**: Difficult to add new features or fix bugs
+
+**Architecture Goals**:
+```
+Canvas.tsx (4,100 lines) → Modular Architecture
+
+1. Canvas Container (Main Component)
+   ├── hooks/
+   │   ├── useCanvasState.ts       (State management)
+   │   ├── useCanvasEvents.ts      (Mouse/keyboard events)
+   │   ├── useImageManagement.ts   (Image loading/lock)
+   │   └── useAnnotationSync.ts    (Backend sync)
+   │
+   ├── components/
+   │   ├── CanvasRenderer.tsx      (Pure rendering logic)
+   │   ├── ToolOverlay.tsx         (Drawing tools overlay)
+   │   ├── MagnifierOverlay.tsx    (Magnifier display)
+   │   └── LockOverlay.tsx         (Lock warning UI)
+   │
+   └── utils/
+       ├── coordinateTransform.ts  (Canvas ↔ Image coordinates)
+       ├── geometryHelpers.ts      (Bbox, polygon calculations)
+       └── renderHelpers.ts        (Drawing primitives)
+```
+
+### Goals
+
+**Primary**:
+- ✅ Reduce Canvas.tsx to <500 lines (main orchestration only)
+- ✅ Extract custom hooks for state and event handling
+- ✅ Separate rendering logic into components
+- ✅ Improve testability with pure functions
+
+**Secondary**:
+- ✅ Add comprehensive JSDoc documentation
+- ✅ Improve TypeScript type safety
+- ✅ Remove code duplication
+- ✅ Optimize re-rendering performance
+
+### 18.1: Analysis & Planning (4-6h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Analyze current Canvas.tsx structure and create detailed refactoring plan
+
+#### Tasks
+- [ ] Map all Canvas.tsx responsibilities
+  - State management (40+ useState)
+  - Event handlers (mouse, keyboard, wheel)
+  - Rendering logic (annotations, tools, overlays)
+  - Tool-specific logic (bbox, polygon, circle, etc.)
+  - Lock management and conflict detection
+  - Diff mode rendering
+  - Magnifier logic
+  - History/undo management
+- [ ] Identify shared utilities and helpers
+- [ ] Define module boundaries and interfaces
+- [ ] Create dependency graph
+- [ ] Document breaking change risks
+- [ ] Define testing strategy
+
+**Deliverables**:
+- `docs/refactoring/canvas-analysis.md` - Current state analysis
+- `docs/refactoring/canvas-architecture.md` - Target architecture
+- `docs/refactoring/migration-plan.md` - Step-by-step migration plan
+
+**Files to Analyze**:
+- `frontend/components/annotation/Canvas.tsx` (4,100 lines)
+- Related tools: `lib/annotation/tools/*.ts`
+- Related stores: `lib/stores/annotationStore.ts`
+
+### 18.2: Extract Custom Hooks (12-16h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Extract state and logic into custom hooks
+
+#### 18.2.1: State Management Hooks (4-5h)
+- [ ] Create `hooks/useCanvasState.ts`
+  - Extract all useState declarations
+  - Group related states (tool state, UI state, annotation state)
+  - Define clear state interfaces
+- [ ] Create `hooks/useCanvasTransform.ts`
+  - Zoom, pan, offset state
+  - Coordinate transformation logic
+- [ ] Create `hooks/useToolState.ts`
+  - Current tool selection
+  - Tool-specific temporary state (vertices, circles, etc.)
+
+#### 18.2.2: Event Handling Hooks (4-5h)
+- [ ] Create `hooks/useCanvasEvents.ts`
+  - Mouse events (down, move, up, wheel)
+  - Keyboard events
+  - Touch events (if applicable)
+- [ ] Create `hooks/useCanvasGestures.ts`
+  - Pan gesture detection
+  - Zoom gesture detection
+  - Tool-specific gestures
+
+#### 18.2.3: Business Logic Hooks (4-6h)
+- [ ] Create `hooks/useImageManagement.ts`
+  - Image loading, error handling
+  - Lock acquisition and heartbeat
+  - Image navigation
+- [ ] Create `hooks/useAnnotationSync.ts`
+  - Save/update/delete operations
+  - Optimistic updates
+  - Conflict detection and resolution
+
+**Files Created**:
+- `frontend/components/annotation/hooks/useCanvasState.ts`
+- `frontend/components/annotation/hooks/useCanvasTransform.ts`
+- `frontend/components/annotation/hooks/useToolState.ts`
+- `frontend/components/annotation/hooks/useCanvasEvents.ts`
+- `frontend/components/annotation/hooks/useCanvasGestures.ts`
+- `frontend/components/annotation/hooks/useImageManagement.ts`
+- `frontend/components/annotation/hooks/useAnnotationSync.ts`
+
+### 18.3: Extract Rendering Logic (10-14h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Separate rendering concerns into specialized components
+
+#### 18.3.1: Core Renderer (4-5h)
+- [ ] Create `CanvasRenderer.tsx`
+  - Pure rendering component
+  - Takes annotations, transform, tool state as props
+  - No side effects
+  - Optimized with React.memo
+
+#### 18.3.2: Overlay Components (3-4h)
+- [ ] Create `ToolOverlay.tsx`
+  - Renders tool-specific overlays (bbox handles, vertices, etc.)
+  - Conditional rendering based on active tool
+- [ ] Create `MagnifierOverlay.tsx`
+  - Magnifier rendering logic
+  - Position calculation
+  - Canvas cloning
+- [ ] Create `LockOverlay.tsx`
+  - Lock warning UI
+  - Lock status display
+
+#### 18.3.3: Diff Mode Components (3-5h)
+- [ ] Create `DiffRenderer.tsx`
+  - Version comparison rendering
+  - Overlay mode, side-by-side mode
+  - Color coding for changes
+
+**Files Created**:
+- `frontend/components/annotation/renderers/CanvasRenderer.tsx`
+- `frontend/components/annotation/renderers/ToolOverlay.tsx`
+- `frontend/components/annotation/renderers/MagnifierOverlay.tsx`
+- `frontend/components/annotation/renderers/LockOverlay.tsx`
+- `frontend/components/annotation/renderers/DiffRenderer.tsx`
+
+### 18.4: Extract Utilities (6-8h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Create pure utility functions for common operations
+
+#### Tasks
+- [ ] Create `utils/coordinateTransform.ts`
+  - `canvasToImage()`, `imageToCanvas()`
+  - `getCanvasRect()`, `getImageRect()`
+  - Transform matrix operations
+- [ ] Create `utils/geometryHelpers.ts`
+  - `getBboxHandles()`, `isInsideBbox()`
+  - `getPolygonCenter()`, `getCircleRadius()`
+  - Collision detection, distance calculations
+- [ ] Create `utils/renderHelpers.ts`
+  - `drawBbox()`, `drawPolygon()`, `drawCircle()`
+  - `drawHandles()`, `drawVertices()`
+  - Stroke/fill styling helpers
+- [ ] Create `utils/annotationHelpers.ts`
+  - `snapshotToAnnotation()`, `annotationToSnapshot()`
+  - Annotation validation, normalization
+
+**Files Created**:
+- `frontend/components/annotation/utils/coordinateTransform.ts`
+- `frontend/components/annotation/utils/geometryHelpers.ts`
+- `frontend/components/annotation/utils/renderHelpers.ts`
+- `frontend/components/annotation/utils/annotationHelpers.ts`
+
+### 18.5: Integration & Testing (8-12h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Integrate refactored modules and ensure functionality
+
+#### 18.5.1: Incremental Integration (4-6h)
+- [ ] Update Canvas.tsx to use new hooks
+- [ ] Replace inline rendering with components
+- [ ] Migrate utilities to new helpers
+- [ ] Maintain backward compatibility during migration
+- [ ] Remove old code after validation
+
+#### 18.5.2: Testing (4-6h)
+- [ ] Unit tests for utility functions
+- [ ] Hook testing with @testing-library/react-hooks
+- [ ] Component testing for renderers
+- [ ] Integration testing for full Canvas
+- [ ] Manual testing for all tools and modes
+
+**Testing Coverage**:
+- ✅ Coordinate transformations (zoom, pan)
+- ✅ Geometry calculations (bbox, polygon, circle)
+- ✅ Tool state transitions
+- ✅ Lock acquisition and release
+- ✅ Annotation save/update/delete
+- ✅ Diff mode rendering
+
+### 18.6: Documentation & Cleanup (4-6h) ⏸️
+
+**Status**: ⏸️ Pending
+**Goal**: Document new architecture and remove dead code
+
+#### Tasks
+- [ ] Add JSDoc to all hooks, components, utilities
+- [ ] Create architecture diagram
+- [ ] Write migration guide for future developers
+- [ ] Update component README
+- [ ] Remove deprecated code
+- [ ] Performance benchmarking (before/after)
+
+**Documentation**:
+- `docs/architecture/canvas-architecture.md` - New architecture overview
+- `docs/architecture/canvas-hooks-guide.md` - Hook usage guide
+- `docs/architecture/canvas-testing-guide.md` - Testing guidelines
+
+### Dependencies
+
+**Required**:
+- None (internal refactoring)
+
+**Nice to Have**:
+- Phase 11 (Version Diff) complete - for better diff rendering integration
+
+### Success Criteria
+
+**Code Quality**:
+- ✅ Canvas.tsx reduced to <500 lines
+- ✅ All hooks <200 lines each
+- ✅ All components <150 lines each
+- ✅ All utilities <100 lines each
+- ✅ Test coverage >70%
+
+**Functionality**:
+- ✅ All existing features work identically
+- ✅ No performance regression
+- ✅ Improved render performance (target: 10% improvement)
+
+**Maintainability**:
+- ✅ Clear module boundaries
+- ✅ Comprehensive documentation
+- ✅ Easy to add new tools/features
+
+### Related Documents
+
+- Current Canvas: `frontend/components/annotation/Canvas.tsx`
+- Tool Implementations: `frontend/lib/annotation/tools/*.ts`
+- Annotation Store: `frontend/lib/stores/annotationStore.ts`
+
+**Total**: 40-60h over ~2-3 weeks
 
 ---
 
