@@ -3,35 +3,26 @@
 /**
  * Login Page
  *
- * 사용자 로그인 페이지 - Platform과 동일한 디자인
+ * Keycloak 로그인 페이지 - Keycloak으로 리다이렉트
  */
 
-import { useState, FormEvent } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading } = useAuth();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
-
-    try {
-      await login({ email, password });
-      router.push('/');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '로그인에 실패했습니다');
-    } finally {
-      setIsLoading(false);
+  // 이미 로그인된 경우 대시보드로 리다이렉트
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
     }
+  }, [isAuthenticated, router]);
+
+  const handleLogin = () => {
+    login();
   };
 
   return (
@@ -56,69 +47,31 @@ export default function LoginPage() {
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 p-8 border border-gray-100">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Input */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                이메일
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={isLoading}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="admin@example.com"
-                autoComplete="email"
-              />
-            </div>
+          <div className="space-y-6">
+            {/* Description */}
+            <p className="text-center text-gray-600">
+              계속하려면 로그인하세요
+            </p>
 
-            {/* Password Input */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                비밀번호
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isLoading}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
-
-            {/* Submit Button */}
+            {/* Login Button */}
             <button
-              type="submit"
-              disabled={isLoading}
+              onClick={handleLogin}
+              disabled={loading}
               className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium shadow-lg shadow-violet-500/50 hover:shadow-xl hover:shadow-violet-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
-              {isLoading ? (
+              {loading ? (
                 <span className="flex items-center justify-center">
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  로그인 중...
+                  로딩 중...
                 </span>
               ) : (
                 '로그인'
               )}
             </button>
-          </form>
+          </div>
 
           {/* Test Account Info */}
           <div className="mt-6 pt-6 border-t border-gray-200">
