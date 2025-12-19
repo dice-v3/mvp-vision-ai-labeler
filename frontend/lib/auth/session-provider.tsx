@@ -4,6 +4,7 @@
  * NextAuth Session Provider
  *
  * Wraps the application with NextAuth session context
+ * Uses /auth basePath instead of default /api/auth to avoid Istio routing conflicts
  */
 
 import { SessionProvider } from "next-auth/react"
@@ -14,5 +15,9 @@ interface AuthSessionProviderProps {
 }
 
 export function AuthSessionProvider({ children }: AuthSessionProviderProps) {
-  return <SessionProvider>{children}</SessionProvider>
+  return (
+    <SessionProvider basePath="/auth">
+      {children}
+    </SessionProvider>
+  )
 }
