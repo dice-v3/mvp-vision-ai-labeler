@@ -160,7 +160,7 @@ export default function RightPanel() {
     };
 
     loadClassStats();
-  }, [project?.id, annotations, currentTask]); // Phase 2.9: Reload when task changes
+  }, [project?.id, currentTask]); // Phase 2.9: Reload when task changes (removed annotations to prevent reload on every image switch)
 
   // Refresh project data after adding a class
   const handleClassAdded = async () => {

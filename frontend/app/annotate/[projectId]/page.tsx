@@ -382,7 +382,7 @@ export default function AnnotationPage() {
     };
 
     reloadImageStatuses();
-  }, [projectId, currentTask, images.length]); // Reload when task changes OR when images are loaded
+  }, [projectId, currentTask]); // Reload only when task changes (removed images.length to prevent unnecessary reloads)
 
   // Phase 2.12: Auto-load more images when navigating near the end
   const { backgroundLoading, setBackgroundLoading } = useAnnotationStore();

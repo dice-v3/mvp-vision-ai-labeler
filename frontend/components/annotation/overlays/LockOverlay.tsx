@@ -57,6 +57,11 @@ export interface LockOverlayProps {
 export const LockOverlay = React.memo(function LockOverlay(props: LockOverlayProps): JSX.Element | null {
   const { isImageLocked, lockedByUser, hasCurrentImage } = props;
 
+  // Feature flag: Don't render if lock is disabled
+  if (process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK === 'false') {
+    return null;
+  }
+
   if (!hasCurrentImage) {
     return null;
   }

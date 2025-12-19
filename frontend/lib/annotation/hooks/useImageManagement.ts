@@ -134,6 +134,13 @@ export function useImageManagement(params: UseImageManagementParams): UseImageMa
    * Acquire lock on current image
    */
   const acquireLock = async () => {
+    // Feature flag: Skip if lock is disabled
+    if (process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK === 'false') {
+      console.log('[Lock] Image lock disabled via feature flag');
+      setIsImageLocked(true); // Pretend lock is acquired
+      return;
+    }
+
     if (!currentImage || !project) return;
 
     try {
@@ -177,6 +184,12 @@ export function useImageManagement(params: UseImageManagementParams): UseImageMa
    * Release lock on current image
    */
   const releaseLock = async () => {
+    // Feature flag: Skip if lock is disabled
+    if (process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK === 'false') {
+      console.log('[Lock] Image lock disabled via feature flag');
+      return;
+    }
+
     if (!currentImage || !project) return;
 
     try {
@@ -214,6 +227,14 @@ export function useImageManagement(params: UseImageManagementParams): UseImageMa
 
     // Phase 8.5.2: Acquire lock on image
     const acquireImageLock = async () => {
+      // Feature flag: Skip if lock is disabled
+      if (process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK === 'false') {
+        console.log('[Lock] Image lock disabled via feature flag (useEffect)');
+        setIsImageLocked(true); // Pretend lock is acquired
+        lockAcquired = false; // Don't try to release in cleanup
+        return;
+      }
+
       try {
         const result: LockAcquireResponse = await imageLockAPI.acquireLock(
           project.id,
