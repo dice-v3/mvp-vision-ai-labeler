@@ -13,10 +13,9 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_labeler_db, get_platform_db, get_user_db
+from app.core.database import get_labeler_db, get_platform_db
 from app.core.security import get_current_user, require_project_permission
 from app.db.models.labeler import ProjectPermission, AnnotationProject
-from app.db.models.user import User
 from app.schemas.permission import (
     ProjectPermissionInviteRequest,
     ProjectPermissionResponse,
@@ -42,7 +41,6 @@ async def list_project_permissions(
     _permission=Depends(require_project_permission("viewer")),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
 ):
     """
     List all permissions for a project.
@@ -69,13 +67,9 @@ async def list_project_permissions(
         .all()
     )
 
-    # Enrich with user information from Platform DB
+    # Build response without user information (User DB not available)
     result = []
     for perm in permissions:
-        # Get user info
-        user = user_db.query(User).filter(User.id == perm.user_id).first()
-        granted_by_user = user_db.query(User).filter(User.id == perm.granted_by).first()
-
         perm_dict = {
             "id": perm.id,
             "project_id": perm.project_id,
@@ -83,11 +77,11 @@ async def list_project_permissions(
             "role": perm.role,
             "granted_by": perm.granted_by,
             "granted_at": perm.granted_at,
-            "user_name": user.full_name if user else None,
-            "user_email": user.email if user else None,
-            "user_badge_color": user.badge_color if user else None,
-            "granted_by_name": granted_by_user.full_name if granted_by_user else None,
-            "granted_by_email": granted_by_user.email if granted_by_user else None,
+            "user_name": None,
+            "user_email": None,
+            "user_badge_color": None,
+            "granted_by_name": None,
+            "granted_by_email": None,
         }
         result.append(perm_dict)
 
@@ -111,7 +105,6 @@ async def add_project_member(
     _permission=Depends(require_project_permission("admin")),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
 ):
     """
     Add a member to a project with specified role.
@@ -142,62 +135,11 @@ async def add_project_member(
             detail=f"Project {project_id} not found",
         )
 
-    # Prevent granting owner role through this endpoint
-    if request.role == "owner":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot grant 'owner' role. Use transfer ownership instead.",
-        )
-
-    # Find user by email
-    user = user_db.query(User).filter(User.email == request.user_email).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with email {request.user_email} not found",
-        )
-
-    # Check if permission already exists
-    existing = (
-        labeler_db.query(ProjectPermission)
-        .filter(
-            ProjectPermission.project_id == actual_project_id,
-            ProjectPermission.user_id == user.id,
-        )
-        .first()
+    # User DB is not available - cannot look up users by email
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Adding members by email is not available. User database is not configured.",
     )
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User {request.user_email} already has access to this project",
-        )
-
-    # Create new permission
-    new_permission = ProjectPermission(
-        project_id=actual_project_id,
-        user_id=user.id,
-        role=request.role,
-        granted_by=current_user.id,
-    )
-
-    labeler_db.add(new_permission)
-    labeler_db.commit()
-    labeler_db.refresh(new_permission)
-
-    # Return with user info
-    return {
-        "id": new_permission.id,
-        "project_id": new_permission.project_id,
-        "user_id": new_permission.user_id,
-        "role": new_permission.role,
-        "granted_by": new_permission.granted_by,
-        "granted_at": new_permission.granted_at,
-        "user_name": user.full_name,
-        "user_email": user.email,
-        "user_badge_color": user.badge_color,
-        "granted_by_name": current_user.full_name,
-        "granted_by_email": current_user.email,
-    }
 
 
 # =============================================================================
@@ -217,7 +159,6 @@ async def update_project_member_role(
     _permission=Depends(require_project_permission("admin")),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
 ):
     """
     Update a member's role in a project.
@@ -273,10 +214,7 @@ async def update_project_member_role(
     labeler_db.commit()
     labeler_db.refresh(permission)
 
-    # Get user info for response
-    user = user_db.query(User).filter(User.id == user_id).first()
-    granted_by_user = user_db.query(User).filter(User.id == permission.granted_by).first()
-
+    # Return response without user information (User DB not available)
     return {
         "id": permission.id,
         "project_id": permission.project_id,
@@ -284,11 +222,11 @@ async def update_project_member_role(
         "role": permission.role,
         "granted_by": permission.granted_by,
         "granted_at": permission.granted_at,
-        "user_name": user.full_name if user else None,
-        "user_email": user.email if user else None,
-        "user_badge_color": user.badge_color if user else None,
-        "granted_by_name": granted_by_user.full_name if granted_by_user else None,
-        "granted_by_email": granted_by_user.email if granted_by_user else None,
+        "user_name": None,
+        "user_email": None,
+        "user_badge_color": None,
+        "granted_by_name": None,
+        "granted_by_email": None,
     }
 
 

@@ -6,16 +6,16 @@ import os
 import zipfile
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user, require_project_permission
 from app.core.storage import storage_client
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import AnnotationProject, AnnotationVersion, AnnotationSnapshot, Annotation
 from app.schemas.version import (
     ExportRequest,
@@ -37,8 +37,7 @@ async def export_annotations(
     export_request: ExportRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("admin")),
 ):
     """
@@ -72,7 +71,6 @@ async def export_annotations(
             export_data, stats, filename = _export_dice(
                 labeler_db=labeler_db,
                 platform_db=platform_db,
-                user_db=user_db,
                 project_id=project_id,
                 include_draft=export_request.include_draft,
                 image_ids=export_request.image_ids,
@@ -129,7 +127,6 @@ async def export_annotations(
 def _export_dice(
     labeler_db: Session,
     platform_db: Session,
-    user_db: Session,
     project_id: str,
     include_draft: bool,
     image_ids: Optional[list[str]],
@@ -140,7 +137,7 @@ def _export_dice(
     dice_data = export_to_dice(
         db=labeler_db,
         platform_db=platform_db,
-        user_db=user_db,
+        user_db=None,  # User DB removed
         project_id=project_id,
         include_draft=include_draft,
         image_ids=image_ids,
@@ -239,8 +236,7 @@ async def publish_version(
     publish_request: VersionPublishRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("admin")),
 ):
     """
@@ -344,7 +340,6 @@ async def publish_version(
         dice_data, dice_stats, dice_filename = _export_dice(
             labeler_db=labeler_db,
             platform_db=platform_db,
-            user_db=user_db,
             project_id=project_id,
             include_draft=publish_request.include_draft,
             image_ids=None,
@@ -512,8 +507,7 @@ async def list_versions(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -560,7 +554,8 @@ async def list_versions(
     version_responses = []
     for version in versions:
         # Get user info (Phase 9: from User DB)
-        user = user_db.query(User).filter(User.id == version.created_by).first() if version.created_by else None
+        # User DB removed - user info set to None
+        # user = user_db.query(User).filter(User.id == version.created_by).first() if version.created_by else None
 
         # Debug: Print task_type value
         print(f"[list_versions] Version {version.version_number}: task_type={version.task_type}")
@@ -580,8 +575,8 @@ async def list_versions(
             export_path=version.export_path,
             download_url=version.download_url,
             download_url_expires_at=version.download_url_expires_at,
-            created_by_name=user.full_name if user else None,
-            created_by_email=user.email if user else None,
+            created_by_name=None,  # User DB removed
+            created_by_email=None,  # User DB removed
         ))
 
     return VersionListResponse(
