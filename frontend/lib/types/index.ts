@@ -5,33 +5,16 @@
  */
 
 // ============================================================================
-// User & Authentication
+// User & Authentication (Keycloak)
 // ============================================================================
 
 export interface User {
-  id: number;
+  id: string;  // Keycloak sub (UUID)
   email: string;
-  username?: string; // Optional - Platform DB doesn't have this field
-  full_name?: string; // Platform DB uses this instead of username
-  company?: string;
-  division?: string;
-  department?: string;
-  system_role?: string; // 'admin' or 'user' in Platform DB
-  is_active: boolean;
-  is_admin: boolean; // Derived from system_role
-  badge_color: string;
-  created_at: string;
-  updated_at?: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
+  name?: string;
+  full_name?: string;
+  roles: string[];
+  is_admin: boolean;
 }
 
 // ============================================================================
@@ -42,7 +25,7 @@ export interface Dataset {
   id: string;
   name: string;
   description: string;
-  owner_id: number;
+  owner_id: string;  // Keycloak user sub (UUID)
   format: string;
   source: string;
   visibility: string;
@@ -56,7 +39,6 @@ export interface Dataset {
   // Joined fields
   owner_name?: string;
   owner_email?: string;
-  owner_badge_color?: string;
 }
 
 // ============================================================================
@@ -74,7 +56,7 @@ export interface Project {
   name: string;
   description: string;
   dataset_id: string;
-  owner_id: number;
+  owner_id: string;  // Keycloak user sub (UUID)
   task_types: string[];
   task_config: Record<string, any>;
   // Phase 2.9: Task-based classes
@@ -87,7 +69,7 @@ export interface Project {
   status: string;
   created_at: string;
   updated_at: string;
-  last_updated_by?: number;
+  last_updated_by?: string;  // Keycloak user sub (UUID)
   // Joined fields
   dataset_name?: string;
   dataset_num_items?: number;
