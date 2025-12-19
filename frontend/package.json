@@ -6,7 +6,8 @@
     "dev": "next dev -p 3010",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:keycloak-css": "npx tailwindcss -i ./styles/keycloak-login.css -o ./keycloak-theme/login/resources/css/login.css --minify"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
