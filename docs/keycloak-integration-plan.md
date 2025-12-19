@@ -347,33 +347,27 @@ class APIClient {
 // - getToken() 삭제
 ```
 
-#### 3.3.6 로그인 페이지 수정
+#### 3.3.6 로그인 페이지 유지 (Keycloak 테마용)
 **파일**: `frontend/app/login/page.tsx`
 
+> **참고**: 로그인 페이지 UI는 Keycloak 커스텀 테마의 정적 파일로 사용하기 위해 유지합니다.
+> 실제 앱에서는 사용되지 않으며, Keycloak 테마 빌드 시 참조용으로 활용됩니다.
+
+**앱 내 로그인 리다이렉트 처리** (별도 구현 필요):
 ```typescript
-"use client"
-import { useEffect } from "react"
-import { signIn, useSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
+// middleware.ts 또는 보호된 페이지에서 처리
+import { getToken } from "next-auth/jwt"
+import { NextResponse } from "next/server"
 
-export default function LoginPage() {
-  const { status } = useSession()
-  const router = useRouter()
+export async function middleware(request) {
+  const token = await getToken({ req: request })
 
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      // 자동으로 Keycloak 로그인 페이지로 리다이렉트
-      signIn("keycloak", { callbackUrl: "/dashboard" })
-    } else if (status === "authenticated") {
-      router.push("/dashboard")
-    }
-  }, [status, router])
+  if (!token) {
+    // 미인증 시 Keycloak으로 리다이렉트
+    return NextResponse.redirect(new URL("/api/auth/signin", request.url))
+  }
 
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <p>로그인 중...</p>
-    </div>
-  )
+  return NextResponse.next()
 }
 ```
 
@@ -397,7 +391,8 @@ export default function LoginPage() {
 | `lib/api/auth.ts` | `login()`, `logout()` 함수 (next-auth로 대체) |
 | `lib/auth/context.tsx` | 기존 전체 코드 (next-auth 기반으로 교체) |
 | `lib/api/client.ts` | `setToken()`, `getToken()`, localStorage 관련 코드 |
-| `app/login/page.tsx` | 이메일/비밀번호 폼 전체 |
+
+> **유지**: `app/login/page.tsx` - Keycloak 커스텀 테마 정적 파일용으로 유지
 
 #### 3.4.3 환경 변수 제거
 
@@ -455,10 +450,11 @@ docker run -p 8080:8080 \
 |------|------|------|
 | `app/api/auth/[...nextauth]/route.ts` | 신규 생성 | NextAuth API 라우트 |
 | `lib/auth/session-provider.tsx` | 신규 생성 | 세션 프로바이더 |
+| `middleware.ts` | 신규 생성 | 미인증 시 Keycloak 리다이렉트 |
 | `lib/auth/context.tsx` | 전면 수정 | next-auth 기반으로 교체 |
 | `lib/api/client.ts` | 수정 | next-auth 세션에서 토큰 획득 |
 | `lib/api/auth.ts` | 삭제 | 더 이상 필요 없음 |
-| `app/login/page.tsx` | 수정 | Keycloak 리다이렉트로 변경 |
+| `app/login/page.tsx` | 유지 | Keycloak 커스텀 테마 정적 파일용 |
 | `app/layout.tsx` | 수정 | SessionProvider 추가 |
 | `package.json` | 수정 | next-auth 추가 |
 
@@ -522,8 +518,9 @@ Realm Name: mvp-vision
 - [ ] `app/layout.tsx` 수정 - SessionProvider 추가
 - [ ] `lib/auth/context.tsx` 전면 수정
 - [ ] `lib/api/client.ts` 수정
-- [ ] `app/login/page.tsx` 수정
+- [ ] `middleware.ts` 생성 - 미인증 시 Keycloak 리다이렉트
 - [ ] `lib/api/auth.ts` 삭제
+- [ ] `app/login/page.tsx` 유지 (Keycloak 테마용)
 
 ### Phase 4: 정리
 - [ ] 레거시 인증 코드 완전 제거 확인
