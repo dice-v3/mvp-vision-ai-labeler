@@ -51,8 +51,10 @@ export interface LockOverlayProps {
  *   hasCurrentImage={true}
  * />
  * ```
+ *
+ * Phase 18.7: Memoized to prevent unnecessary re-renders
  */
-export function LockOverlay(props: LockOverlayProps): JSX.Element | null {
+export const LockOverlay = React.memo(function LockOverlay(props: LockOverlayProps): JSX.Element | null {
   const { isImageLocked, lockedByUser, hasCurrentImage } = props;
 
   if (!hasCurrentImage) {
@@ -112,4 +114,4 @@ export function LockOverlay(props: LockOverlayProps): JSX.Element | null {
       )}
     </>
   );
-}
+});

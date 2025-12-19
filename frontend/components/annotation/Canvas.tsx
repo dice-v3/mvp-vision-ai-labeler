@@ -60,51 +60,51 @@ export default function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  const {
-    currentImage,
-    annotations,
-    selectedAnnotationId,
-    selectAnnotation,
-    canvas: canvasState,
-    tool,
-    setTool,
-    isDrawing,
-    drawingStart,
-    preferences,
-    setZoom,
-    setPan,
-    setCursor,
-    startDrawing,
-    updateDrawing,
-    finishDrawing,
-    addAnnotation,
-    project,
-    isAnnotationVisible,
-    currentIndex,
-    images,
-    goToNextImage,
-    goToPrevImage,
-    setCurrentIndex,
-    currentTask, // Phase 2.9
-    deleteAnnotation,
-    updateAnnotation: updateAnnotationStore, // Phase 2.10: For undo/redo history
-    // Multi-image selection
-    selectedImageIds,
-    clearImageSelection,
-    getCurrentClasses, // Phase 2.9: Get task-specific classes
-    selectedVertexIndex, // Polygon vertex editing
-    selectedBboxHandle, // Bbox handle editing
-    // Phase 2.10: Undo/Redo
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    // Phase 2.10.3: Minimap state
-    showMinimap,
-    // Phase 11: Diff mode
-    diffMode,
-    getDiffForCurrentImage,
-  } = useAnnotationStore();
+  // Phase 18.7: Optimized Zustand selectors - subscribe only to needed values
+  const currentImage = useAnnotationStore(state => state.currentImage);
+  const annotations = useAnnotationStore(state => state.annotations);
+  const selectedAnnotationId = useAnnotationStore(state => state.selectedAnnotationId);
+  const selectAnnotation = useAnnotationStore(state => state.selectAnnotation);
+  const canvasState = useAnnotationStore(state => state.canvas);
+  const tool = useAnnotationStore(state => state.tool);
+  const setTool = useAnnotationStore(state => state.setTool);
+  const isDrawing = useAnnotationStore(state => state.isDrawing);
+  const drawingStart = useAnnotationStore(state => state.drawingStart);
+  const preferences = useAnnotationStore(state => state.preferences);
+  const setZoom = useAnnotationStore(state => state.setZoom);
+  const setPan = useAnnotationStore(state => state.setPan);
+  const setCursor = useAnnotationStore(state => state.setCursor);
+  const startDrawing = useAnnotationStore(state => state.startDrawing);
+  const updateDrawing = useAnnotationStore(state => state.updateDrawing);
+  const finishDrawing = useAnnotationStore(state => state.finishDrawing);
+  const addAnnotation = useAnnotationStore(state => state.addAnnotation);
+  const project = useAnnotationStore(state => state.project);
+  const isAnnotationVisible = useAnnotationStore(state => state.isAnnotationVisible);
+  const currentIndex = useAnnotationStore(state => state.currentIndex);
+  const images = useAnnotationStore(state => state.images);
+  const goToNextImage = useAnnotationStore(state => state.goToNextImage);
+  const goToPrevImage = useAnnotationStore(state => state.goToPrevImage);
+  const setCurrentIndex = useAnnotationStore(state => state.setCurrentIndex);
+  const currentTask = useAnnotationStore(state => state.currentTask);
+  const deleteAnnotation = useAnnotationStore(state => state.deleteAnnotation);
+  const updateAnnotationStore = useAnnotationStore(state => state.updateAnnotation);
+  const selectedImageIds = useAnnotationStore(state => state.selectedImageIds);
+  const clearImageSelection = useAnnotationStore(state => state.clearImageSelection);
+  const getCurrentClasses = useAnnotationStore(state => state.getCurrentClasses);
+  const selectedVertexIndex = useAnnotationStore(state => state.selectedVertexIndex);
+  const selectedBboxHandle = useAnnotationStore(state => state.selectedBboxHandle);
+  // Undo/Redo selectors (group together as they're often used together)
+  const { undo, redo, canUndo, canRedo } = useAnnotationStore(
+    state => ({
+      undo: state.undo,
+      redo: state.redo,
+      canUndo: state.canUndo,
+      canRedo: state.canRedo
+    })
+  );
+  const showMinimap = useAnnotationStore(state => state.showMinimap);
+  const diffMode = useAnnotationStore(state => state.diffMode);
+  const getDiffForCurrentImage = useAnnotationStore(state => state.getDiffForCurrentImage);
 
   // Phase 18.3: Custom Hooks for State Management
 
@@ -1016,14 +1016,14 @@ export default function Canvas() {
   };
 
   // Handle class selector close
-  const handleClassSelectorClose = () => {
+  const handleClassSelectorClose = useCallback(() => {
     setShowClassSelector(false);
     setPendingBbox(null);
     // Also clear pending polyline and circle
     delete (window as any).__pendingPolyline;
     delete (window as any).__pendingCircle;
     delete (window as any).__pendingPolygon;
-  };
+  }, [setShowClassSelector, setPendingBbox]);
 
   // Phase 2.7: Confirm Image handler
   // Handle No Object annotation (supports batch operation)
@@ -1914,11 +1914,11 @@ export default function Canvas() {
   // (Toggle mode is more reliable in remote desktop environments)
 
   // Mouse wheel handler (zoom)
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setZoom(canvasState.zoom + delta);
-  };
+  }, [setZoom, canvasState.zoom]);
 
   if (!currentImage) {
     return (
