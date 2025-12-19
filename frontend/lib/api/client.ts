@@ -1,45 +1,33 @@
 /**
- * API Client
+ * API Client (Keycloak/NextAuth Integration)
  *
- * Backend API와 통신하기 위한 기본 클라이언트
+ * Backend API와 통신하기 위한 클라이언트
+ * NextAuth 세션에서 access token을 가져와서 사용
  */
 
-import type { APIError } from '../types';
+import { getSession } from "next-auth/react"
+import type { APIError } from "../types"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
 
 export class APIClient {
-  private baseURL: string;
-  private token: string | null = null;
+  private baseURL: string
 
   constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
-
-    // Load token from localStorage on client side
-    if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('access_token');
-    }
+    this.baseURL = baseURL
   }
 
   /**
-   * Set authentication token
+   * Get access token from NextAuth session
    */
-  setToken(token: string | null) {
-    this.token = token;
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('access_token', token);
-      } else {
-        localStorage.removeItem('access_token');
-      }
+  private async getAccessToken(): Promise<string | null> {
+    if (typeof window === "undefined") {
+      // Server-side: cannot get session
+      return null
     }
-  }
 
-  /**
-   * Get authentication token
-   */
-  getToken(): string | null {
-    return this.token;
+    const session = await getSession()
+    return session?.accessToken ?? null
   }
 
   /**
@@ -49,42 +37,43 @@ export class APIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`;
+    const url = `${this.baseURL}${endpoint}`
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
-    };
+    }
 
     // Add authorization header if token exists
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    const token = await this.getAccessToken()
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
     }
 
     try {
       const response = await fetch(url, {
         ...options,
         headers,
-      });
+      })
 
       // Handle non-2xx responses
       if (!response.ok) {
         const error: APIError = await response.json().catch(() => ({
           detail: `HTTP ${response.status}: ${response.statusText}`,
-        }));
-        throw new Error(error.detail);
+        }))
+        throw new Error(error.detail)
       }
 
       // Handle 204 No Content
       if (response.status === 204) {
-        return null as T;
+        return null as T
       }
 
-      return await response.json();
+      return await response.json()
     } catch (error) {
       if (error instanceof Error) {
-        throw error;
+        throw error
       }
-      throw new Error('Network error occurred');
+      throw new Error("Network error occurred")
     }
   }
 
@@ -92,7 +81,7 @@ export class APIClient {
    * GET request
    */
   async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET' });
+    return this.request<T>(endpoint, { method: "GET" })
   }
 
   /**
@@ -100,9 +89,9 @@ export class APIClient {
    */
   async post<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
-      method: 'POST',
+      method: "POST",
       body: data ? JSON.stringify(data) : undefined,
-    });
+    })
   }
 
   /**
@@ -110,9 +99,9 @@ export class APIClient {
    */
   async patch<T>(endpoint: string, data: any): Promise<T> {
     return this.request<T>(endpoint, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify(data),
-    });
+    })
   }
 
   /**
@@ -120,9 +109,9 @@ export class APIClient {
    */
   async put<T>(endpoint: string, data: any): Promise<T> {
     return this.request<T>(endpoint, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
-    });
+    })
   }
 
   /**
@@ -130,11 +119,11 @@ export class APIClient {
    */
   async delete<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
-      method: 'DELETE',
+      method: "DELETE",
       body: data ? JSON.stringify(data) : undefined,
-    });
+    })
   }
 }
 
 // Export singleton instance
-export const apiClient = new APIClient();
+export const apiClient = new APIClient()

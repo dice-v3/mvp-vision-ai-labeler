@@ -113,10 +113,11 @@ class Settings(BaseSettings):
     # When set, use this for public image URLs instead of presigned URLs
     R2_PUBLIC_URL: str = ""
 
-    # JWT Authentication
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
+    # Keycloak Authentication
+    KEYCLOAK_SERVER_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "mvp-vision"
+    KEYCLOAK_CLIENT_ID: str = "labeler-backend"
+    KEYCLOAK_CLIENT_SECRET: str = "your-client-secret"
 
     # Service JWT Authentication (Phase 16.5 - Platform Integration)
     # Shared secret for verifying JWTs from Platform service
