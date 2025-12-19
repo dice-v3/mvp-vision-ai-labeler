@@ -4,10 +4,10 @@ Labeler Database Models (Read-Write)
 These models represent tables in the Labeler database.
 Labeler has FULL access to these tables.
 
-IMPORTANT (2025-11-21):
-- Dataset and DatasetPermission tables MOVED from Platform DB to Labeler DB
-- Labeler now fully owns dataset management
-- Platform DB only used for users table (read-only)
+IMPORTANT (2025-12-19):
+- User authentication migrated to Keycloak
+- user_id fields now store Keycloak sub (UUID string)
+- No more Platform User DB dependency
 """
 
 from datetime import datetime
@@ -37,7 +37,7 @@ class Dataset(LabelerBase):
     # Basic info
     name = Column(String(200), nullable=False)
     description = Column(Text)
-    owner_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+    owner_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub (UUID)
 
     # Dataset configuration
     visibility = Column(String(20), nullable=False, default="private")
@@ -121,11 +121,11 @@ class DatasetPermission(LabelerBase):
         nullable=False,
         index=True
     )
-    user_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+    user_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub (UUID)
 
     # Permission info
     role = Column(String(20), nullable=False)  # 'owner' or 'member'
-    granted_by = Column(Integer, nullable=False)  # User ID who granted this permission
+    granted_by = Column(String(36), nullable=False)  # Keycloak user sub who granted this permission
     granted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
@@ -166,11 +166,11 @@ class ProjectPermission(LabelerBase):
         nullable=False,
         index=True
     )
-    user_id = Column(Integer, nullable=False, index=True)  # References Platform users.id (NO FK, different DB)
+    user_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub (UUID)
 
     # Permission info
     role = Column(String(20), nullable=False)  # 'owner', 'admin', 'reviewer', 'annotator', 'viewer'
-    granted_by = Column(Integer, nullable=False)  # User ID who granted this permission
+    granted_by = Column(String(36), nullable=False)  # Keycloak user sub who granted this permission
     granted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
@@ -241,7 +241,7 @@ class AnnotationProject(LabelerBase):
     name = Column(String(255), nullable=False)
     description = Column(Text)
     dataset_id = Column(String(50), nullable=False, unique=True, index=True)  # 1:1 with Dataset
-    owner_id = Column(Integer, nullable=False, index=True)
+    owner_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub
 
     # Task configuration
     task_types = Column(ARRAY(String(50)), nullable=False)
@@ -269,7 +269,7 @@ class AnnotationProject(LabelerBase):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # History tracking
-    last_updated_by = Column(Integer, index=True)  # Platform User ID (no FK constraint)
+    last_updated_by = Column(String(36), index=True)  # Keycloak user sub
 
     __table_args__ = (
         Index("ix_annotation_projects_owner_id_created_at", "owner_id", "created_at"),
@@ -312,15 +312,15 @@ class Annotation(LabelerBase):
     version = Column(Integer, nullable=False, default=1, index=True)
 
     # Metadata
-    created_by = Column(Integer, nullable=False)
-    updated_by = Column(Integer)
+    created_by = Column(String(36), nullable=False)  # Keycloak user sub
+    updated_by = Column(String(36))  # Keycloak user sub
     is_verified = Column(Boolean, default=False)
     notes = Column(Text)
 
     # Phase 2.7: Annotation confirmation
     annotation_state = Column(String(20), nullable=False, default="draft", index=True)  # draft, confirmed, verified
     confirmed_at = Column(DateTime)
-    confirmed_by = Column(Integer)
+    confirmed_by = Column(String(36))  # Keycloak user sub
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -358,7 +358,7 @@ class AnnotationHistory(LabelerBase):
     new_state = Column(JSONB)
 
     # Metadata
-    changed_by = Column(Integer, nullable=False)
+    changed_by = Column(String(36), nullable=False)  # Keycloak user sub
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
 
     __table_args__ = (
@@ -382,8 +382,8 @@ class AnnotationTask(LabelerBase):
     description = Column(Text)
 
     # Assignment
-    assignee_id = Column(Integer, index=True)
-    reviewer_id = Column(Integer)
+    assignee_id = Column(String(36), index=True)  # Keycloak user sub
+    reviewer_id = Column(String(36))  # Keycloak user sub
 
     # Image list
     image_ids = Column(ARRAY(String(255)))
@@ -472,7 +472,7 @@ class Comment(LabelerBase):
     resolved = Column(Boolean, default=False)
 
     # Metadata
-    author_id = Column(Integer, nullable=False)
+    author_id = Column(String(36), nullable=False)  # Keycloak user sub
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -501,7 +501,7 @@ class AnnotationVersion(LabelerBase):
 
     # Metadata
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    created_by = Column(Integer)  # Platform User ID (no FK constraint)
+    created_by = Column(String(36))  # Keycloak user sub
     description = Column(Text)
 
     # Snapshot counts
@@ -553,7 +553,7 @@ class ImageLock(LabelerBase):
     id = Column(Integer, primary_key=True)
     project_id = Column(String(50), nullable=False, index=True)
     image_id = Column(String(255), nullable=False, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub
 
     locked_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False, index=True)
@@ -580,8 +580,8 @@ class Invitation(LabelerBase):
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String(255), nullable=False, unique=True, index=True)
     project_id = Column(String(50), nullable=False, index=True)
-    inviter_id = Column(Integer, nullable=False, index=True)  # User DB user.id
-    invitee_id = Column(Integer, nullable=False, index=True)  # User DB user.id
+    inviter_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub
+    invitee_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub
     invitee_email = Column(String(255), nullable=False, index=True)
     role = Column(String(20), nullable=False)  # owner/admin/reviewer/annotator/viewer
     status = Column(String(20), nullable=False, index=True)  # pending/accepted/expired/cancelled
@@ -632,7 +632,7 @@ class AuditLog(LabelerBase):
 
     # Core audit fields
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    user_id = Column(Integer, nullable=True, index=True)  # Nullable for system events
+    user_id = Column(String(36), nullable=True, index=True)  # Keycloak user sub (nullable for system events)
     action = Column(String(100), nullable=False, index=True)  # 'create', 'update', 'delete', 'login', etc.
 
     # Resource identification
@@ -693,8 +693,8 @@ class UserSession(LabelerBase):
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
 
     # User identification
-    user_id = Column(Integer, nullable=False, index=True)  # References User DB user.id
-    session_id = Column(String(255), nullable=False, unique=True, index=True)  # JWT token or UUID
+    user_id = Column(String(36), nullable=False, index=True)  # Keycloak user sub
+    session_id = Column(String(255), nullable=False, unique=True, index=True)  # Keycloak session ID
 
     # Session lifecycle
     login_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)

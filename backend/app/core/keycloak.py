@@ -69,17 +69,19 @@ class KeycloakAuth:
         signing_key = jwks_client.get_signing_key_from_jwt(token)
 
         # Decode and verify token
+        # Note: audience verification is disabled because frontend and backend
+        # use different client IDs. Issuer verification ensures the token is
+        # from our Keycloak realm.
         payload = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=self.client_id,
             issuer=self.issuer,
             options={
                 "verify_signature": True,
                 "verify_exp": True,
                 "verify_iss": True,
-                "verify_aud": True,
+                "verify_aud": False,  # Frontend uses different client ID
             },
         )
 
