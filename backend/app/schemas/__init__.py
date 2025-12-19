@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response validation."""
 
-from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
+from app.schemas.auth import KeycloakUserResponse, UserResponse
 from app.schemas.dataset import DatasetResponse
 from app.schemas.project import (
     ProjectCreate,
@@ -9,9 +9,8 @@ from app.schemas.project import (
 )
 
 __all__ = [
-    # Auth
-    "LoginRequest",
-    "TokenResponse",
+    # Auth (Keycloak)
+    "KeycloakUserResponse",
     "UserResponse",
     # Dataset
     "DatasetResponse",
