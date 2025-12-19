@@ -50,22 +50,6 @@ class Settings(BaseSettings):
             f"@{self.PLATFORM_DB_HOST}:{self.PLATFORM_DB_PORT}/{self.PLATFORM_DB_NAME}"
         )
 
-    # User Database (Read-Only - Phase 9)
-    # PostgreSQL database shared with Platform service
-    USER_DB_HOST: str = "localhost"
-    USER_DB_PORT: int = 5433
-    USER_DB_NAME: str = "users"
-    USER_DB_USER: str = "admin"
-    USER_DB_PASSWORD: str = "devpass"
-
-    @property
-    def USER_DB_URL(self) -> str:
-        """Construct User database URL (PostgreSQL)."""
-        return (
-            f"postgresql://{self.USER_DB_USER}:{self.USER_DB_PASSWORD}"
-            f"@{self.USER_DB_HOST}:{self.USER_DB_PORT}/{self.USER_DB_NAME}"
-        )
-
     # Labeler Database (Full Access)
     LABELER_DB_HOST: str = "localhost"
     LABELER_DB_PORT: int = 5433
@@ -113,10 +97,11 @@ class Settings(BaseSettings):
     # When set, use this for public image URLs instead of presigned URLs
     R2_PUBLIC_URL: str = ""
 
-    # JWT Authentication
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
+    # Keycloak Authentication
+    KEYCLOAK_SERVER_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "mvp-vision"
+    KEYCLOAK_CLIENT_ID: str = "labeler-backend"
+    KEYCLOAK_CLIENT_SECRET: str = "your-client-secret"
 
     # Service JWT Authentication (Phase 16.5 - Platform Integration)
     # Shared secret for verifying JWTs from Platform service
