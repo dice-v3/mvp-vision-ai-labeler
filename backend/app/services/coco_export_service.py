@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.db.models.labeler import Dataset, Annotation, AnnotationProject
+from app.core.config import settings
 
 # Korea Standard Time (UTC+9)
 KST = timezone(timedelta(hours=9))
@@ -99,7 +100,7 @@ def export_to_coco(
     # Phase 16.6: Add storage information for Platform integration
     storage_info = {
         "storage_type": dataset.storage_type if dataset else "s3",
-        "bucket": "training-datasets",  # S3_BUCKET_DATASETS
+        "bucket": settings.S3_BUCKET_DATASETS,
         "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
     }
 

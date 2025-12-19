@@ -35,6 +35,9 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(',')]
         return v
 
+    # Frontend URL (for SSO redirect - Phase 17)
+    FRONTEND_URL: str = "http://localhost:3010"
+
     # Platform Database (Read-Only)
     PLATFORM_DB_HOST: str = "localhost"
     PLATFORM_DB_PORT: int = 5432
@@ -51,11 +54,13 @@ class Settings(BaseSettings):
         )
 
     # Labeler Database (Full Access)
+    # Updated 2025-12-09: Single PostgreSQL instance architecture
+    # Platform team manages PostgreSQL instance, Labeler team manages schema only
     LABELER_DB_HOST: str = "localhost"
-    LABELER_DB_PORT: int = 5433
+    LABELER_DB_PORT: int = 5432
     LABELER_DB_NAME: str = "labeler"
-    LABELER_DB_USER: str = "labeler_user"
-    LABELER_DB_PASSWORD: str = "labeler_password"
+    LABELER_DB_USER: str = "admin"
+    LABELER_DB_PASSWORD: str = "devpass"
 
     @property
     def LABELER_DB_URL(self) -> str:
@@ -64,25 +69,6 @@ class Settings(BaseSettings):
             f"postgresql://{self.LABELER_DB_USER}:{self.LABELER_DB_PASSWORD}"
             f"@{self.LABELER_DB_HOST}:{self.LABELER_DB_PORT}/{self.LABELER_DB_NAME}"
         )
-
-    # Database Pool Settings (Phase 9 - for Railway deployment)
-    DB_POOL_SIZE: int = 5
-    DB_MAX_OVERFLOW: int = 10
-    DB_POOL_TIMEOUT: int = 30
-    DB_POOL_RECYCLE: int = 3600  # 1 hour
-
-    # Redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
-    REDIS_PASSWORD: str = ""
-
-    @property
-    def REDIS_URL(self) -> str:
-        """Construct Redis URL."""
-        if self.REDIS_PASSWORD:
-            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     # S3 / MinIO / R2
     S3_ENDPOINT: str = "http://localhost:9000"

@@ -38,6 +38,7 @@ import os
 
 # REFACTORING: Import task registry
 from app.tasks import task_registry, TaskType
+from app.core.config import settings
 
 # Korea Standard Time (UTC+9)
 KST = timezone(timedelta(hours=9))
@@ -300,7 +301,7 @@ def export_to_dice(
     # This allows Platform to locate and download images from S3/R2
     storage_info = {
         "storage_type": dataset.storage_type if dataset else "s3",
-        "bucket": "training-datasets",  # S3_BUCKET_DATASETS from environment
+        "bucket": settings.S3_BUCKET_DATASETS,
         "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
     }
 

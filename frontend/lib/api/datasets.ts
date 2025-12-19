@@ -8,6 +8,9 @@ import { getSession } from 'next-auth/react';
 import { apiClient } from './client';
 import type { Dataset, Project } from '../types';
 
+// Use same API base URL as apiClient
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+
 export interface CreateDatasetRequest {
   name: string;
   description?: string;

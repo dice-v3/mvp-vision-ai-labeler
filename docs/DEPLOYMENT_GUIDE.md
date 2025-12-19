@@ -11,7 +11,9 @@ Complete guide for deploying Vision AI Labeler to production.
 - **Compute**:
   - Backend: 2 CPU, 4GB RAM minimum
   - Frontend: 2 CPU, 4GB RAM minimum
-- **Database**: PostgreSQL 14+ (3 instances)
+- **Database**: PostgreSQL 14+ (single instance with 3 databases)
+  - **IMPORTANT**: Platform team manages the PostgreSQL instance
+  - Labeler only manages the 'labeler' database schema
 - **Storage**: Cloudflare R2 or S3-compatible storage
 - **Cache**: Redis 7+ (optional but recommended)
 
@@ -35,29 +37,40 @@ Complete guide for deploying Vision AI Labeler to production.
 
 #### Option A: Using Docker Compose (Recommended for Development)
 
-```bash
-# Clone repository
-git clone https://github.com/your-org/mvp-vision-ai-labeler.git
-cd mvp-vision-ai-labeler
+**IMPORTANT**: Database architecture changed on 2025-12-09. Use Platform's infrastructure.
 
-# Start all services
+```bash
+# Step 1: Start Platform infrastructure (manages PostgreSQL)
+cd mvp-vision-ai-platform/infrastructure
 docker-compose up -d
 
-# This starts:
-# - Platform DB (port 5432)
-# - User DB (port 5433)
-# - Labeler DB (port 5435)
+# This creates:
+# - PostgreSQL 16 (port 5432) with 3 databases:
+#   * platform (Platform team)
+#   * users (Platform team, shared)
+#   * labeler (Labeler team - schema only)
 # - Redis (port 6379)
+
+# Step 2: Navigate to Labeler project
+cd ../../mvp-vision-ai-labeler
+
+# Optional: Start Labeler-specific services (Redis)
+docker-compose up -d
 ```
 
 #### Option B: Managed Databases (Recommended for Production)
 
-Use managed PostgreSQL services:
+**Platform team manages the PostgreSQL instance:**
 - **AWS RDS** / **Google Cloud SQL** / **Azure Database**
-- Create 3 separate PostgreSQL instances:
-  1. Platform DB (if not already managed by Platform team)
-  2. User DB (if not already managed by Platform team)
-  3. Labeler DB (your responsibility)
+- **Single PostgreSQL instance** with 3 databases:
+  1. `platform` database (Platform team manages)
+  2. `users` database (Platform team manages, shared with Labeler)
+  3. `labeler` database (Labeler team manages schema only)
+
+**Labeler team responsibilities:**
+- Initialize `labeler` database schema using `scripts/init_database.py`
+- Manage schema migrations with Alembic
+- Do NOT create the database itself (Platform team creates it)
 
 ---
 
@@ -362,14 +375,18 @@ docker logs labeler-postgres-labeler
 ### Database Connection Failed
 
 ```bash
-# Test connection
-psql -h <host> -U labeler_user -d labeler
+# Test connection to PostgreSQL instance
+psql -h <host> -p 5432 -U admin -d labeler
 
-# Check if database exists
-psql -h <host> -U labeler_user -l
+# Check if all databases exist
+psql -h <host> -p 5432 -U admin -l
 
-# Create database if missing
-createdb -h <host> -U labeler_user labeler
+# Expected: platform, users, labeler (all on same instance)
+
+# If labeler database is missing (should not happen in production)
+# Contact Platform team - they manage database creation
+# For local development:
+docker exec platform-postgres psql -U admin -c "CREATE DATABASE labeler;"
 ```
 
 ### Migration Failed
