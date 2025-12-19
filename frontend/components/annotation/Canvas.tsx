@@ -49,6 +49,8 @@ import {
   useAnnotationSync,
   useMagnifier,
   useMouseHandlers,
+  useToolRenderer,
+  useCanvasRenderer,
 } from '@/lib/annotation/hooks';
 // Phase 18.4: Overlay Components
 import { LockOverlay } from './overlays/LockOverlay';
@@ -213,6 +215,56 @@ export default function Canvas() {
     currentTool: tool,
   });
 
+  // Phase 18.4: Tool preview rendering
+  const {
+    drawBboxPreview,
+    drawPolygonPreview,
+    drawPolylinePreview,
+    drawCirclePreview,
+    drawCircle3pPreview,
+  } = useToolRenderer({
+    canvasRef,
+    canvasState,
+    preferences,
+    drawingStart,
+    polygonVertices,
+    polylineVertices,
+    circleCenter,
+    circle3pPoints,
+  });
+
+  // Phase 18.4: Main canvas rendering
+  useCanvasRenderer({
+    canvasRef,
+    containerRef,
+    image,
+    imageLoaded,
+    canvasState,
+    annotations,
+    selectedAnnotationId,
+    selectedVertexIndex,
+    selectedBboxHandle,
+    selectedCircleHandle,
+    preferences,
+    project,
+    tool,
+    diffMode,
+    isDrawing,
+    drawingStart,
+    polygonVertices,
+    polylineVertices,
+    circleCenter,
+    circle3pPoints,
+    isAnnotationVisible,
+    getCurrentClasses,
+    getDiffForCurrentImage,
+    drawBboxPreview,
+    drawPolygonPreview,
+    drawPolylinePreview,
+    drawCirclePreview,
+    drawCircle3pPreview,
+  });
+
   // Local state not yet extracted to hooks
   const [isSaving, setIsSaving] = useState(false);
   const [confirmingImage, setConfirmingImage] = useState(false);
@@ -343,178 +395,13 @@ export default function Canvas() {
 
   // Phase 18.3: Image loading and locking now handled by useImageManagement hook
 
-  // Render canvas
-  useEffect(() => {
-    if (!canvasRef.current || !image || !imageLoaded || !containerRef.current) return;
+  // Phase 18.4: Main rendering useEffect moved to useCanvasRenderer hook
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Phase 18.4: Draw functions moved to useToolRenderer hook
+  // (drawBboxPreview, drawPolygonPreview, drawPolylinePreview, drawCirclePreview, drawCircle3pPreview)
 
-    // Set canvas size to container size
-    const container = containerRef.current;
-    const rect = container.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-
-    // Clear canvas with dark/light mode aware color
-    ctx.fillStyle = preferences.darkMode ? '#1f2937' : '#f3f4f6'; // gray-800 : gray-100
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Calculate image position (centered and scaled)
-    const { zoom, pan } = canvasState;
-    const scaledWidth = image.width * zoom;
-    const scaledHeight = image.height * zoom;
-
-    const x = (canvas.width - scaledWidth) / 2 + pan.x;
-    const y = (canvas.height - scaledHeight) / 2 + pan.y;
-
-    // Draw grid if enabled and zoomed in
-    if (preferences.showGrid && zoom > 1.0) {
-      drawGrid(ctx, canvas.width, canvas.height, x, y, scaledWidth, scaledHeight, zoom);
-    }
-
-    // Draw image
-    ctx.drawImage(image, x, y, scaledWidth, scaledHeight);
-
-    // Draw annotations
-    drawAnnotations(ctx, x, y, zoom);
-
-    // Draw drawing preview
-    if (isDrawing && drawingStart && tool === 'bbox') {
-      drawBboxPreview(ctx, x, y, zoom);
-    }
-
-    // Draw polygon preview
-    if (tool === 'polygon' && polygonVertices.length > 0) {
-      drawPolygonPreview(ctx, x, y, zoom);
-    }
-
-    // Draw polyline preview
-    if (tool === 'polyline' && polylineVertices.length > 0) {
-      drawPolylinePreview(ctx, x, y, zoom);
-    }
-
-    // Draw circle preview (center-edge)
-    if (tool === 'circle' && circleCenter) {
-      drawCirclePreview(ctx, x, y, zoom);
-    }
-
-    // Draw circle 3-point preview
-    if (tool === 'circle3p' && circle3pPoints.length > 0) {
-      drawCircle3pPreview(ctx, x, y, zoom);
-    }
-
-    // Draw crosshair if drawing tool is active
-    if ((tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') && !isDrawing && preferences.showLabels) {
-      drawCrosshair(ctx, canvas.width, canvas.height);
-    }
-
-    // Draw selected vertex highlight (polygon and polyline)
-    if (selectedVertexIndex !== null && selectedAnnotationId) {
-      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (selectedAnn && (selectedAnn.geometry.type === 'polygon' || selectedAnn.geometry.type === 'polyline')) {
-        const points = selectedAnn.geometry.points;
-        if (selectedVertexIndex < points.length) {
-          const [px, py] = points[selectedVertexIndex];
-          const scaledPx = px * zoom + x;
-          const scaledPy = py * zoom + y;
-
-          // Draw highlight ring around selected vertex
-          ctx.strokeStyle = '#f59e0b'; // amber-500
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(scaledPx, scaledPy, 10, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Draw inner fill
-          ctx.fillStyle = '#f59e0b';
-          ctx.beginPath();
-          ctx.arc(scaledPx, scaledPy, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-
-    // Draw selected bbox handle highlight
-    if (selectedBboxHandle && selectedAnnotationId) {
-      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (selectedAnn && selectedAnn.geometry.type === 'bbox') {
-        const [bx, by, bw, bh] = selectedAnn.geometry.bbox;
-        const scaledX = bx * zoom + x;
-        const scaledY = by * zoom + y;
-        const scaledW = bw * zoom;
-        const scaledH = bh * zoom;
-
-        // Get handle position
-        let hx = 0, hy = 0;
-        switch (selectedBboxHandle) {
-          case 'nw': hx = scaledX; hy = scaledY; break;
-          case 'ne': hx = scaledX + scaledW; hy = scaledY; break;
-          case 'sw': hx = scaledX; hy = scaledY + scaledH; break;
-          case 'se': hx = scaledX + scaledW; hy = scaledY + scaledH; break;
-          case 'n': hx = scaledX + scaledW / 2; hy = scaledY; break;
-          case 's': hx = scaledX + scaledW / 2; hy = scaledY + scaledH; break;
-          case 'w': hx = scaledX; hy = scaledY + scaledH / 2; break;
-          case 'e': hx = scaledX + scaledW; hy = scaledY + scaledH / 2; break;
-        }
-
-        // Draw highlight ring around selected handle
-        ctx.strokeStyle = '#f59e0b'; // amber-500
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(hx, hy, 10, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Draw inner fill
-        ctx.fillStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Draw selected circle handle highlight
-    if (selectedCircleHandle && selectedAnnotationId) {
-      const selectedAnn = annotations.find(ann => ann.id === selectedAnnotationId);
-      if (selectedAnn && selectedAnn.geometry.type === 'circle') {
-        const center = selectedAnn.geometry.center;
-        const radius = selectedAnn.geometry.radius;
-        const scaledCenterX = center[0] * zoom + x;
-        const scaledCenterY = center[1] * zoom + y;
-        const scaledRadius = radius * zoom;
-
-        // Get handle position
-        let hx = 0, hy = 0;
-        switch (selectedCircleHandle) {
-          case 'n': hx = scaledCenterX; hy = scaledCenterY - scaledRadius; break;
-          case 's': hx = scaledCenterX; hy = scaledCenterY + scaledRadius; break;
-          case 'e': hx = scaledCenterX + scaledRadius; hy = scaledCenterY; break;
-          case 'w': hx = scaledCenterX - scaledRadius; hy = scaledCenterY; break;
-        }
-
-        // Draw highlight ring around selected handle
-        ctx.strokeStyle = '#f59e0b'; // amber-500
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(hx, hy, 10, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Draw inner fill
-        ctx.fillStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }, [image, imageLoaded, canvasState, annotations, selectedAnnotationId, isDrawing, drawingStart, tool, preferences, project, polygonVertices, selectedVertexIndex, selectedBboxHandle, polylineVertices, circleCenter, circle3pPoints, selectedCircleHandle]);
-
-  // Draw grid
-  // Phase 18.2: Drawing helper functions moved to @/lib/annotation/utils
-  // - drawGrid ??renderHelpers.drawGrid
-  // - snapshotToAnnotation ??annotationHelpers.snapshotToAnnotation
-
-  // Draw annotations using Tool system
+  // Phase 18.4: drawAnnotations function moved to useCanvasRenderer hook
+  /*
   const drawAnnotations = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
     if (!project || !canvasRef.current) return;
 
@@ -639,9 +526,10 @@ export default function Canvas() {
       }
     });
   };
+  */
 
-  // Phase 18.2: drawNoObjectBadge moved to renderHelpers.drawNoObjectBadge
-
+  // Phase 18.4: All draw preview functions moved to useToolRenderer hook
+  /*
   // Draw bbox preview while drawing using Tool system
   const drawBboxPreview = (ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
     if (!drawingStart || !canvasRef.current) return;
@@ -795,8 +683,7 @@ export default function Canvas() {
     // Use circle3p tool to render preview
     circle3pTool.renderPreview(renderCtx, toolState);
   };
-
-  // Phase 18.2: drawCrosshair moved to renderHelpers.drawCrosshair
+  */
 
   // Phase 18.5: Mouse handlers moved to useMouseHandlers hook
 

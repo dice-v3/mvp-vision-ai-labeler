@@ -29,3 +29,7 @@ export * from './useMagnifier';
 
 // Mouse event handlers
 export * from './useMouseHandlers';
+
+// Rendering hooks
+export * from './useToolRenderer';
+export * from './useCanvasRenderer';
