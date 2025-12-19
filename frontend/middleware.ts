@@ -19,7 +19,7 @@ export default withAuth(
     },
     pages: {
       // 바로 Keycloak으로 리다이렉트
-      signIn: "/api/auth/signin/keycloak",
+      signIn: "/auth/signin/keycloak",
     },
   }
 )
@@ -29,10 +29,10 @@ export const config = {
   matcher: [
     /*
      * Match all paths except:
-     * - /api/auth (NextAuth API routes)
+     * - /auth (NextAuth routes - NOT /api/auth to avoid Istio routing)
      * - /_next (Next.js internals)
      * - /favicon.ico, /images, /fonts (static files)
      */
-    "/((?!api/auth|_next|favicon.ico|images|fonts).*)",
+    "/((?!auth|_next|favicon.ico|images|fonts).*)",
   ],
 }
