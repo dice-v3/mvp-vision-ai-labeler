@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { useShallow } from 'zustand/react/shallow';
 import ClassSelectorModal from './ClassSelectorModal';
 import { createAnnotation, updateAnnotation, deleteAnnotation as deleteAnnotationAPI, getProjectAnnotations } from '@/lib/api/annotations';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
@@ -69,12 +70,12 @@ export default function Canvas() {
   const annotations = useAnnotationStore(state => state.annotations);
   const selectedAnnotationId = useAnnotationStore(state => state.selectedAnnotationId);
   const selectAnnotation = useAnnotationStore(state => state.selectAnnotation);
-  const canvasState = useAnnotationStore(state => state.canvas);
+  const canvasState = useAnnotationStore(useShallow(state => state.canvas));
   const tool = useAnnotationStore(state => state.tool);
   const setTool = useAnnotationStore(state => state.setTool);
   const isDrawing = useAnnotationStore(state => state.isDrawing);
   const drawingStart = useAnnotationStore(state => state.drawingStart);
-  const preferences = useAnnotationStore(state => state.preferences);
+  const preferences = useAnnotationStore(useShallow(state => state.preferences));
   const setZoom = useAnnotationStore(state => state.setZoom);
   const setPan = useAnnotationStore(state => state.setPan);
   const setCursor = useAnnotationStore(state => state.setCursor);
@@ -82,7 +83,7 @@ export default function Canvas() {
   const updateDrawing = useAnnotationStore(state => state.updateDrawing);
   const finishDrawing = useAnnotationStore(state => state.finishDrawing);
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
-  const project = useAnnotationStore(state => state.project);
+  const project = useAnnotationStore(useShallow(state => state.project));
   const isAnnotationVisible = useAnnotationStore(state => state.isAnnotationVisible);
   const currentIndex = useAnnotationStore(state => state.currentIndex);
   const images = useAnnotationStore(state => state.images);
@@ -99,15 +100,15 @@ export default function Canvas() {
   const selectedBboxHandle = useAnnotationStore(state => state.selectedBboxHandle);
   // Undo/Redo selectors (group together as they're often used together)
   const { undo, redo, canUndo, canRedo } = useAnnotationStore(
-    state => ({
+    useShallow(state => ({
       undo: state.undo,
       redo: state.redo,
       canUndo: state.canUndo,
       canRedo: state.canRedo
-    })
+    }))
   );
   const showMinimap = useAnnotationStore(state => state.showMinimap);
-  const diffMode = useAnnotationStore(state => state.diffMode);
+  const diffMode = useAnnotationStore(useShallow(state => state.diffMode));
   const getDiffForCurrentImage = useAnnotationStore(state => state.getDiffForCurrentImage);
 
   // Phase 18.3: Custom Hooks for State Management

@@ -115,6 +115,12 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     drawCircle3pPreview,
   } = params;
 
+  // Destructure specific values to avoid object reference issues in dependencies
+  const { zoom, pan } = canvasState;
+  const { x: panX, y: panY } = pan;
+  const { darkMode, showGrid, showLabels } = preferences;
+  const { enabled: diffModeEnabled, viewMode: diffModeViewMode } = diffMode;
+
   /**
    * Draw all annotations on the canvas
    */
@@ -131,12 +137,12 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
       zoom,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      showLabels: preferences.showLabels,
-      darkMode: preferences.darkMode,
+      showLabels,
+      darkMode,
     };
 
     // Phase 11: Diff mode rendering
-    if (diffMode.enabled && diffMode.viewMode === 'overlay') {
+    if (diffModeEnabled && diffModeViewMode === 'overlay') {
       const imageDiff = getDiffForCurrentImage();
 
       if (imageDiff) {
@@ -241,15 +247,17 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
         }
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     project,
     canvasRef,
-    preferences,
-    diffMode,
-    getDiffForCurrentImage,
-    getCurrentClasses,
+    // Specific primitive values instead of preferences and diffMode objects
+    showLabels,
+    darkMode,
+    diffModeEnabled,
+    diffModeViewMode,
+    // getDiffForCurrentImage, getCurrentClasses, isAnnotationVisible are stable store methods
     annotations,
-    isAnnotationVisible,
     selectedAnnotationId,
   ]);
 
@@ -270,19 +278,18 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     canvas.height = rect.height;
 
     // Clear canvas with dark/light mode aware color
-    ctx.fillStyle = preferences.darkMode ? '#1f2937' : '#f3f4f6'; // gray-800 : gray-100
+    ctx.fillStyle = darkMode ? '#1f2937' : '#f3f4f6'; // gray-800 : gray-100
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Calculate image position (centered and scaled)
-    const { zoom, pan } = canvasState;
     const scaledWidth = image.width * zoom;
     const scaledHeight = image.height * zoom;
 
-    const x = (canvas.width - scaledWidth) / 2 + pan.x;
-    const y = (canvas.height - scaledHeight) / 2 + pan.y;
+    const x = (canvas.width - scaledWidth) / 2 + panX;
+    const y = (canvas.height - scaledHeight) / 2 + panY;
 
     // Draw grid if enabled and zoomed in
-    if (preferences.showGrid && zoom > 1.0) {
+    if (showGrid && zoom > 1.0) {
       drawGrid(ctx, canvas.width, canvas.height, x, y, scaledWidth, scaledHeight, zoom);
     }
 
@@ -318,7 +325,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     }
 
     // Draw crosshair if drawing tool is active
-    if ((tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') && !isDrawing && preferences.showLabels) {
+    if ((tool === 'bbox' || tool === 'polygon' || tool === 'polyline' || tool === 'circle' || tool === 'circle3p') && !isDrawing && showLabels) {
       drawCrosshair(ctx, canvas.width, canvas.height);
     }
 
@@ -424,14 +431,20 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     containerRef,
     image,
     imageLoaded,
-    canvasState,
+    // Specific primitive values instead of canvasState object
+    zoom,
+    panX,
+    panY,
     annotations,
     selectedAnnotationId,
     selectedVertexIndex,
     selectedBboxHandle,
     selectedCircleHandle,
-    preferences,
-    project,
+    // Specific primitive values instead of preferences object
+    darkMode,
+    showGrid,
+    showLabels,
+    // project removed - it's stable and only used in drawAnnotations
     tool,
     isDrawing,
     drawingStart,
