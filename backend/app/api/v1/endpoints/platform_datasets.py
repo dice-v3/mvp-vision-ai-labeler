@@ -20,14 +20,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import any_
 from sqlalchemy.orm import Session
 
-from app.core.database import get_labeler_db, get_user_db
+from app.core.database import get_labeler_db
 from app.core.service_jwt import (
     get_service_jwt_payload,
     require_service_scope,
     extract_user_id_from_jwt,
 )
 from app.db.models.labeler import Dataset, DatasetPermission
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.schemas.platform import (
     PlatformDatasetResponse,
     PlatformDatasetListResponse,
@@ -338,7 +338,6 @@ async def check_dataset_permission_for_platform(
     jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
     _scope: Dict = Depends(require_service_scope("labeler:read")),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
 ):
     """
     Check if a user has access to a dataset (Platform API).
@@ -357,7 +356,6 @@ async def check_dataset_permission_for_platform(
         user_id: User ID to check
         jwt_payload: Authenticated JWT payload from Platform
         labeler_db: Labeler database session
-        user_db: User database session
 
     Returns:
         Permission check result with access status and reason

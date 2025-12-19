@@ -1,12 +1,12 @@
 """Version diff endpoints."""
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_labeler_db
 from app.core.security import get_current_user
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import AnnotationVersion
 from app.schemas.version_diff import VersionDiffResponse, VersionDiffSummaryResponse
 from app.services.version_diff_service import VersionDiffService
@@ -24,7 +24,7 @@ async def compare_versions(
     version_b_id: int,
     image_id: Optional[str] = Query(None, description="Optional: compare only this image"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Calculate detailed diff between two annotation versions.
@@ -65,7 +65,7 @@ async def get_diff_summary(
     version_a_id: int,
     version_b_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Get compact summary of changes between two versions.

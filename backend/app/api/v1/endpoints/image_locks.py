@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from app.core.database import get_labeler_db, get_platform_db, get_user_db
+from app.core.database import get_labeler_db, get_platform_db
 from app.core.security import get_current_user, require_project_permission
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import AnnotationProject
 from app.services.image_lock_service import ImageLockService
 
@@ -64,13 +64,13 @@ class ProjectLocksResponse(BaseModel):
 # Helper Functions
 # ============================================================================
 
-def enrich_lock_with_user_info(lock_data: dict, user_db: Session) -> dict:
-    """Add user name and email to lock data (Phase 9: from User DB)."""
-    user = user_db.query(User).filter(User.id == lock_data['user_id']).first()
-    if user:
-        lock_data['user_name'] = user.full_name
-        lock_data['user_email'] = user.email
-    return lock_data
+# def enrich_lock_with_user_info(lock_data: dict, user_db: Session) -> dict:
+#     """Add user name and email to lock data (Phase 9: from User DB)."""
+#     user = user_db.query(User).filter(User.id == lock_data['user_id']).first()
+#     if user:
+#         lock_data['user_name'] = user.full_name
+#         lock_data['user_email'] = user.email
+#     return lock_data
 
 
 
@@ -85,8 +85,7 @@ async def acquire_lock(
     image_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("annotator")),
 ):
     """
@@ -108,11 +107,11 @@ async def acquire_lock(
     )
 
     # Enrich with user info
-    if result.get('lock'):
-        result['lock'] = enrich_lock_with_user_info(result['lock'], user_db)
+    # if result.get('lock'):
+    #     result['lock'] = enrich_lock_with_user_info(result['lock'], user_db)
 
-    if result.get('locked_by'):
-        result['locked_by'] = enrich_lock_with_user_info(result['locked_by'], user_db)
+    # if result.get('locked_by'):
+    #     result['locked_by'] = enrich_lock_with_user_info(result['locked_by'], user_db)
 
     return result
 
@@ -122,7 +121,7 @@ async def release_lock(
     project_id: str,
     image_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("annotator")),
 ):
     """
@@ -148,8 +147,7 @@ async def send_heartbeat(
     image_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("annotator")),
 ):
     """
@@ -167,8 +165,8 @@ async def send_heartbeat(
     )
 
     # Enrich with user info
-    if result.get('lock'):
-        result['lock'] = enrich_lock_with_user_info(result['lock'], user_db)
+    # if result.get('lock'):
+    #     result['lock'] = enrich_lock_with_user_info(result['lock'], user_db)
 
     return result
 
@@ -178,8 +176,7 @@ async def get_project_locks(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -196,12 +193,12 @@ async def get_project_locks(
     )
 
     # Enrich with user info
-    enriched_locks = [
-        enrich_lock_with_user_info(lock, user_db)
-        for lock in locks
-    ]
+    # enriched_locks = [
+    #     enrich_lock_with_user_info(lock, user_db)
+    #     for lock in locks
+    # ]
 
-    return {"locks": enriched_locks}
+    return {"locks": locks}
 
 
 @router.get("/{project_id}/{image_id:path}/status", tags=["Image Locks"])
@@ -210,8 +207,7 @@ async def get_lock_status(
     image_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -231,7 +227,8 @@ async def get_lock_status(
         return None
 
     # Enrich with user info
-    return enrich_lock_with_user_info(lock, user_db)
+    # return enrich_lock_with_user_info(lock, user_db)
+    return lock
 
 
 @router.delete("/{project_id}/{image_id:path}/force", response_model=LockReleaseResponse, tags=["Image Locks"])
@@ -239,7 +236,7 @@ async def force_release_lock(
     project_id: str,
     image_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("admin")),
 ):
     """

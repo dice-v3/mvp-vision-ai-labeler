@@ -1,17 +1,17 @@
 """Annotation endpoints."""
 
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, distinct
 import boto3
 from botocore.config import Config
 
-from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user, require_project_permission
 from app.core.config import settings
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import Dataset, Annotation, AnnotationHistory, AnnotationProject
 from app.schemas.annotation import (
     AnnotationCreate,
@@ -162,7 +162,7 @@ async def create_annotation(
     annotation: AnnotationCreate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Create new annotation.
@@ -317,8 +317,7 @@ async def get_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Get annotation by ID."""
     annotation = labeler_db.query(Annotation).filter(
@@ -331,25 +330,26 @@ async def get_annotation(
             detail=f"Annotation {annotation_id} not found",
         )
 
-    # Fetch user info (Phase 9: from User DB)
+    # User info removed - User DB dependency eliminated
     created_by_name = None
     updated_by_name = None
     confirmed_by_name = None
 
-    if annotation.created_by:
-        user = user_db.query(User).filter(User.id == annotation.created_by).first()
-        if user:
-            created_by_name = user.full_name
-
-    if annotation.updated_by:
-        user = user_db.query(User).filter(User.id == annotation.updated_by).first()
-        if user:
-            updated_by_name = user.full_name
-
-    if annotation.confirmed_by:
-        user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
-        if user:
-            confirmed_by_name = user.full_name
+    # User lookups commented out - no User DB access
+    # if annotation.created_by:
+    #     user = user_db.query(User).filter(User.id == annotation.created_by).first()
+    #     if user:
+    #         created_by_name = user.full_name
+    #
+    # if annotation.updated_by:
+    #     user = user_db.query(User).filter(User.id == annotation.updated_by).first()
+    #     if user:
+    #         updated_by_name = user.full_name
+    #
+    # if annotation.confirmed_by:
+    #     user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
+    #     if user:
+    #         confirmed_by_name = user.full_name
 
     response_dict = {
         **annotation.__dict__,
@@ -367,8 +367,7 @@ async def update_annotation(
     update_data: AnnotationUpdate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update annotation."""
     annotation = labeler_db.query(Annotation).filter(
@@ -480,20 +479,21 @@ async def update_annotation(
     labeler_db.commit()
     labeler_db.refresh(annotation)
 
-    # Add user info (Phase 9: from User DB)
+    # User info removed - User DB dependency eliminated
     updated_by_name = current_user.full_name
     created_by_name = None
     confirmed_by_name = None
 
-    if annotation.created_by:
-        user = user_db.query(User).filter(User.id == annotation.created_by).first()
-        if user:
-            created_by_name = user.full_name
-
-    if annotation.confirmed_by:
-        user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
-        if user:
-            confirmed_by_name = user.full_name
+    # User lookups commented out - no User DB access
+    # if annotation.created_by:
+    #     user = user_db.query(User).filter(User.id == annotation.created_by).first()
+    #     if user:
+    #         created_by_name = user.full_name
+    #
+    # if annotation.confirmed_by:
+    #     user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
+    #     if user:
+    #         confirmed_by_name = user.full_name
 
     response_dict = {
         **annotation.__dict__,
@@ -509,7 +509,7 @@ async def update_annotation(
 async def delete_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Delete annotation."""
     annotation = labeler_db.query(Annotation).filter(
@@ -593,8 +593,7 @@ async def list_project_annotations(
     image_id: Optional[str] = None,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -614,29 +613,30 @@ async def list_project_annotations(
 
     annotations = query.offset(skip).limit(min(limit, 1000)).all()
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info for all unique user IDs (Phase 9: from User DB)
-    user_ids = set()
-    for ann in annotations:
-        if ann.created_by:
-            user_ids.add(ann.created_by)
-        if ann.updated_by:
-            user_ids.add(ann.updated_by)
-        if ann.confirmed_by:
-            user_ids.add(ann.confirmed_by)
+    # user_ids = set()
+    # for ann in annotations:
+    #     if ann.created_by:
+    #         user_ids.add(ann.created_by)
+    #     if ann.updated_by:
+    #         user_ids.add(ann.updated_by)
+    #     if ann.confirmed_by:
+    #         user_ids.add(ann.confirmed_by)
+    #
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: u.full_name for u in user_results}
 
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: u.full_name for u in user_results}
-
-    # Build responses
+    # Build responses with user names set to None
     result = []
     for ann in annotations:
         response_dict = {
             **ann.__dict__,
-            "created_by_name": users.get(ann.created_by),
-            "updated_by_name": users.get(ann.updated_by),
-            "confirmed_by_name": users.get(ann.confirmed_by),
+            "created_by_name": None,
+            "updated_by_name": None,
+            "confirmed_by_name": None,
         }
         result.append(AnnotationResponse.model_validate(response_dict))
 
@@ -647,7 +647,7 @@ async def list_project_annotations(
 async def batch_create_annotations(
     batch: AnnotationBatchCreate,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Batch create annotations.
@@ -772,8 +772,7 @@ async def list_project_history(
     limit: int = 100,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -795,21 +794,21 @@ async def list_project_history(
         .all()
     )
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info (Phase 9: from User DB)
-    user_ids = set(h.changed_by for h in history_entries if h.changed_by)
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
+    # user_ids = set(h.changed_by for h in history_entries if h.changed_by)
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
 
-    # Build responses
+    # Build responses with user info set to None
     result = []
     for history in history_entries:
-        user_info = users.get(history.changed_by, {})
         response_dict = {
             **history.__dict__,
-            "changed_by_name": user_info.get("name"),
-            "changed_by_email": user_info.get("email"),
+            "changed_by_name": None,
+            "changed_by_email": None,
         }
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
@@ -821,8 +820,7 @@ async def list_annotation_history(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Get history for a specific annotation.
@@ -838,21 +836,21 @@ async def list_annotation_history(
         .all()
     )
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info (Phase 9: from User DB)
-    user_ids = set(h.changed_by for h in history_entries if h.changed_by)
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
+    # user_ids = set(h.changed_by for h in history_entries if h.changed_by)
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
 
-    # Build responses
+    # Build responses with user info set to None
     result = []
     for history in history_entries:
-        user_info = users.get(history.changed_by, {})
         response_dict = {
             **history.__dict__,
-            "changed_by_name": user_info.get("name"),
-            "changed_by_email": user_info.get("email"),
+            "changed_by_name": None,
+            "changed_by_email": None,
         }
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
@@ -865,7 +863,7 @@ async def confirm_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Confirm an annotation.
@@ -930,7 +928,7 @@ async def unconfirm_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Unconfirm an annotation.
@@ -995,7 +993,7 @@ async def bulk_confirm_annotations(
     request: BulkConfirmRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Bulk confirm multiple annotations.
@@ -1107,7 +1105,7 @@ async def import_annotations_from_json(
     force: bool = Query(False, description="Force re-import by deleting existing annotations"),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("annotator")),
 ):
     """

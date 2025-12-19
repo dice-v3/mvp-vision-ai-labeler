@@ -18,8 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_admin_user
-from app.core.database import get_labeler_db, get_user_db
-from app.db.models.user import User
+from app.core.database import get_labeler_db
 from app.services import admin_stats_service
 
 
@@ -33,8 +32,7 @@ router = APIRouter()
 @router.get("/overview", response_model=Dict[str, Any])
 async def get_datasets_overview(
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get high-level overview statistics for all datasets.
@@ -56,7 +54,7 @@ async def get_datasets_overview(
     """
     return admin_stats_service.get_datasets_overview_stats(
         labeler_db=labeler_db,
-        user_db=user_db
+        user_db=None  # User DB dependency removed
     )
 
 
@@ -64,8 +62,7 @@ async def get_datasets_overview(
 async def get_recent_datasets(
     limit: int = Query(default=10, ge=1, le=100, description="Number of recent updates to return"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get recently updated datasets with owner information.
@@ -80,7 +77,7 @@ async def get_recent_datasets(
     """
     return admin_stats_service.get_recent_dataset_updates(
         labeler_db=labeler_db,
-        user_db=user_db,
+        user_db=None,  # User DB dependency removed
         limit=limit
     )
 
@@ -93,8 +90,7 @@ async def get_recent_datasets(
 async def get_dataset_details(
     dataset_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get detailed statistics for a specific dataset.
@@ -117,7 +113,7 @@ async def get_dataset_details(
     result = admin_stats_service.get_dataset_detail_stats(
         dataset_id=dataset_id,
         labeler_db=labeler_db,
-        user_db=user_db
+        user_db=None  # User DB dependency removed
     )
 
     if result is None:
@@ -134,8 +130,7 @@ async def get_labeling_progress(
     dataset_id: str,
     project_id: Optional[str] = Query(default=None, description="Optional project ID to filter by"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get labeling progress statistics for a dataset or project.
@@ -167,7 +162,7 @@ async def get_labeling_progress(
         dataset_id=dataset_id,
         project_id=project_id,
         labeler_db=labeler_db,
-        user_db=user_db
+        user_db=None  # User DB dependency removed
     )
 
 
@@ -177,8 +172,7 @@ async def get_recent_activity(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to look back"),
     limit: int = Query(default=50, ge=1, le=200, description="Maximum number of activities to return"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get recent activity timeline for a dataset.
@@ -196,7 +190,7 @@ async def get_recent_activity(
     return admin_stats_service.get_recent_activity_timeline(
         dataset_id=dataset_id,
         labeler_db=labeler_db,
-        user_db=user_db,
+        user_db=None,  # User DB dependency removed
         days=days,
         limit=limit
     )
