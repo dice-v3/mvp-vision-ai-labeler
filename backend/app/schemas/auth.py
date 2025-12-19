@@ -1,37 +1,24 @@
-"""Authentication schemas."""
+"""Authentication schemas for Keycloak OIDC."""
 
-from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr
 
 
-class LoginRequest(BaseModel):
-    """Login request."""
-    email: EmailStr
-    password: str
-
-
-class TokenResponse(BaseModel):
-    """JWT token response."""
-    access_token: str
-    token_type: str = "bearer"
-
-
-class UserResponse(BaseModel):
-    """User information response."""
-    id: int
-    email: str
-    username: Optional[str] = None  # Not in Platform DB
-    full_name: Optional[str] = None  # Platform DB uses this
-    company: Optional[str] = None
-    division: Optional[str] = None
-    department: Optional[str] = None
-    system_role: Optional[str] = None  # 'admin' or 'user' in Platform
-    is_active: bool
-    is_admin: bool  # Derived from system_role via @property
-    badge_color: str
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+class KeycloakUserResponse(BaseModel):
+    """User information from Keycloak token."""
+    sub: str  # Keycloak user ID (UUID)
+    email: Optional[str] = None
+    email_verified: bool = False
+    name: Optional[str] = None
+    given_name: Optional[str] = None
+    family_name: Optional[str] = None
+    preferred_username: Optional[str] = None
+    roles: List[str] = []
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
+
+
+# Alias for backward compatibility
+UserResponse = KeycloakUserResponse

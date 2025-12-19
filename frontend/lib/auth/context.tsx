@@ -1,106 +1,83 @@
-'use client';
+"use client"
 
 /**
- * Authentication Context
+ * Authentication Context (Keycloak via NextAuth)
  *
- * React Context for managing authentication state
+ * React hooks for managing authentication state with NextAuth/Keycloak
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { login as apiLogin, logout as apiLogout, getCurrentUser, isAuthenticated } from '../api/auth';
-import type { User, LoginRequest } from '../types';
+import { useSession, signIn, signOut } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { useCallback } from "react"
 
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  error: string | null;
-  login: (credentials: LoginRequest) => Promise<void>;
-  logout: () => void;
-  refetch: () => Promise<void>;
+export interface KeycloakUser {
+  id: string
+  email: string | null
+  name: string | null
+  roles: string[]
+  isAdmin: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch current user on mount
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (!isAuthenticated()) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const userData = await getCurrentUser();
-        setUser(userData);
-        setError(null);
-      } catch (err) {
-        console.error('Failed to fetch user:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch user');
-        // Clear invalid token
-        apiLogout();
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUser();
-  }, []);
-
-  const login = async (credentials: LoginRequest) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      await apiLogin(credentials);
-      const userData = await getCurrentUser();
-      setUser(userData);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    apiLogout();
-    setUser(null);
-    setError(null);
-  };
-
-  const refetch = async () => {
-    if (!isAuthenticated()) return;
-
-    setLoading(true);
-    try {
-      const userData = await getCurrentUser();
-      setUser(userData);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to refetch user:', err);
-      setError(err instanceof Error ? err.message : 'Failed to refetch user');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, refetch }}>
-      {children}
-    </AuthContext.Provider>
-  );
+export interface AuthState {
+  user: KeycloakUser | null
+  accessToken: string | null
+  loading: boolean
+  isAuthenticated: boolean
+  error: string | null
+  login: () => void
+  logout: () => Promise<void>
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+/**
+ * Hook to access authentication state and methods
+ */
+export function useAuth(): AuthState {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
+  const user: KeycloakUser | null = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email ?? null,
+        name: session.user.name ?? null,
+        roles: session.roles ?? [],
+        isAdmin: session.roles?.includes("admin") ?? false,
+      }
+    : null
+
+  const login = useCallback(() => {
+    signIn("keycloak", { callbackUrl: "/dashboard" })
+  }, [])
+
+  const logout = useCallback(async () => {
+    await signOut({ callbackUrl: "/" })
+  }, [])
+
+  return {
+    user,
+    accessToken: session?.accessToken ?? null,
+    loading: status === "loading",
+    isAuthenticated: status === "authenticated",
+    error: session?.error ?? null,
+    login,
+    logout,
   }
-  return context;
 }
+
+/**
+ * Hook to require authentication
+ * Redirects to login if not authenticated
+ */
+export function useRequireAuth() {
+  const { isAuthenticated, loading, login } = useAuth()
+  const router = useRouter()
+
+  if (!loading && !isAuthenticated) {
+    login()
+  }
+
+  return { isAuthenticated, loading }
+}
+
+// Re-export for backward compatibility
+export { useSession, signIn, signOut } from "next-auth/react"
