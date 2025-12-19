@@ -50,22 +50,6 @@ class Settings(BaseSettings):
             f"@{self.PLATFORM_DB_HOST}:{self.PLATFORM_DB_PORT}/{self.PLATFORM_DB_NAME}"
         )
 
-    # User Database (Read-Only - Phase 9)
-    # PostgreSQL database shared with Platform service
-    USER_DB_HOST: str = "localhost"
-    USER_DB_PORT: int = 5433
-    USER_DB_NAME: str = "users"
-    USER_DB_USER: str = "admin"
-    USER_DB_PASSWORD: str = "devpass"
-
-    @property
-    def USER_DB_URL(self) -> str:
-        """Construct User database URL (PostgreSQL)."""
-        return (
-            f"postgresql://{self.USER_DB_USER}:{self.USER_DB_PASSWORD}"
-            f"@{self.USER_DB_HOST}:{self.USER_DB_PORT}/{self.USER_DB_NAME}"
-        )
-
     # Labeler Database (Full Access)
     LABELER_DB_HOST: str = "localhost"
     LABELER_DB_PORT: int = 5433
