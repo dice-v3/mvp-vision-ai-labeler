@@ -33,3 +33,9 @@ export * from './useMouseHandlers';
 // Rendering hooks
 export * from './useToolRenderer';
 export * from './useCanvasRenderer';
+
+// Phase 18.8: Keyboard shortcuts
+export * from './useCanvasKeyboardShortcuts';
+
+// Phase 18.8: Batch operations
+export * from './useBatchOperations';
