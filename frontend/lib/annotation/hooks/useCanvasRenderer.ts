@@ -14,7 +14,7 @@ import { useEffect, useCallback } from 'react';
 import type { CanvasRenderContext } from '@/lib/annotation';
 import type { Annotation } from '@/lib/types/annotation';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
-import { drawGrid, drawCrosshair, drawNoObjectBadge, snapshotToAnnotation, drawTextLabelButton } from '@/lib/annotation/utils';
+import { drawGrid, drawCrosshair, drawNoObjectBadge, snapshotToAnnotation, drawTextLabelButton, drawImageLevelTextLabelButton } from '@/lib/annotation/utils';
 import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 
 /**
@@ -123,7 +123,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
   const { enabled: diffModeEnabled, viewMode: diffModeViewMode } = diffMode;
 
   // Get text label store for Phase 19 - VLM Text Labeling
-  const { hasTextLabel } = useTextLabelStore();
+  const { hasTextLabel, getImageLevelLabelCount } = useTextLabelStore();
 
   /**
    * Draw all annotations on the canvas
@@ -316,6 +316,26 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
   }, [annotations, isAnnotationVisible, hasTextLabel, diffModeEnabled]);
 
   /**
+   * Draw image-level text label button (Phase 19.6)
+   */
+  const drawImageLevelButton = useCallback((ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (!image || diffModeEnabled) return; // Don't show in diff mode
+
+    const labelCount = getImageLevelLabelCount();
+
+    // Draw button at bottom-left of image
+    drawImageLevelTextLabelButton(
+      ctx,
+      0 * zoom + offsetX,  // imageX
+      0 * zoom + offsetY,  // imageY
+      image.width * zoom,  // imageWidth
+      image.height * zoom, // imageHeight
+      labelCount,
+      zoom
+    );
+  }, [image, getImageLevelLabelCount, diffModeEnabled]);
+
+  /**
    * Main rendering useEffect
    */
   useEffect(() => {
@@ -355,6 +375,9 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
 
     // Draw text label buttons (Phase 19)
     drawTextLabelButtons(ctx, x, y, zoom);
+
+    // Draw image-level text label button (Phase 19.6)
+    drawImageLevelButton(ctx, x, y, zoom);
 
     // Draw drawing preview
     if (isDrawing && drawingStart && tool === 'bbox') {
@@ -511,6 +534,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     circle3pPoints,
     drawAnnotations,
     drawTextLabelButtons,
+    drawImageLevelButton,
     drawBboxPreview,
     drawPolygonPreview,
     drawPolylinePreview,

@@ -224,7 +224,7 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
   } = params;
 
   // Phase 19: VLM Text Labeling store
-  const { openDialogForAnnotation } = useTextLabelStore();
+  const { openDialogForAnnotation, openImageLevelDialog } = useTextLabelStore();
 
   /**
    * Mouse down handler
@@ -248,7 +248,24 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
     const imgX = (rect.width - scaledWidth) / 2 + pan.x;
     const imgY = (rect.height - scaledHeight) / 2 + pan.y;
 
-    // Phase 19: Check if clicking on text label button (before other checks)
+    // Phase 19.6: Check if clicking on image-level text label button (first priority)
+    const IMAGE_BUTTON_SIZE = 28;
+    const IMAGE_BUTTON_MARGIN = 8;
+    const imageButtonX = imgX + IMAGE_BUTTON_MARGIN;
+    const imageButtonY = imgY + scaledHeight - IMAGE_BUTTON_SIZE - IMAGE_BUTTON_MARGIN;
+
+    if (
+      x >= imageButtonX &&
+      x <= imageButtonX + IMAGE_BUTTON_SIZE &&
+      y >= imageButtonY &&
+      y <= imageButtonY + IMAGE_BUTTON_SIZE
+    ) {
+      // Open image-level text label dialog
+      openImageLevelDialog('caption'); // Default to caption type
+      return; // Prevent other click handlers
+    }
+
+    // Phase 19: Check if clicking on region-level text label button
     const BUTTON_SIZE = 24;
     for (const ann of annotations) {
       if (!isAnnotationVisible(ann.id)) continue;
