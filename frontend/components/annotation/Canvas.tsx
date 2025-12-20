@@ -59,6 +59,9 @@ import {
 import { LockOverlay } from './overlays/LockOverlay';
 // Phase 18.8.3: Canvas UI Components
 import { ToolSelector, ZoomControls, NavigationButtons, CanvasActionBar } from './canvas-ui';
+// Phase 19: VLM Text Labeling
+import { TextLabelDialog } from './text-labels/TextLabelDialog';
+import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -110,6 +113,9 @@ export default function Canvas() {
   const showMinimap = useAnnotationStore(state => state.showMinimap);
   const diffMode = useAnnotationStore(useShallow(state => state.diffMode));
   const getDiffForCurrentImage = useAnnotationStore(state => state.getDiffForCurrentImage);
+
+  // Phase 19: VLM Text Labeling store
+  const { loadTextLabelsForImage, clearTextLabels } = useTextLabelStore();
 
   // Phase 18.3: Custom Hooks for State Management
 
@@ -1110,6 +1116,15 @@ export default function Canvas() {
     setZoom(canvasState.zoom + delta);
   }, [setZoom, canvasState.zoom]);
 
+  // Phase 19: Load text labels when image changes
+  useEffect(() => {
+    if (currentImage && project?.id) {
+      loadTextLabelsForImage(project.id, currentImage.id);
+    } else {
+      clearTextLabels();
+    }
+  }, [currentImage, project?.id, loadTextLabelsForImage, clearTextLabels]);
+
   if (!currentImage) {
     return (
       <div className="flex-1 bg-gray-900 flex items-center justify-center">
@@ -1415,6 +1430,9 @@ export default function Canvas() {
           {currentImage.id}
         </div>
       )}
+
+      {/* Phase 19: Text Label Dialog */}
+      <TextLabelDialog />
     </div>
   );
 }
