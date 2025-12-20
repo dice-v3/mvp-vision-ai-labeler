@@ -5553,59 +5553,216 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
 
 ---
 
-### 19.2: Frontend UI - Text Label Panel (8-10h) ⏸️
+### 19.2: Frontend UI - Canvas-Integrated Text Labeling (6-8h) ⏸️
 
-**Goal**: Create UI components for text labeling (image-level and region-level)
+**Goal**: Integrate text labeling into existing annotation workflow with minimal disruption
 
-#### 19.2.1: Text Label Panel Component (4-5h)
-- [ ] Create `TextLabelPanel.tsx` component
-  - Two sections: **Image Labels** and **Region Labels**
-  - Image Labels: Captions / Descriptions / VQA tabs
-  - Region Labels: List of annotations with text input fields
-  - Add/Edit/Delete controls
+**UX Design Philosophy**:
+- Add text labels **at the point of annotation** (no context switching)
+- Use existing UI patterns (dialogs, canvas buttons)
+- Optional text input (don't force users)
+- Visual feedback (icon states, canvas overlay)
+
+---
+
+#### 19.2.1: Canvas "T" Button Rendering (2-3h)
+
+**Goal**: Add text label button to each annotation on canvas
+
+- [ ] **Render "T" button on annotations**
+  - Position: Bottom-left corner of bbox/polygon bounding box
+  - Size: 24x24px, semi-transparent background
+  - Icon states:
+    - Empty "T": No text label (outlined icon)
+    - Filled "T": Has text label (solid icon, highlighted)
+  - Show on hover OR always visible (user preference)
+
+- [ ] **Button interactions**
+  - Click "T" button → Open `TextLabelDialog`
+  - Pass annotation ID to dialog
+  - Prevent click-through to canvas (stop propagation)
+
+- [ ] **Canvas rendering updates**
+  - Add to `useCanvasRenderer` or `useToolRenderer`
+  - Render after annotations, before selection handles
+  - Update when text labels change (subscribe to store)
+
+**Implementation**:
+```typescript
+// Pseudocode
+annotations.forEach(ann => {
+  // Render annotation (existing)
+  renderBBox(ann);
+
+  // Render "T" button (new)
+  const hasText = textLabels.find(label => label.annotation_id === ann.id);
+  renderTextButton({
+    x: ann.bbox.x,
+    y: ann.bbox.y + ann.bbox.height, // bottom-left
+    filled: !!hasText,
+    onClick: () => openTextLabelDialog(ann.id)
+  });
+});
+```
+
+---
+
+#### 19.2.2: Text Label Dialog Component (2-3h)
+
+**Goal**: Modal dialog for adding/editing text labels on annotations
+
+- [ ] **Create `TextLabelDialog.tsx`**
+  - Modal overlay (similar to class selection dialog)
+  - Title: "Text Label for {class_name} #{annotation_index}"
+  - Input fields:
+    - **Text content** (textarea, 500 char limit)
+    - **Language** (dropdown: en, ko, etc.) - optional
+    - **Template** (dropdown) - quick fill - optional
+  - Character count: "250 / 500"
+  - Buttons: Save, Delete (if exists), Cancel
+
+- [ ] **Dialog state management**
+  - Open/Close state in annotationStore or local state
+  - Pass annotation_id when opening
+  - Load existing text label (if any)
+  - Auto-save on Save button or Ctrl+Enter
+
+- [ ] **Keyboard shortcuts**
+  - `Esc`: Close dialog
+  - `Ctrl+Enter`: Save and close
+  - `Tab`: Navigate between fields
+
+**UI Mockup**:
+```
+┌─────────────────────────────────────┐
+│ Text Label for "Car" #3        [X]  │
+├─────────────────────────────────────┤
+│                                     │
+│ Text:                               │
+│ ┌─────────────────────────────┐   │
+│ │ A red sedan parked on the   │   │
+│ │ street                      │   │
+│ │                             │   │
+│ └─────────────────────────────┘   │
+│ 28 / 500 characters                │
+│                                     │
+│ Language: [English ▼]    (optional)│
+│ Template: [None ▼]       (optional)│
+│                                     │
+│      [Delete]  [Cancel]  [Save]    │
+└─────────────────────────────────────┘
+```
+
+---
+
+#### 19.2.3: Class Selection Dialog Enhancement (1-2h)
+
+**Goal**: Add optional text input when creating new annotations
+
+- [ ] **Update ClassSelectionDialog.tsx** (or equivalent)
+  - Add **optional text input field** below class selection
+  - Label: "Description (optional)"
+  - Textarea, 200-500 char limit
   - Character count display
-  - Auto-save support
-- [ ] Integration with annotation page
-  - Add to right panel (below or alternative to annotations list)
-  - Load text labels on image switch
-  - Real-time sync with store
-- [ ] **Region Label UI**:
-  - Show in annotation list (e.g., "BBox #1: Red car")
-  - Inline text input next to each annotation
-  - Highlight annotation when editing text
-  - Show text on canvas (optional overlay)
+  - Save text label along with annotation
 
-#### 19.2.2: Caption Editor (1-2h)
-- [ ] Simple textarea for short captions
-- [ ] Character limit display (e.g., 0/280)
-- [ ] Validation: min/max length
-- [ ] Multiple captions per image support
-- [ ] Quick templates dropdown
+- [ ] **Workflow**:
+  1. User draws bbox/polygon
+  2. Class selection dialog appears
+  3. User selects class (required)
+  4. User optionally enters text description
+  5. Click "Confirm" → Create annotation + text label (if text entered)
 
-#### 19.2.3: Description Editor (2-3h)
-- [ ] Rich text editor (consider: Tiptap, Quill, or simple textarea)
-- [ ] Support for:
-  - Bold, italic, lists
-  - Line breaks
-  - Optional markdown support
-- [ ] Word/character count
-- [ ] Preview mode
+**UI Addition to Existing Dialog**:
+```
+┌─────────────────────────────────────┐
+│ Select Class                        │
+├─────────────────────────────────────┤
+│ [Search classes...]                 │
+│                                     │
+│ ○ Car                               │
+│ ○ Person                            │
+│ ● Building                          │  ← Selected
+│                                     │
+│ ─────────────────────────────────  │  ← NEW SECTION
+│ Description (optional):             │
+│ ┌─────────────────────────────┐   │
+│ │ A tall glass building with  │   │
+│ │ reflective windows          │   │
+│ └─────────────────────────────┘   │
+│ 42 / 200                           │
+│ ─────────────────────────────────  │
+│                                     │
+│            [Cancel]  [Confirm]     │
+└─────────────────────────────────────┘
+```
 
-#### 19.2.4: VQA Editor (1-2h)
-- [ ] Question-Answer pair interface
-- [ ] Question textarea
-- [ ] Answer textarea
-- [ ] Multiple QA pairs per image
-- [ ] Add/Remove QA pairs
-- [ ] Reorder QA pairs (drag-and-drop)
+---
 
-**Files**:
-- `frontend/components/annotation/text-labels/TextLabelPanel.tsx` (new)
-- `frontend/components/annotation/text-labels/CaptionEditor.tsx` (new)
-- `frontend/components/annotation/text-labels/DescriptionEditor.tsx` (new)
-- `frontend/components/annotation/text-labels/VQAEditor.tsx` (new)
-- `frontend/lib/stores/textLabelStore.ts` (new, Zustand store)
-- `frontend/lib/api/text-labels.ts` (new, API client)
+#### 19.2.4: Image-Level Label Panel (Optional, 2-3h)
+
+**Goal**: Add image-level captions/descriptions (not tied to annotations)
+
+- [ ] **Create `ImageLabelPanel.tsx`** (simplified)
+  - Add to right panel or bottom toolbar
+  - Tabs: Caption / Description / VQA
+  - Simple textarea for each type
+  - Auto-save (debounced)
+  - Character limits and counts
+
+- [ ] **Integration**:
+  - Show/hide toggle button
+  - Load/save image-level labels (annotation_id = NULL)
+  - Separate from region-level labels
+
+**Note**: This is optional - can be added later if needed. Focus on region-level first.
+
+---
+
+#### 19.2.5: Text Label Store & API Client (1-2h)
+
+**Goal**: State management and API integration
+
+- [ ] **Create `textLabelStore.ts` (Zustand)**
+  - State:
+    - `textLabels: TextLabel[]` (all labels for current image)
+    - `dialogOpen: boolean`
+    - `selectedAnnotationId: number | null`
+  - Actions:
+    - `loadTextLabels(imageId)`
+    - `createTextLabel(annotationId, text, language)`
+    - `updateTextLabel(labelId, text)`
+    - `deleteTextLabel(labelId)`
+    - `openDialog(annotationId)`
+    - `closeDialog()`
+
+- [ ] **Create `text-labels.ts` API client**
+  - `getTextLabels(projectId, imageId?, annotationId?)`
+  - `createTextLabel(data)`
+  - `updateTextLabel(labelId, data)`
+  - `deleteTextLabel(labelId)`
+  - TypeScript interfaces matching backend schemas
+
+---
+
+**Files to Create**:
+- `frontend/components/annotation/text-labels/TextLabelDialog.tsx` (new)
+- `frontend/components/annotation/text-labels/ImageLabelPanel.tsx` (new, optional)
+- `frontend/lib/stores/textLabelStore.ts` (new)
+- `frontend/lib/api/text-labels.ts` (new)
+
+**Files to Modify**:
+- `frontend/components/annotation/Canvas.tsx` - Render "T" buttons
+- `frontend/lib/annotation/hooks/useCanvasRenderer.ts` - Add text button rendering
+- `frontend/components/annotation/ClassSelectionDialog.tsx` - Add text input field (if exists)
+- `frontend/app/annotate/[projectId]/page.tsx` - Load text labels on image switch
+
+---
+
+**Implementation Priority**:
+1. **High**: 19.2.1 (Canvas "T" button), 19.2.2 (Dialog), 19.2.5 (Store/API)
+2. **Medium**: 19.2.3 (Class dialog enhancement)
+3. **Low**: 19.2.4 (Image-level panel) - can defer to later phase
 
 ---
 
