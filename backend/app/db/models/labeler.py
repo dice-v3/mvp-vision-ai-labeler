@@ -799,3 +799,78 @@ class SystemStatsCache(LabelerBase):
     def is_valid(self) -> bool:
         """Check if cache is still valid."""
         return not self.is_expired
+
+
+class TextLabel(LabelerBase):
+    """
+    Text Label model for VLM training (Phase 19).
+
+    Supports:
+    - Image-level labels (captions, descriptions, VQA)
+    - Region-level labels (bbox/polygon text descriptions)
+
+    Design:
+    - If annotation_id is NULL → image-level label
+    - If annotation_id is set → region-level label (linked to bbox/polygon)
+    """
+
+    __tablename__ = "text_labels"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Foreign keys (no actual FK constraints - different databases)
+    project_id = Column(String(50), nullable=False, index=True)
+    image_id = Column(String(255), nullable=False, index=True)
+    annotation_id = Column(BigInteger, nullable=True, index=True)  # NULL = image-level, set = region-level
+
+    # Label type: caption, description, qa, region
+    label_type = Column(String(20), nullable=False, default="caption", index=True)
+
+    # Text content
+    text_content = Column(Text, nullable=False)  # Main text (caption/description/answer)
+    question = Column(Text, nullable=True)  # For VQA type
+
+    # Language
+    language = Column(String(10), nullable=False, default="en")
+
+    # Confidence/quality (optional, for AI-generated or reviewed labels)
+    confidence = Column(Integer, nullable=True)  # 0-100
+
+    # Additional metadata
+    metadata = Column(JSONB, default={})
+
+    # Optimistic locking
+    version = Column(Integer, nullable=False, default=1, index=True)
+
+    # Audit fields
+    created_by = Column(Integer, nullable=False)  # References User DB user.id
+    updated_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Indexes for efficient querying
+    __table_args__ = (
+        # Project + image lookup (most common)
+        Index("ix_text_labels_project_image", "project_id", "image_id"),
+
+        # Annotation-level lookup (region-level labels)
+        Index("ix_text_labels_annotation", "annotation_id"),
+
+        # Type filtering
+        Index("ix_text_labels_project_type", "project_id", "label_type"),
+
+        # Language filtering
+        Index("ix_text_labels_language", "language"),
+
+        # Full-text search on text_content and question
+        # Note: PostgreSQL GIN index for full-text search
+        # Index("ix_text_labels_fts_content", text_content, postgresql_using="gin", postgresql_ops={"text_content": "gin_trgm_ops"}),
+        # Index("ix_text_labels_fts_question", question, postgresql_using="gin", postgresql_ops={"question": "gin_trgm_ops"}),
+
+        # Audit/tracking
+        Index("ix_text_labels_created_by", "created_by"),
+    )
+
+    def __repr__(self):
+        return f"<TextLabel(id={self.id}, type='{self.label_type}', image_id='{self.image_id}')>"
