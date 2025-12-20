@@ -270,3 +270,71 @@ export function setupCanvasContext(
   // Adjust line width based on zoom (inverse scaling)
   ctx.lineWidth = Math.max(1, 2 / zoom);
 }
+
+/**
+ * Draw a text label button on an annotation (Phase 19)
+ *
+ * Renders a "T" button at the bottom-left corner of an annotation's bounding box.
+ * Button appearance changes based on whether the annotation has a text label.
+ *
+ * @param ctx - Canvas rendering context
+ * @param x - Bounding box X position (top-left)
+ * @param y - Bounding box Y position (top-left)
+ * @param width - Bounding box width
+ * @param height - Bounding box height
+ * @param hasTextLabel - Whether the annotation has a text label
+ * @param zoom - Current zoom level
+ * @returns Button bounding box { x, y, width, height } for click detection
+ */
+export function drawTextLabelButton(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  hasTextLabel: boolean,
+  zoom: number = 1
+): { x: number; y: number; width: number; height: number } {
+  const buttonSize = 24; // px
+  const buttonX = x;
+  const buttonY = y + height - buttonSize;
+
+  // Button background
+  if (hasTextLabel) {
+    // Filled background when text label exists (highlighted)
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.9)'; // violet-500
+  } else {
+    // Semi-transparent background when no text label
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  }
+
+  // Draw rounded rectangle background
+  const radius = 4;
+  ctx.beginPath();
+  ctx.moveTo(buttonX + radius, buttonY);
+  ctx.lineTo(buttonX + buttonSize - radius, buttonY);
+  ctx.quadraticCurveTo(buttonX + buttonSize, buttonY, buttonX + buttonSize, buttonY + radius);
+  ctx.lineTo(buttonX + buttonSize, buttonY + buttonSize - radius);
+  ctx.quadraticCurveTo(buttonX + buttonSize, buttonY + buttonSize, buttonX + buttonSize - radius, buttonY + buttonSize);
+  ctx.lineTo(buttonX + radius, buttonY + buttonSize);
+  ctx.quadraticCurveTo(buttonX, buttonY + buttonSize, buttonX, buttonY + buttonSize - radius);
+  ctx.lineTo(buttonX, buttonY + radius);
+  ctx.quadraticCurveTo(buttonX, buttonY, buttonX + radius, buttonY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Draw "T" icon
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('T', buttonX + buttonSize / 2, buttonY + buttonSize / 2);
+
+  // Return button bounds for click detection
+  return {
+    x: buttonX,
+    y: buttonY,
+    width: buttonSize,
+    height: buttonSize,
+  };
+}
