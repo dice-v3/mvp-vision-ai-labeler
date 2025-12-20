@@ -197,8 +197,8 @@ def _export_yolo(
     image_ids: Optional[list[str]],
 ) -> tuple[bytes, dict, str]:
     """Export to YOLO format."""
-    # Generate YOLO format
-    image_annotations, classes_txt = export_to_yolo(
+    # Generate YOLO format (Phase 19: now includes text label files)
+    image_annotations, classes_txt, captions_files, region_descriptions_files, vqa_files = export_to_yolo(
         db=labeler_db,
         project_id=project_id,
         include_draft=include_draft,
@@ -219,6 +219,19 @@ def _export_yolo(
             txt_filename = f"{base_name}.txt"
 
             zip_file.writestr(f"labels/{txt_filename}", annotations_str)
+
+        # Phase 19: Add text label files
+        for image_id, captions_json in captions_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"captions/{base_name}.json", captions_json)
+
+        for image_id, region_desc_json in region_descriptions_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"region_descriptions/{base_name}.json", region_desc_json)
+
+        for image_id, vqa_json in vqa_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"vqa/{base_name}.json", vqa_json)
 
     export_data = zip_buffer.getvalue()
 

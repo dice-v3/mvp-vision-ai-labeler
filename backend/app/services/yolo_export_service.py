@@ -14,8 +14,9 @@ REFACTORING CHANGES:
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+import json
 
-from app.db.models.labeler import Annotation, AnnotationProject
+from app.db.models.labeler import Annotation, AnnotationProject, TextLabel
 
 
 def export_to_yolo(
@@ -24,7 +25,7 @@ def export_to_yolo(
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
     task_type: Optional[str] = None,
-) -> Tuple[Dict[str, str], str]:
+) -> Tuple[Dict[str, str], str, Dict[str, str], Dict[str, str], Dict[str, str]]:
     """
     Export annotations to YOLO format.
 
@@ -36,9 +37,12 @@ def export_to_yolo(
         task_type: Task type to export (detection, segmentation) - required for multi-task projects
 
     Returns:
-        Tuple of (image_annotations_dict, classes_txt)
+        Tuple of (image_annotations_dict, classes_txt, captions_files, region_descriptions_files, vqa_files)
         - image_annotations_dict: {image_id: "yolo format annotations"}
         - classes_txt: Class names in order
+        - captions_files: {image_id: "json string of captions"} (Phase 19)
+        - region_descriptions_files: {image_id: "json string of region descriptions"} (Phase 19)
+        - vqa_files: {image_id: "json string of VQA pairs"} (Phase 19)
     """
     # Get project
     project = db.query(AnnotationProject).filter(
@@ -60,6 +64,12 @@ def export_to_yolo(
         query = query.filter(Annotation.image_id.in_(image_ids))
 
     annotations = query.all()
+
+    # Phase 19: Query text labels for export
+    text_labels_query = db.query(TextLabel).filter(TextLabel.project_id == project_id)
+    if image_ids:
+        text_labels_query = text_labels_query.filter(TextLabel.image_id.in_(image_ids))
+    text_labels = text_labels_query.all()
 
     # REFACTORING: Get task-specific classes (task_classes only, no legacy fallback)
     # Legacy project.classes field has been removed
@@ -183,7 +193,75 @@ def export_to_yolo(
     # Build classes.txt
     classes_txt = _build_classes_txt(task_classes, class_mapping)
 
-    return image_annotations_str, classes_txt
+    # Phase 19: Build text label files (JSON format)
+    # Group text labels by image and annotation
+    text_labels_by_image = {}  # image_id -> [text labels]
+    text_labels_by_annotation = {}  # annotation_id -> [text labels]
+
+    for label in text_labels:
+        if label.annotation_id is None:
+            # Image-level labels
+            if label.image_id not in text_labels_by_image:
+                text_labels_by_image[label.image_id] = []
+            text_labels_by_image[label.image_id].append(label)
+        else:
+            # Region-level labels
+            if label.annotation_id not in text_labels_by_annotation:
+                text_labels_by_annotation[label.annotation_id] = []
+            text_labels_by_annotation[label.annotation_id].append(label)
+
+    # Build text label file structures
+    captions_files = {}  # {image_id: json_string}
+    region_descriptions_files = {}  # {image_id: json_string}
+    vqa_files = {}  # {image_id: json_string}
+
+    # Process image-level text labels
+    for image_id, labels in text_labels_by_image.items():
+        captions = []
+        vqa_pairs = []
+
+        for label in labels:
+            if label.label_type in ["caption", "description"]:
+                captions.append({
+                    "text": label.text_content,
+                    "language": label.language,
+                    "label_type": label.label_type,
+                    "confidence": label.confidence,
+                })
+            elif label.label_type == "qa" and label.question:
+                vqa_pairs.append({
+                    "question": label.question,
+                    "answer": label.text_content,
+                    "language": label.language,
+                    "confidence": label.confidence,
+                })
+
+        if captions:
+            captions_files[image_id] = json.dumps(captions, ensure_ascii=False, indent=2)
+        if vqa_pairs:
+            vqa_files[image_id] = json.dumps(vqa_pairs, ensure_ascii=False, indent=2)
+
+    # Process region-level text labels (group by image)
+    region_labels_by_image = {}
+    for ann in annotations:
+        if ann.id in text_labels_by_annotation:
+            image_id = ann.image_id
+            if image_id not in region_labels_by_image:
+                region_labels_by_image[image_id] = []
+
+            for label in text_labels_by_annotation[ann.id]:
+                region_labels_by_image[image_id].append({
+                    "annotation_id": str(ann.id),
+                    "class_id": ann.class_id,
+                    "text": label.text_content,
+                    "language": label.language,
+                    "confidence": label.confidence,
+                })
+
+    for image_id, region_labels in region_labels_by_image.items():
+        region_descriptions_files[image_id] = json.dumps(region_labels, ensure_ascii=False, indent=2)
+
+    return image_annotations_str, classes_txt, captions_files, region_descriptions_files, vqa_files
 
 
 def _build_class_mapping(task_classes: Dict[str, Any]) -> Dict[str, int]:

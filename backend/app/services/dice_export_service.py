@@ -86,7 +86,7 @@ def get_split_from_image_id(image_id: str, train_ratio: float = 0.7, val_ratio: 
     else:
         return "test"
 
-from app.db.models.labeler import Dataset, Annotation, AnnotationProject, ImageAnnotationStatus
+from app.db.models.labeler import Dataset, Annotation, AnnotationProject, ImageAnnotationStatus, TextLabel
 from app.db.models.platform import User
 from app.core.storage import storage_client
 
@@ -156,12 +156,33 @@ def export_to_dice(
 
     annotations = query.all()
 
+    # Phase 19: Query text labels for export
+    text_labels_query = db.query(TextLabel).filter(TextLabel.project_id == project_id)
+    if image_ids:
+        text_labels_query = text_labels_query.filter(TextLabel.image_id.in_(image_ids))
+    text_labels = text_labels_query.all()
+
     # Group annotations by image
     images_dict = {}
     for ann in annotations:
         if ann.image_id not in images_dict:
             images_dict[ann.image_id] = []
         images_dict[ann.image_id].append(ann)
+
+    # Phase 19: Group text labels by image and annotation
+    text_labels_by_image = {}  # image_id -> [text labels]
+    text_labels_by_annotation = {}  # annotation_id -> [text labels]
+    for label in text_labels:
+        # Image-level labels (annotation_id is None)
+        if label.annotation_id is None:
+            if label.image_id not in text_labels_by_image:
+                text_labels_by_image[label.image_id] = []
+            text_labels_by_image[label.image_id].append(label)
+        # Region-level labels (annotation_id is set)
+        else:
+            if label.annotation_id not in text_labels_by_annotation:
+                text_labels_by_annotation[label.annotation_id] = []
+            text_labels_by_annotation[label.annotation_id].append(label)
 
     # Load image dimensions from Platform annotations file
     # Use provided task_type or fallback to first task type
@@ -264,6 +285,51 @@ def export_to_dice(
         file_ext = os.path.splitext(file_name)[1]  # e.g., ".png"
         file_format = file_ext[1:].lower() if file_ext else "unknown"  # e.g., "png"
 
+        # Phase 19: Build annotations with text labels
+        dice_annotations = []
+        for ann in image_annotations:
+            dice_ann = _convert_annotation_to_dice(ann, dice_id, class_id_to_dice_index, class_id_to_name)
+
+            # Add region-level text labels to annotation if they exist
+            if ann.id in text_labels_by_annotation:
+                dice_ann["text_labels"] = [
+                    {
+                        "text": label.text_content,
+                        "language": label.language,
+                        "label_type": label.label_type,
+                        "confidence": label.confidence,
+                    }
+                    for label in text_labels_by_annotation[ann.id]
+                ]
+
+            dice_annotations.append(dice_ann)
+
+        # Phase 19: Build image-level text labels
+        image_captions = []
+        vqa_pairs = []
+        if image_id in text_labels_by_image:
+            for label in text_labels_by_image[image_id]:
+                if label.label_type == "caption":
+                    image_captions.append({
+                        "text": label.text_content,
+                        "language": label.language,
+                        "confidence": label.confidence,
+                    })
+                elif label.label_type == "description":
+                    image_captions.append({
+                        "text": label.text_content,
+                        "language": label.language,
+                        "label_type": "description",
+                        "confidence": label.confidence,
+                    })
+                elif label.label_type == "qa" and label.question:
+                    vqa_pairs.append({
+                        "question": label.question,
+                        "answer": label.text_content,
+                        "language": label.language,
+                        "confidence": label.confidence,
+                    })
+
         dice_image = {
             "id": dice_id,
             "file_name": file_name,
@@ -272,10 +338,7 @@ def export_to_dice(
             "height": height,
             "depth": 3,  # Assume RGB images
             "split": split,  # Hash-based deterministic split (70% train, 20% val, 10% test)
-            "annotations": [
-                _convert_annotation_to_dice(ann, dice_id, class_id_to_dice_index, class_id_to_name)
-                for ann in image_annotations
-            ],
+            "annotations": dice_annotations,
             "metadata": {
                 "labeled_by": labeled_by_user.email if labeled_by_user else None,
                 "labeled_at": to_kst_isoformat(image_annotations[0].created_at) if image_annotations else None,
@@ -284,6 +347,12 @@ def export_to_dice(
                 "source": "platform_labeler_v1.0"
             }
         }
+
+        # Phase 19: Add image-level text labels to DICE image
+        if image_captions:
+            dice_image["image_captions"] = image_captions
+        if vqa_pairs:
+            dice_image["vqa_pairs"] = vqa_pairs
         dice_images_with_mapping.append(dice_image)
 
     # Map task_type to DICE task_type format
