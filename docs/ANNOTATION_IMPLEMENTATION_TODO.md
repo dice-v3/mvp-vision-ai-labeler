@@ -5491,9 +5491,8 @@ Invitation Workflow:
 ### Overview
 
 Add comprehensive text labeling capabilities to support VLM training datasets:
-- **Image Captions**: Short, descriptive text for images
-- **Detailed Descriptions**: Long-form descriptions with rich formatting
-- **Visual Question Answering (VQA)**: Question-answer pairs for visual reasoning
+- **Image-level Labels**: Captions, descriptions, and VQA for entire images
+- **Region-level Labels**: Text descriptions for individual bboxes and polygons (Dense Captioning)
 - **Template System**: Pre-defined templates for common labeling scenarios
 - **Multi-language Support**: Enable labeling in multiple languages
 - **Quality Control**: Validation, review workflow, and quality metrics
@@ -5501,10 +5500,11 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
 ### Use Cases
 
 1. **Image Captioning**: Generate training data for models like CLIP, BLIP
-2. **VQA Datasets**: Create question-answer pairs for visual reasoning models
-3. **Dense Captioning**: Multiple region descriptions within single image
-4. **Instruction Following**: Generate instruction-response pairs for instruction-tuned VLMs
-5. **Multilingual VLMs**: Support for non-English VLM training
+2. **Dense Captioning**: Region-level descriptions (bbox/polygon + text) for Visual Genome-style datasets
+3. **VQA Datasets**: Create question-answer pairs for visual reasoning models
+4. **Grounded Descriptions**: Combine spatial annotations with natural language descriptions
+5. **Instruction Following**: Generate instruction-response pairs for instruction-tuned VLMs
+6. **Multilingual VLMs**: Support for non-English VLM training
 
 ---
 
@@ -5514,7 +5514,8 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
 
 #### 19.1.1: Database Models (2-3h)
 - [ ] Create `TextLabel` model
-  - Fields: `id`, `project_id`, `image_id`, `label_type` (caption/description/qa)
+  - Fields: `id`, `project_id`, `image_id`, `label_type` (caption/description/qa/region)
+  - **`annotation_id`**: Optional - Link to specific annotation (bbox/polygon) for region-level labels
   - `text_content`: Main text content (caption/description/answer)
   - `question`: Question text (for VQA type)
   - `language`: Language code (default: 'en')
@@ -5522,16 +5523,21 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
   - `metadata`: JSON field for additional data
   - `created_by`, `updated_by`, `created_at`, `updated_at`
   - `version`: Optimistic locking support
+- [ ] **Key Design**:
+  - If `annotation_id` is NULL → image-level label
+  - If `annotation_id` is set → region-level label (linked to bbox/polygon)
 - [ ] Add indexes for efficient querying
   - Index on `(project_id, image_id)`
+  - Index on `annotation_id` (for region-level queries)
   - Index on `label_type`
   - Full-text search index on `text_content`, `question`
 - [ ] Create migration script
 
 #### 19.1.2: API Endpoints (2-3h)
 - [ ] `GET /api/v1/text-labels/project/{project_id}` - List all text labels
-  - Query params: `image_id`, `label_type`, `language`, `skip`, `limit`
+  - Query params: `image_id`, `annotation_id`, `label_type`, `language`, `skip`, `limit`
 - [ ] `GET /api/v1/text-labels/{label_id}` - Get single label
+- [ ] `GET /api/v1/text-labels/annotation/{annotation_id}` - Get labels for specific annotation
 - [ ] `POST /api/v1/text-labels` - Create new label
 - [ ] `PUT /api/v1/text-labels/{label_id}` - Update label
 - [ ] `DELETE /api/v1/text-labels/{label_id}` - Delete label
@@ -5547,14 +5553,15 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
 
 ---
 
-### 19.2: Frontend UI - Text Label Panel (6-8h) ⏸️
+### 19.2: Frontend UI - Text Label Panel (8-10h) ⏸️
 
-**Goal**: Create UI components for text labeling
+**Goal**: Create UI components for text labeling (image-level and region-level)
 
-#### 19.2.1: Text Label Panel Component (3-4h)
+#### 19.2.1: Text Label Panel Component (4-5h)
 - [ ] Create `TextLabelPanel.tsx` component
-  - Tab switcher: Captions / Descriptions / VQA
-  - List view of existing labels
+  - Two sections: **Image Labels** and **Region Labels**
+  - Image Labels: Captions / Descriptions / VQA tabs
+  - Region Labels: List of annotations with text input fields
   - Add/Edit/Delete controls
   - Character count display
   - Auto-save support
@@ -5562,6 +5569,11 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
   - Add to right panel (below or alternative to annotations list)
   - Load text labels on image switch
   - Real-time sync with store
+- [ ] **Region Label UI**:
+  - Show in annotation list (e.g., "BBox #1: Red car")
+  - Inline text input next to each annotation
+  - Highlight annotation when editing text
+  - Show text on canvas (optional overlay)
 
 #### 19.2.2: Caption Editor (1-2h)
 - [ ] Simple textarea for short captions
@@ -5650,15 +5662,29 @@ Add comprehensive text labeling capabilities to support VLM training datasets:
 
 ---
 
-### 19.5: Export & Dataset Integration (2-3h) ⏸️
+### 19.5: Export & Dataset Integration (3-4h) ⏸️
 
-**Goal**: Export text labels for VLM training
+**Goal**: Export text labels for VLM training (including region-level labels)
 
-#### 19.5.1: Export Formats (1-2h)
-- [ ] JSONL format (common for VLM training)
+#### 19.5.1: Export Formats (2-3h)
+- [ ] **JSONL format** (common for VLM training)
   ```json
   {"image_id": "001.jpg", "caption": "A cat sitting on a chair", "language": "en"}
   {"image_id": "001.jpg", "question": "What is the cat doing?", "answer": "Sitting"}
+  ```
+- [ ] **Dense Captioning / Visual Genome format**
+  ```json
+  {
+    "image_id": "001.jpg",
+    "regions": [
+      {"bbox": [10, 20, 100, 200], "phrase": "A red car parked on the street"},
+      {"polygon": [[x1,y1], [x2,y2], ...], "phrase": "A person walking"}
+    ]
+  }
+  ```
+- [ ] **Grounded Description format** (bbox + text)
+  ```json
+  {"image_id": "001.jpg", "objects": [{"bbox": [x,y,w,h], "class": "car", "description": "Red sedan"}]}
   ```
 - [ ] CSV format (simple, Excel-compatible)
 - [ ] COCO Captions format (for compatibility)
