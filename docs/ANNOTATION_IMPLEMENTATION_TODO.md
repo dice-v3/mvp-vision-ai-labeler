@@ -28,6 +28,7 @@
 | **Phase 16: Platform Integration** | **🔄 In Progress** | **60%** (16.5: 60% complete, 16.6: planned) | **-** |
 | **Phase 17: SSO Integration** | **🔄 In Progress** | **95%** | **2025-12-10** |
 | **Phase 18: Canvas Architecture Refactoring** | **✅ Complete** | **100%** (All phases complete, Canvas.tsx: 4,100 → 1,419 lines, -65%) | **2025-12-19** |
+| **Phase 19: VLM Text Labeling** | **⏸️ Pending** | **0%** | **-** |
 
 **Current Focus**:
 - Phase 2: Advanced Features ✅ Complete (including Canvas Enhancements)
@@ -5477,5 +5478,311 @@ Invitation Workflow:
 - Phase 18 is now ✅ **COMPLETE**
 - Ready for production deployment
 - Complex hooks can be tested via integration/E2E tests in future phases
+
+---
+
+## Phase 19: VLM Text Labeling ⏸️ PENDING
+
+**Duration**: 1-2 weeks (estimated)
+**Status**: ⏸️ Pending (0%)
+**Start Date**: 2025-12-20
+**Goal**: Enable text-based labeling for Vision-Language Model (VLM) training - captions, descriptions, and visual question answering (VQA)
+
+### Overview
+
+Add comprehensive text labeling capabilities to support VLM training datasets:
+- **Image Captions**: Short, descriptive text for images
+- **Detailed Descriptions**: Long-form descriptions with rich formatting
+- **Visual Question Answering (VQA)**: Question-answer pairs for visual reasoning
+- **Template System**: Pre-defined templates for common labeling scenarios
+- **Multi-language Support**: Enable labeling in multiple languages
+- **Quality Control**: Validation, review workflow, and quality metrics
+
+### Use Cases
+
+1. **Image Captioning**: Generate training data for models like CLIP, BLIP
+2. **VQA Datasets**: Create question-answer pairs for visual reasoning models
+3. **Dense Captioning**: Multiple region descriptions within single image
+4. **Instruction Following**: Generate instruction-response pairs for instruction-tuned VLMs
+5. **Multilingual VLMs**: Support for non-English VLM training
+
+---
+
+### 19.1: Backend API - Text Label Models & Endpoints (4-6h) ⏸️
+
+**Goal**: Create database models and API endpoints for text labels
+
+#### 19.1.1: Database Models (2-3h)
+- [ ] Create `TextLabel` model
+  - Fields: `id`, `project_id`, `image_id`, `label_type` (caption/description/qa)
+  - `text_content`: Main text content (caption/description/answer)
+  - `question`: Question text (for VQA type)
+  - `language`: Language code (default: 'en')
+  - `confidence`: Confidence score (0-1)
+  - `metadata`: JSON field for additional data
+  - `created_by`, `updated_by`, `created_at`, `updated_at`
+  - `version`: Optimistic locking support
+- [ ] Add indexes for efficient querying
+  - Index on `(project_id, image_id)`
+  - Index on `label_type`
+  - Full-text search index on `text_content`, `question`
+- [ ] Create migration script
+
+#### 19.1.2: API Endpoints (2-3h)
+- [ ] `GET /api/v1/text-labels/project/{project_id}` - List all text labels
+  - Query params: `image_id`, `label_type`, `language`, `skip`, `limit`
+- [ ] `GET /api/v1/text-labels/{label_id}` - Get single label
+- [ ] `POST /api/v1/text-labels` - Create new label
+- [ ] `PUT /api/v1/text-labels/{label_id}` - Update label
+- [ ] `DELETE /api/v1/text-labels/{label_id}` - Delete label
+- [ ] `POST /api/v1/text-labels/bulk` - Bulk create/update
+- [ ] Add validation schemas (Pydantic)
+- [ ] Add RBAC permissions check
+
+**Files**:
+- `backend/app/db/models/text_label.py` (new)
+- `backend/app/api/v1/endpoints/text_labels.py` (new)
+- `backend/app/schemas/text_label.py` (new)
+- `backend/alembic/versions/xxx_add_text_labels.py` (migration)
+
+---
+
+### 19.2: Frontend UI - Text Label Panel (6-8h) ⏸️
+
+**Goal**: Create UI components for text labeling
+
+#### 19.2.1: Text Label Panel Component (3-4h)
+- [ ] Create `TextLabelPanel.tsx` component
+  - Tab switcher: Captions / Descriptions / VQA
+  - List view of existing labels
+  - Add/Edit/Delete controls
+  - Character count display
+  - Auto-save support
+- [ ] Integration with annotation page
+  - Add to right panel (below or alternative to annotations list)
+  - Load text labels on image switch
+  - Real-time sync with store
+
+#### 19.2.2: Caption Editor (1-2h)
+- [ ] Simple textarea for short captions
+- [ ] Character limit display (e.g., 0/280)
+- [ ] Validation: min/max length
+- [ ] Multiple captions per image support
+- [ ] Quick templates dropdown
+
+#### 19.2.3: Description Editor (2-3h)
+- [ ] Rich text editor (consider: Tiptap, Quill, or simple textarea)
+- [ ] Support for:
+  - Bold, italic, lists
+  - Line breaks
+  - Optional markdown support
+- [ ] Word/character count
+- [ ] Preview mode
+
+#### 19.2.4: VQA Editor (1-2h)
+- [ ] Question-Answer pair interface
+- [ ] Question textarea
+- [ ] Answer textarea
+- [ ] Multiple QA pairs per image
+- [ ] Add/Remove QA pairs
+- [ ] Reorder QA pairs (drag-and-drop)
+
+**Files**:
+- `frontend/components/annotation/text-labels/TextLabelPanel.tsx` (new)
+- `frontend/components/annotation/text-labels/CaptionEditor.tsx` (new)
+- `frontend/components/annotation/text-labels/DescriptionEditor.tsx` (new)
+- `frontend/components/annotation/text-labels/VQAEditor.tsx` (new)
+- `frontend/lib/stores/textLabelStore.ts` (new, Zustand store)
+- `frontend/lib/api/text-labels.ts` (new, API client)
+
+---
+
+### 19.3: Template System (3-4h) ⏸️
+
+**Goal**: Enable pre-defined templates for common labeling scenarios
+
+#### 19.3.1: Template Management (2-3h)
+- [ ] Template model (backend)
+  - Fields: `name`, `description`, `template_type`, `content_template`
+  - JSON schema for template variables
+- [ ] Template CRUD API endpoints
+- [ ] Frontend template selector UI
+- [ ] Template variable substitution (e.g., `{object}`, `{action}`, `{location}`)
+
+#### 19.3.2: Default Templates (1h)
+- [ ] Pre-populate with common templates:
+  - "A photo of {object}" (simple caption)
+  - "The image shows {description}" (detailed)
+  - "What is {object} doing?" / "{action}" (VQA)
+  - "Describe the {aspect} of the image" (instruction)
+- [ ] Project-level custom templates
+- [ ] Import/Export templates
+
+**Files**:
+- `backend/app/db/models/text_label_template.py` (new)
+- `backend/app/api/v1/endpoints/text_label_templates.py` (new)
+- `frontend/components/annotation/text-labels/TemplateSelector.tsx` (new)
+
+---
+
+### 19.4: Quality Control & Validation (3-4h) ⏸️
+
+**Goal**: Ensure high-quality text labels through validation and review
+
+#### 19.4.1: Validation Rules (1-2h)
+- [ ] Length validation (min/max characters)
+- [ ] Required field validation
+- [ ] Language detection (optional)
+- [ ] Profanity filter (optional)
+- [ ] Duplicate detection
+- [ ] Quality score calculation
+
+#### 19.4.2: Review Workflow (2-3h)
+- [ ] Label state: draft / submitted / reviewed / approved
+- [ ] Review interface for admins/reviewers
+- [ ] Reject with feedback
+- [ ] Batch approve/reject
+- [ ] Quality metrics dashboard
+
+**Files**:
+- `backend/app/services/text_label_validation.py` (new)
+- `frontend/components/annotation/text-labels/ReviewPanel.tsx` (new)
+
+---
+
+### 19.5: Export & Dataset Integration (2-3h) ⏸️
+
+**Goal**: Export text labels for VLM training
+
+#### 19.5.1: Export Formats (1-2h)
+- [ ] JSONL format (common for VLM training)
+  ```json
+  {"image_id": "001.jpg", "caption": "A cat sitting on a chair", "language": "en"}
+  {"image_id": "001.jpg", "question": "What is the cat doing?", "answer": "Sitting"}
+  ```
+- [ ] CSV format (simple, Excel-compatible)
+- [ ] COCO Captions format (for compatibility)
+- [ ] Custom format (configurable)
+
+#### 19.5.2: Dataset Publish Integration (1h)
+- [ ] Include text labels in dataset export (Phase 5/12 integration)
+- [ ] Filter by label type (captions only, VQA only, etc.)
+- [ ] Metadata inclusion options
+
+**Files**:
+- `backend/app/services/text_label_export.py` (new)
+- Update: `backend/app/api/v1/endpoints/export.py`
+
+---
+
+### 19.6: Keyboard Shortcuts & UX Enhancements (2-3h) ⏸️
+
+**Goal**: Improve labeling efficiency
+
+#### Shortcuts
+- [ ] `Ctrl+Shift+C`: Focus caption input
+- [ ] `Ctrl+Shift+D`: Focus description input
+- [ ] `Ctrl+Shift+Q`: Add new QA pair
+- [ ] `Ctrl+Enter`: Save and next image
+- [ ] `Tab`: Navigate between fields
+
+#### UX Features
+- [ ] Auto-save (debounced, 2s delay)
+- [ ] Undo/Redo for text edits
+- [ ] Copy from previous image
+- [ ] Batch labeling (apply template to multiple images)
+- [ ] Progress tracking (labeled vs unlabeled images)
+
+**Files**:
+- Update: `frontend/lib/hooks/useKeyboardShortcuts.ts`
+- Update: `frontend/components/annotation/text-labels/TextLabelPanel.tsx`
+
+---
+
+### 19.7: Multi-language Support (Optional, 2-3h) ⏸️
+
+**Goal**: Enable labeling in multiple languages
+
+- [ ] Language selector in UI
+- [ ] Store language code with each label
+- [ ] Filter/group by language
+- [ ] Character encoding validation
+- [ ] RTL (right-to-left) text support (Arabic, Hebrew)
+
+**Files**:
+- Update: `frontend/components/annotation/text-labels/` (all components)
+- Update: `backend/app/db/models/text_label.py`
+
+---
+
+## Implementation Plan
+
+### Phase 19 Roadmap
+
+**Week 1** (19.1 - 19.3):
+1. Day 1-2: Backend API (19.1) - Models, migrations, endpoints
+2. Day 3-4: Frontend UI (19.2) - Panel, editors
+3. Day 5: Template System (19.3)
+
+**Week 2** (19.4 - 19.6):
+1. Day 1-2: Quality Control (19.4) - Validation, review workflow
+2. Day 3: Export Integration (19.5)
+3. Day 4: UX Enhancements (19.6) - Shortcuts, auto-save
+4. Day 5: Testing, bug fixes, documentation
+
+**Optional**: Multi-language support (19.7) can be added in future if needed
+
+---
+
+## Testing Plan
+
+### Backend Tests
+- [ ] Unit tests for TextLabel model
+- [ ] API endpoint tests (create, read, update, delete)
+- [ ] Validation schema tests
+- [ ] Permission/RBAC tests
+
+### Frontend Tests
+- [ ] Component tests (TextLabelPanel, editors)
+- [ ] Store tests (textLabelStore)
+- [ ] Integration tests (load, save, sync)
+- [ ] Keyboard shortcut tests
+
+### E2E Tests
+- [ ] Complete labeling workflow
+- [ ] Template usage
+- [ ] Export functionality
+- [ ] Multi-image batch labeling
+
+---
+
+## Success Criteria
+
+- ✅ Users can add captions, descriptions, and VQA pairs to images
+- ✅ Text labels are saved and loaded correctly
+- ✅ Template system speeds up labeling
+- ✅ Export includes text labels in standard formats
+- ✅ Validation prevents low-quality labels
+- ✅ Keyboard shortcuts enable fast labeling (< 10s per image)
+- ✅ All tests passing (unit, integration, E2E)
+
+---
+
+## Dependencies
+
+- Phase 5 (Dataset Management) - for export integration
+- Phase 12 (Dataset Publish Improvements) - for export format compatibility
+- Phase 8 (RBAC) - for permission controls
+
+---
+
+## Future Enhancements (Post-Phase 19)
+
+- **AI-Assisted Labeling**: Auto-generate captions using VLM (GPT-4V, BLIP)
+- **Collaborative Labeling**: Real-time collaboration on text labels
+- **Advanced Templates**: Conditional templates based on image content
+- **Quality Scoring**: ML-based quality prediction
+- **Multi-modal Labeling**: Combine bbox + text labels (e.g., dense captioning)
+- **Voice Input**: Speech-to-text for faster labeling
 
 ---
