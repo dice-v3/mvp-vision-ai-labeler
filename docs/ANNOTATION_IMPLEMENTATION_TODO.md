@@ -5819,42 +5819,259 @@ annotations.forEach(ann => {
 
 ---
 
-### 19.5: Export & Dataset Integration (3-4h) ⏸️
+### 19.5: Export & Dataset Integration (4-6h) ⏸️
 
-**Goal**: Export text labels for VLM training (including region-level labels)
+**Goal**: Export text labels in all three formats (DICE, COCO, YOLO) + standalone VLM formats
 
-#### 19.5.1: Export Formats (2-3h)
-- [ ] **JSONL format** (common for VLM training)
+**Strategy**: Extend existing export services to include text labels seamlessly
+
+---
+
+#### 19.5.1: DICE Format with Text Labels (1-2h)
+
+**Goal**: Extend DICE format to include text labels (native format)
+
+- [ ] **Update `dice_export_service.py`**
+  - Add `text_labels` field to annotations
+  - Add `image_captions` field to images
+  - Maintain backward compatibility (omit if no text labels)
+
+**DICE Format Structure** (with text labels):
+```json
+{
+  "format_version": "1.1",  // Bump version
+  "dataset_id": "ds_abc123",
+  "task_type": "detection",
+  "classes": {...},
+  "images": [
+    {
+      "id": "train/001.jpg",
+      "file_name": "train/001.jpg",
+      "annotations": [
+        {
+          "id": "ann_1",
+          "annotation_type": "bbox",
+          "class_id": "car",
+          "geometry": {"type": "bbox", "bbox": [100, 200, 300, 400]},
+          "text_labels": [  // ← NEW: Region-level text
+            {
+              "id": "txt_1",
+              "text": "A red sedan parked on the street",
+              "language": "en",
+              "created_at": "2025-01-15T10:00:00Z"
+            }
+          ]
+        }
+      ],
+      "image_captions": [  // ← NEW: Image-level text
+        {
+          "id": "cap_1",
+          "text": "A street scene with cars and pedestrians",
+          "language": "en",
+          "label_type": "caption"
+        }
+      ],
+      "vqa_pairs": [  // ← NEW: VQA
+        {
+          "question": "What is the weather like?",
+          "answer": "Sunny with clear skies",
+          "language": "en"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Files**:
+- Update: `backend/app/services/dice_export_service.py`
+
+---
+
+#### 19.5.2: COCO Format with Text Labels (1-2h)
+
+**Goal**: Add COCO Captions format support
+
+- [ ] **Update `coco_export_service.py`**
+  - Add `captions` section (COCO Captions standard)
+  - Add `region_descriptions` (non-standard, for region-level text)
+  - Compatible with COCO Captions API
+
+**COCO Format Structure** (with text labels):
+```json
+{
+  "info": {...},
+  "licenses": [...],
+  "images": [...],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [100, 200, 300, 400],
+      "area": 120000,
+      "iscrowd": 0
+    }
+  ],
+  "categories": [...],
+  "captions": [  // ← NEW: COCO Captions standard
+    {
+      "id": 1,
+      "image_id": 1,
+      "caption": "A street scene with cars and pedestrians"
+    }
+  ],
+  "region_descriptions": [  // ← NEW: Non-standard extension
+    {
+      "id": 1,
+      "annotation_id": 1,  // Links to annotation
+      "phrase": "A red sedan parked on the street"
+    }
+  ],
+  "vqa": [  // ← NEW: VQA extension
+    {
+      "image_id": 1,
+      "question": "What is the weather like?",
+      "answer": "Sunny"
+    }
+  ]
+}
+```
+
+**Files**:
+- Update: `backend/app/services/coco_export_service.py`
+
+---
+
+#### 19.5.3: YOLO Format with Text Labels (1-2h)
+
+**Goal**: Export text labels as separate files alongside YOLO annotations
+
+- [ ] **Update `yolo_export_service.py`**
+  - Create `captions/` directory with txt files
+  - Create `region_descriptions/` directory (optional)
+  - Maintain existing YOLO bbox format
+
+**YOLO Format Structure** (with text labels):
+```
+annotations_yolo.zip
+├── classes.txt                     # Existing
+├── labels/
+│   ├── train/001.txt              # Existing: YOLO bbox format
+│   └── val/010.txt
+├── captions/                       # ← NEW: Image-level captions
+│   ├── train/001.txt              # "A street scene with cars"
+│   └── val/010.txt
+├── region_descriptions/            # ← NEW: Region-level descriptions
+│   ├── train/001.json             # [{"bbox_line": 0, "text": "Red car"}, ...]
+│   └── val/010.json
+└── vqa/                            # ← NEW: VQA pairs
+    ├── train/001.json             # [{"q": "Weather?", "a": "Sunny"}, ...]
+    └── val/010.json
+```
+
+**captions/train/001.txt**:
+```
+A street scene with cars and pedestrians walking
+```
+
+**region_descriptions/train/001.json**:
+```json
+[
+  {
+    "bbox_line": 0,  // References line 0 in labels/train/001.txt
+    "text": "A red sedan parked on the street",
+    "language": "en"
+  },
+  {
+    "bbox_line": 1,
+    "text": "A person walking with an umbrella",
+    "language": "en"
+  }
+]
+```
+
+**vqa/train/001.json**:
+```json
+[
+  {
+    "question": "What is the weather like?",
+    "answer": "Sunny with clear skies",
+    "language": "en"
+  }
+]
+```
+
+**Files**:
+- Update: `backend/app/services/yolo_export_service.py`
+
+---
+
+#### 19.5.4: Standalone VLM Formats (Optional, 1h)
+
+**Goal**: Export pure text label formats (no spatial annotations)
+
+- [ ] **JSONL format** (LLM training)
   ```json
-  {"image_id": "001.jpg", "caption": "A cat sitting on a chair", "language": "en"}
-  {"image_id": "001.jpg", "question": "What is the cat doing?", "answer": "Sitting"}
+  {"image_id": "001.jpg", "caption": "A cat sitting", "language": "en"}
+  {"image_id": "001.jpg", "question": "What animal?", "answer": "Cat"}
   ```
-- [ ] **Dense Captioning / Visual Genome format**
+
+- [ ] **Visual Genome format** (region descriptions)
   ```json
   {
     "image_id": "001.jpg",
     "regions": [
-      {"bbox": [10, 20, 100, 200], "phrase": "A red car parked on the street"},
-      {"polygon": [[x1,y1], [x2,y2], ...], "phrase": "A person walking"}
+      {"region_id": 1, "bbox": [x,y,w,h], "phrase": "Red car"},
+      {"region_id": 2, "polygon": [[x,y],...], "phrase": "Person walking"}
     ]
   }
   ```
-- [ ] **Grounded Description format** (bbox + text)
-  ```json
-  {"image_id": "001.jpg", "objects": [{"bbox": [x,y,w,h], "class": "car", "description": "Red sedan"}]}
-  ```
-- [ ] CSV format (simple, Excel-compatible)
-- [ ] COCO Captions format (for compatibility)
-- [ ] Custom format (configurable)
 
-#### 19.5.2: Dataset Publish Integration (1h)
-- [ ] Include text labels in dataset export (Phase 5/12 integration)
-- [ ] Filter by label type (captions only, VQA only, etc.)
-- [ ] Metadata inclusion options
+- [ ] **CSV format** (Excel-friendly)
+  ```csv
+  image_id,annotation_id,text,language,label_type
+  001.jpg,,A street scene,en,caption
+  001.jpg,ann_1,Red sedan,en,region
+  ```
 
 **Files**:
-- `backend/app/services/text_label_export.py` (new)
+- `backend/app/services/vlm_export_service.py` (new)
+
+---
+
+#### 19.5.5: Dataset Publish Integration (1h)
+
+**Goal**: Integrate text labels into existing publish workflow
+
+- [ ] **Update `export.py` endpoint**
+  - Load text labels when exporting
+  - Pass to export services
+  - Include in version metadata
+
+- [ ] **Update `AnnotationVersion` model**
+  - Add `text_label_count` field
+  - Track text label statistics
+
+- [ ] **Export options**
+  - `include_text_labels`: boolean (default: true)
+  - `text_label_types`: ["caption", "description", "qa", "region"]
+  - `languages`: ["en", "ko", ...] filter
+
+**Files**:
 - Update: `backend/app/api/v1/endpoints/export.py`
+- Update: `backend/app/db/models/labeler.py` (AnnotationVersion)
+
+---
+
+**Implementation Summary**:
+1. **DICE** (1-2h): Extend with text_labels, image_captions, vqa_pairs
+2. **COCO** (1-2h): Add captions, region_descriptions, vqa sections
+3. **YOLO** (1-2h): Add captions/, region_descriptions/, vqa/ directories
+4. **Standalone** (1h): Optional JSONL, Visual Genome, CSV formats
+5. **Integration** (1h): Update publish workflow
+
+**Total**: 4-6 hours
 
 ---
 
