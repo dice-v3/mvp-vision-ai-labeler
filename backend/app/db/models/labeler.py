@@ -837,8 +837,8 @@ class TextLabel(LabelerBase):
     # Confidence/quality (optional, for AI-generated or reviewed labels)
     confidence = Column(Integer, nullable=True)  # 0-100
 
-    # Additional metadata
-    metadata = Column(JSONB, default={})
+    # Additional metadata (use 'additional_metadata' to avoid SQLAlchemy reserved name)
+    additional_metadata = Column("metadata", JSONB, default={})
 
     # Optimistic locking
     version = Column(Integer, nullable=False, default=1, index=True)
