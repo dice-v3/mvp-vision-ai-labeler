@@ -338,3 +338,83 @@ export function drawTextLabelButton(
     height: buttonSize,
   };
 }
+
+/**
+ * Draw image-level text label button (Phase 19.6)
+ *
+ * Renders a button at the bottom-left of the image for adding image-level text labels
+ * (caption, description, VQA)
+ *
+ * @param ctx - Canvas context
+ * @param imageX - Image x position on canvas
+ * @param imageY - Image y position on canvas
+ * @param imageWidth - Image width on canvas
+ * @param imageHeight - Image height on canvas
+ * @param labelCount - Number of image-level labels
+ * @param zoom - Current zoom level
+ * @returns Button bounds for click detection
+ */
+export function drawImageLevelTextLabelButton(
+  ctx: CanvasRenderingContext2D,
+  imageX: number,
+  imageY: number,
+  imageWidth: number,
+  imageHeight: number,
+  labelCount: number,
+  zoom: number = 1
+): { x: number; y: number; width: number; height: number } {
+  const buttonSize = 28; // Slightly larger for visibility
+  const margin = 8; // Margin from image edge
+  const buttonX = imageX + margin;
+  const buttonY = imageY + imageHeight - buttonSize - margin;
+
+  // Button background
+  if (labelCount > 0) {
+    // Violet background when labels exist
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.95)'; // violet-500
+  } else {
+    // Gray background when no labels
+    ctx.fillStyle = 'rgba(107, 114, 128, 0.8)'; // gray-500
+  }
+
+  // Draw rounded rectangle background
+  const radius = 6;
+  ctx.beginPath();
+  ctx.moveTo(buttonX + radius, buttonY);
+  ctx.lineTo(buttonX + buttonSize - radius, buttonY);
+  ctx.quadraticCurveTo(buttonX + buttonSize, buttonY, buttonX + buttonSize, buttonY + radius);
+  ctx.lineTo(buttonX + buttonSize, buttonY + buttonSize - radius);
+  ctx.quadraticCurveTo(buttonX + buttonSize, buttonY + buttonSize, buttonX + buttonSize - radius, buttonY + buttonSize);
+  ctx.lineTo(buttonX + radius, buttonY + buttonSize);
+  ctx.quadraticCurveTo(buttonX, buttonY + buttonSize, buttonX, buttonY + buttonSize - radius);
+  ctx.lineTo(buttonX, buttonY + radius);
+  ctx.quadraticCurveTo(buttonX, buttonY, buttonX + radius, buttonY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Icon and count
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (labelCount > 0) {
+    // Draw speech bubble emoji and count
+    ctx.font = '12px sans-serif';
+    ctx.fillText('💬', buttonX + buttonSize / 2, buttonY + 8);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(labelCount.toString(), buttonX + buttonSize / 2, buttonY + 20);
+  } else {
+    // Draw just the speech bubble icon
+    ctx.font = '14px sans-serif';
+    ctx.fillText('💬', buttonX + buttonSize / 2, buttonY + buttonSize / 2);
+  }
+
+  // Return button bounds for click detection
+  return {
+    x: buttonX,
+    y: buttonY,
+    width: buttonSize,
+    height: buttonSize,
+  };
+}

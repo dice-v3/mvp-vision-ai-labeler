@@ -30,10 +30,14 @@ export interface TextLabelState {
   loading: boolean;
   error: string | null;
 
-  // Dialog state
+  // Region-level dialog state
   dialogOpen: boolean;
   selectedAnnotationId: number | null;
   selectedLabelId: number | null;  // For editing existing label
+
+  // Image-level dialog state (Phase 19.6)
+  imageLevelDialogOpen: boolean;
+  selectedImageLabelType: 'caption' | 'description' | 'qa' | null;
 
   // Actions - Data
   loadTextLabelsForImage: (projectId: string, imageId: string) => Promise<void>;
@@ -43,14 +47,23 @@ export interface TextLabelState {
   deleteLabel: (labelId: number) => Promise<boolean>;
   clearTextLabels: () => void;
 
-  // Actions - Dialog
+  // Actions - Region-level Dialog
   openDialogForAnnotation: (annotationId: number) => void;
   openDialogForEdit: (labelId: number) => void;
   closeDialog: () => void;
 
+  // Actions - Image-level Dialog (Phase 19.6)
+  openImageLevelDialog: (type?: 'caption' | 'description' | 'qa') => void;
+  closeImageLevelDialog: () => void;
+  createImageLabel: (data: TextLabelCreate) => Promise<TextLabel | null>;
+  updateImageLabel: (labelId: number, data: TextLabelUpdate) => Promise<TextLabel | null>;
+  deleteImageLabel: (labelId: number) => Promise<boolean>;
+
   // Utility
   getTextLabelForAnnotation: (annotationId: number) => TextLabel | undefined;
   hasTextLabel: (annotationId: number) => boolean;
+  imageLevelLabels: TextLabel[];  // Computed: labels with annotation_id = null
+  getImageLevelLabelCount: () => number;
 }
 
 // ============================================================================
@@ -67,6 +80,8 @@ export const useTextLabelStore = create<TextLabelState>()(
       dialogOpen: false,
       selectedAnnotationId: null,
       selectedLabelId: null,
+      imageLevelDialogOpen: false,
+      selectedImageLabelType: null,
 
       // Load all text labels for an image
       loadTextLabelsForImage: async (projectId: string, imageId: string) => {
@@ -189,6 +204,44 @@ export const useTextLabelStore = create<TextLabelState>()(
       // Check if annotation has text label
       hasTextLabel: (annotationId: number) => {
         return get().textLabels.some(label => label.annotation_id === annotationId);
+      },
+
+      // Phase 19.6: Image-level dialog actions
+      openImageLevelDialog: (type = 'caption') => {
+        set({
+          imageLevelDialogOpen: true,
+          selectedImageLabelType: type,
+        });
+      },
+
+      closeImageLevelDialog: () => {
+        set({
+          imageLevelDialogOpen: false,
+          selectedImageLabelType: null,
+        });
+      },
+
+      // Image-level label CRUD (aliases of existing methods)
+      createImageLabel: async (data: TextLabelCreate) => {
+        return get().createLabel(data);
+      },
+
+      updateImageLabel: async (labelId: number, data: TextLabelUpdate) => {
+        return get().updateLabel(labelId, data);
+      },
+
+      deleteImageLabel: async (labelId: number) => {
+        return get().deleteLabel(labelId);
+      },
+
+      // Computed: Get only image-level labels (annotation_id = null)
+      get imageLevelLabels() {
+        return get().textLabels.filter(label => label.annotation_id === null);
+      },
+
+      // Get count of image-level labels
+      getImageLevelLabelCount: () => {
+        return get().textLabels.filter(label => label.annotation_id === null).length;
       },
     }),
     { name: 'TextLabelStore' }

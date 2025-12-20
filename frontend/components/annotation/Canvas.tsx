@@ -61,6 +61,7 @@ import { LockOverlay } from './overlays/LockOverlay';
 import { ToolSelector, ZoomControls, NavigationButtons, CanvasActionBar } from './canvas-ui';
 // Phase 19: VLM Text Labeling
 import { TextLabelDialog } from './text-labels/TextLabelDialog';
+import { ImageLevelTextLabelDialog } from './text-labels/ImageLevelTextLabelDialog';
 import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 
 export default function Canvas() {
@@ -1431,8 +1432,9 @@ export default function Canvas() {
         </div>
       )}
 
-      {/* Phase 19: Text Label Dialog */}
+      {/* Phase 19: Text Label Dialogs */}
       <TextLabelDialog />
+      <ImageLevelTextLabelDialog />
     </div>
   );
 }
