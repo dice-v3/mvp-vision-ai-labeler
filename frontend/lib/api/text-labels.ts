@@ -120,7 +120,7 @@ export async function getTextLabelsForAnnotation(annotationId: number): Promise<
  * Create a new text label
  */
 export async function createTextLabel(data: TextLabelCreate): Promise<TextLabel> {
-  return apiClient.post<TextLabel>('/api/v1/text-labels', data);
+  return apiClient.post<TextLabel>(`/api/v1/text-labels?project_id=${data.project_id}`, data);
 }
 
 /**

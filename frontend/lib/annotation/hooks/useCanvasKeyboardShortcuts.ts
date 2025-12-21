@@ -27,6 +27,14 @@ import type { AnnotationUpdateRequest } from '@/lib/api/annotations';
 import type { Annotation, CanvasState, DiffModeState, PreferencesState } from '@/lib/stores/annotationStore';
 
 /**
+ * Helper: Check if a tool is a drawing tool
+ */
+function isDrawingToolFn(toolName: string | null): boolean {
+  if (!toolName) return false;
+  return ['detection', 'bbox', 'polygon', 'polyline', 'circle', 'circle3p'].includes(toolName);
+}
+
+/**
  * Parameters for keyboard shortcuts hook
  */
 export interface UseCanvasKeyboardShortcutsParams {
@@ -71,7 +79,6 @@ export interface UseCanvasKeyboardShortcutsParams {
   setManualMagnifierActive: (active: boolean) => void;
   magnifierForceOff: boolean;
   setMagnifierForceOff: (forceOff: boolean) => void;
-  isDrawingTool: (tool: string) => boolean;
 
   // Preferences
   preferences: PreferencesState;
@@ -185,7 +192,7 @@ export function useCanvasKeyboardShortcuts(params: UseCanvasKeyboardShortcutsPar
         // Calculate current magnifier state
         const currentlyShown = !magnifierForceOff && (
           manualMagnifierActive ||
-          (isDrawingTool(tool) && preferences.autoMagnifier)
+          (isDrawingToolFn(tool) && preferences.autoMagnifier)
         );
 
         if (currentlyShown) {

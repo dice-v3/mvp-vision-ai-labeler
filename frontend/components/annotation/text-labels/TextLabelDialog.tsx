@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { X } from 'lucide-react';
@@ -30,18 +30,20 @@ export function TextLabelDialog() {
     getTextLabelForAnnotation,
   } = useTextLabelStore();
 
-  const { annotations, currentImage, projectId } = useAnnotationStore();
+  const { annotations, currentImage, project } = useAnnotationStore();
+  const projectId = project?.id;
 
   // Form state
   const [textContent, setTextContent] = useState('');
   const [language, setLanguage] = useState('en');
   const [saving, setSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const MAX_CHARS = 500;
 
-  // Find the selected annotation
+  // Find the selected annotation (comparing as numbers)
   const selectedAnnotation = annotations.find(
-    (ann) => ann.id === String(selectedAnnotationId)
+    (ann) => ann.id === selectedAnnotationId
   );
 
   // Get existing label if editing
@@ -60,6 +62,14 @@ export function TextLabelDialog() {
       // Reset form for new label
       setTextContent('');
       setLanguage('en');
+    }
+
+    // Auto-focus on text input when dialog opens
+    if (dialogOpen) {
+      // Use setTimeout to ensure DOM is ready
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
     }
   }, [dialogOpen, existingLabel]);
 
@@ -180,6 +190,7 @@ export function TextLabelDialog() {
               Text Description
             </label>
             <textarea
+              ref={textareaRef}
               id="text-content"
               value={textContent}
               onChange={(e) => setTextContent(e.target.value.slice(0, MAX_CHARS))}
@@ -190,7 +201,6 @@ export function TextLabelDialog() {
                        focus:ring-2 focus:ring-violet-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500
                        resize-none transition-colors"
-              autoFocus
             />
             <div className="flex justify-between items-center mt-1">
               <span

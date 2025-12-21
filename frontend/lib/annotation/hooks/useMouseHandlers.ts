@@ -347,7 +347,7 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
             setSelectedBboxHandle(handle);
             setIsResizing(true);
             setResizeHandle(handle);
-            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
+            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH], handle });
             setCanvasCursor(getCursorForHandle(handle));
             return;
           }

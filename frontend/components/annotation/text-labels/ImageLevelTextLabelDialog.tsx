@@ -31,7 +31,8 @@ export function ImageLevelTextLabelDialog() {
     closeImageLevelDialog,
   } = useTextLabelStore();
 
-  const { currentImage, projectId } = useAnnotationStore();
+  const { currentImage, project } = useAnnotationStore();
+  const projectId = project?.id;
 
   // Form state
   const [labelType, setLabelType] = useState<LabelType>('caption');

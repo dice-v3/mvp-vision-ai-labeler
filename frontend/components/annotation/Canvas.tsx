@@ -1091,7 +1091,6 @@ export default function Canvas() {
     setManualMagnifierActive,
     magnifierForceOff,
     setMagnifierForceOff,
-    isDrawingTool,
     preferences,
     diffMode,
     undo,

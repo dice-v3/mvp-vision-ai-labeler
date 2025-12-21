@@ -293,7 +293,8 @@ export function drawTextLabelButton(
   width: number,
   height: number,
   hasTextLabel: boolean,
-  zoom: number = 1
+  zoom: number = 1,
+  textContent?: string
 ): { x: number; y: number; width: number; height: number } {
   const buttonSize = 24; // px
   const buttonX = x;
@@ -325,10 +326,47 @@ export function drawTextLabelButton(
 
   // Draw "T" icon
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 14px sans-serif';
+  ctx.font = 'bold 14px Georgia, "Times New Roman", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('T', buttonX + buttonSize / 2, buttonY + buttonSize / 2);
+
+  // Draw text preview next to button if text exists
+  if (hasTextLabel && textContent) {
+    const maxChars = 30;
+    const displayText = textContent.length > maxChars
+      ? textContent.substring(0, maxChars) + '...'
+      : textContent;
+
+    // Set font for measuring
+    ctx.font = '12px sans-serif';
+    const textWidth = ctx.measureText(displayText).width;
+    const previewPadding = 6;
+    const previewHeight = 18;
+    const previewX = buttonX + buttonSize + 4;
+    const previewY = buttonY + (buttonSize - previewHeight) / 2;
+
+    // Draw preview background
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.8)'; // violet-500 with slight transparency
+    ctx.beginPath();
+    ctx.moveTo(previewX + radius, previewY);
+    ctx.lineTo(previewX + textWidth + previewPadding * 2 - radius, previewY);
+    ctx.quadraticCurveTo(previewX + textWidth + previewPadding * 2, previewY, previewX + textWidth + previewPadding * 2, previewY + radius);
+    ctx.lineTo(previewX + textWidth + previewPadding * 2, previewY + previewHeight - radius);
+    ctx.quadraticCurveTo(previewX + textWidth + previewPadding * 2, previewY + previewHeight, previewX + textWidth + previewPadding * 2 - radius, previewY + previewHeight);
+    ctx.lineTo(previewX + radius, previewY + previewHeight);
+    ctx.quadraticCurveTo(previewX, previewY + previewHeight, previewX, previewY + previewHeight - radius);
+    ctx.lineTo(previewX, previewY + radius);
+    ctx.quadraticCurveTo(previewX, previewY, previewX + radius, previewY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw preview text
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayText, previewX + previewPadding, previewY + previewHeight / 2);
+  }
 
   // Return button bounds for click detection
   return {

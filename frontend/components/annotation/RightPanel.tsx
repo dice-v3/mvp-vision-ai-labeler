@@ -31,8 +31,10 @@ export default function RightPanel() {
     project,
     toggleAnnotationVisibility,
     toggleAllAnnotationsVisibility,
+    toggleTextLabelPreviews,
     isAnnotationVisible,
     showAllAnnotations,
+    showTextLabelPreviews,
     images,
     getCurrentClasses, // Phase 2.9: Get task-specific classes
     currentTask,
@@ -299,6 +301,20 @@ export default function RightPanel() {
       <div className="p-4 border-b border-gray-300 dark:border-gray-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Annotations ({annotations.length})</h3>
         <div className="flex items-center gap-2">
+          {/* Phase 19: Toggle text label previews */}
+          <button
+            onClick={toggleTextLabelPreviews}
+            className={`p-1 transition-colors ${
+              showTextLabelPreviews
+                ? 'text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title={showTextLabelPreviews ? 'Hide text label previews' : 'Show text label previews'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <text x="6" y="18" fontSize="16" fontWeight="bold" fontFamily="Georgia, Times New Roman, serif" fill="currentColor" stroke="none">T</text>
+            </svg>
+          </button>
           <button
             onClick={toggleAllAnnotationsVisibility}
             className={`p-1 transition-colors ${

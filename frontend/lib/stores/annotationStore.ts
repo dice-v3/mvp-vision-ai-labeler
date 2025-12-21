@@ -220,6 +220,7 @@ interface AnnotationState {
   // Visibility
   hiddenAnnotationIds: Set<string>;
   showAllAnnotations: boolean;
+  showTextLabelPreviews: boolean; // Phase 19: Toggle text label previews
 
   // Multi-image selection
   selectedImageIds: string[];
@@ -329,6 +330,7 @@ interface AnnotationState {
   // Visibility
   toggleAnnotationVisibility: (id: string) => void;
   toggleAllAnnotationsVisibility: () => void;
+  toggleTextLabelPreviews: () => void; // Phase 19: Toggle text label previews
   isAnnotationVisible: (id: string) => boolean;
 
   // Multi-image selection
@@ -408,6 +410,7 @@ const initialState = {
   lastSelectedClassId: null,
   hiddenAnnotationIds: new Set<string>(),
   showAllAnnotations: true,
+  showTextLabelPreviews: true, // Phase 19: Show text label previews by default
   selectedImageIds: [],
   lastClickedImageIndex: null,
   canvasRef: null,
@@ -1126,6 +1129,11 @@ export const useAnnotationStore = create<AnnotationState>()(
       toggleAllAnnotationsVisibility: () => {
         const { showAllAnnotations } = get();
         set({ showAllAnnotations: !showAllAnnotations, hiddenAnnotationIds: new Set() });
+      },
+
+      toggleTextLabelPreviews: () => {
+        const { showTextLabelPreviews } = get();
+        set({ showTextLabelPreviews: !showTextLabelPreviews });
       },
 
       isAnnotationVisible: (id) => {

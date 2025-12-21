@@ -16,6 +16,7 @@ import type { Annotation } from '@/lib/types/annotation';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
 import { drawGrid, drawCrosshair, drawNoObjectBadge, snapshotToAnnotation, drawTextLabelButton, drawImageLevelTextLabelButton } from '@/lib/annotation/utils';
 import { useTextLabelStore } from '@/lib/stores/textLabelStore';
+import { useAnnotationStore } from '@/lib/stores/annotationStore';
 
 /**
  * Hook parameters
@@ -122,8 +123,13 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
   const { darkMode, showGrid, showLabels } = preferences;
   const { enabled: diffModeEnabled, viewMode: diffModeViewMode } = diffMode;
 
+  // Get annotation visibility state
+  const showAllAnnotations = useAnnotationStore(state => state.showAllAnnotations);
+  const showTextLabelPreviews = useAnnotationStore(state => state.showTextLabelPreviews);
+  const hiddenAnnotationCount = useAnnotationStore(state => state.hiddenAnnotationIds.size);
+
   // Get text label store for Phase 19 - VLM Text Labeling
-  const { hasTextLabel, getImageLevelLabelCount } = useTextLabelStore();
+  const { hasTextLabel, getTextLabelForAnnotation, getImageLevelLabelCount } = useTextLabelStore();
 
   /**
    * Draw all annotations on the canvas
@@ -260,6 +266,8 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     darkMode,
     diffModeEnabled,
     diffModeViewMode,
+    showAllAnnotations, // Annotation visibility toggle
+    hiddenAnnotationCount, // Individual annotation visibility
     // getDiffForCurrentImage, getCurrentClasses, isAnnotationVisible are stable store methods
     annotations,
     selectedAnnotationId,
@@ -298,9 +306,12 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
 
       if (!bbox) return;
 
-      // Check if annotation has text label
+      // Check if annotation has text label and get content
       const annotationId = parseInt(ann.id);
       const hasLabel = !isNaN(annotationId) && hasTextLabel(annotationId);
+      const textLabel = !isNaN(annotationId) ? getTextLabelForAnnotation(annotationId) : undefined;
+      // Only show text content if preview toggle is enabled
+      const textContent = showTextLabelPreviews ? textLabel?.text_content : undefined;
 
       // Draw text label button
       drawTextLabelButton(
@@ -310,10 +321,11 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
         bbox.width * zoom,
         bbox.height * zoom,
         hasLabel,
-        zoom
+        zoom,
+        textContent
       );
     });
-  }, [annotations, isAnnotationVisible, hasTextLabel, diffModeEnabled]);
+  }, [annotations, isAnnotationVisible, hasTextLabel, getTextLabelForAnnotation, showTextLabelPreviews, diffModeEnabled]);
 
   /**
    * Draw image-level text label button (Phase 19.6)
