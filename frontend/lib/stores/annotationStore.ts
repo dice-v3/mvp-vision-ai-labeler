@@ -361,9 +361,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   snapToEdges: true,
   showLabels: true,
   showGrid: false,
-  darkMode: true,
+  darkMode: false,
   autoSelectClass: true,
-  imageListView: 'grid',
+  imageListView: 'list',
   // Phase 2.10.2: Magnifier defaults
   autoMagnifier: true, // Auto-show in drawing tools
   magnifierMode: 'following', // Follow cursor by default
