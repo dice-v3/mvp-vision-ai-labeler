@@ -513,6 +513,7 @@ async def publish_text_label_version(
         # Publish text labels
         text_label_version = publish_text_labels(
             labeler_db=labeler_db,
+            user_db=user_db,
             project_id=project_id,
             version=version_number,
             user_id=current_user.id,

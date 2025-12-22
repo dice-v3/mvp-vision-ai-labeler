@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db.models.labeler import TextLabel, TextLabelVersion, AnnotationProject, Dataset
+from app.db.models.platform import User
 from app.core.storage import storage_client
 from app.core.config import settings
 
@@ -37,22 +38,40 @@ def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(KST).isoformat()
 
 
-def serialize_text_labels(text_labels: List[TextLabel]) -> List[Dict[str, Any]]:
+def serialize_text_labels(text_labels: List[TextLabel], user_db: Session) -> List[Dict[str, Any]]:
     """
     Serialize TextLabel objects to JSON-compatible dictionaries.
 
+    Follows DICE annotation format structure with metadata containing labeled_by, labeled_at, etc.
+
     Args:
         text_labels: List of TextLabel model instances
+        user_db: User database session for querying user information
 
     Returns:
-        List of dictionaries with text label data
+        List of dictionaries with text label data (DICE-compatible format)
     """
     serialized = []
 
     for label in text_labels:
+        # Get labeled_by user info
+        labeled_by_user = None
+        if label.created_by:
+            labeled_by_user = user_db.query(User).filter(User.id == label.created_by).first()
+
+        # Build metadata (DICE annotation format)
+        metadata = {
+            "labeled_by": labeled_by_user.email if labeled_by_user else None,
+            "labeled_at": to_kst_isoformat(label.created_at) if label.created_at else None,
+            "source": "platform_labeler_v1.0"
+        }
+
+        # Merge with additional_metadata if exists
+        if hasattr(label, 'additional_metadata') and label.additional_metadata:
+            metadata.update(label.additional_metadata)
+
         serialized.append({
             "id": label.id,
-            "project_id": label.project_id,
             "image_id": label.image_id,
             "annotation_id": label.annotation_id,  # NULL for image-level
             "label_type": label.label_type,
@@ -60,11 +79,7 @@ def serialize_text_labels(text_labels: List[TextLabel]) -> List[Dict[str, Any]]:
             "question": label.question,
             "language": label.language,
             "confidence": label.confidence,
-            "metadata": label.additional_metadata if hasattr(label, 'additional_metadata') else {},
-            "created_by": label.created_by,
-            "updated_by": label.updated_by,
-            "created_at": label.created_at.isoformat() if label.created_at else None,
-            "updated_at": label.updated_at.isoformat() if label.updated_at else None,
+            "metadata": metadata,
         })
 
     return serialized
@@ -89,6 +104,7 @@ def calculate_label_counts(text_labels: List[Dict[str, Any]]) -> Tuple[int, int,
 
 def publish_text_labels(
     labeler_db: Session,
+    user_db: Session,
     project_id: str,
     version: str,
     user_id: int,
@@ -106,6 +122,7 @@ def publish_text_labels(
 
     Args:
         labeler_db: Labeler database session
+        user_db: User database session
         project_id: Project ID
         version: Version number (e.g., "v1.0", "v2.0")
         user_id: User ID who is publishing
@@ -138,7 +155,7 @@ def publish_text_labels(
     logger.info(f"[TextLabelVersion] Found {len(text_labels)} text labels to publish")
 
     # 3. Serialize to JSON snapshot
-    text_labels_snapshot = serialize_text_labels(text_labels)
+    text_labels_snapshot = serialize_text_labels(text_labels, user_db)
 
     # 4. Calculate counts for query performance
     total_count, image_level_count, region_level_count = calculate_label_counts(text_labels_snapshot)
