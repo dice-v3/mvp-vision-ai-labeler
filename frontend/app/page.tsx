@@ -89,16 +89,11 @@ export default function DashboardPage() {
   const [datasetSize, setDatasetSize] = useState<DatasetSize | null>(null);
 
   useEffect(() => {
-    // Redirect to login if not authenticated
-    if (!authLoading && !user) {
-      router.push('/login');
-      return;
-    }
-
+    // Load datasets if authenticated
     if (user) {
       fetchDatasets();
     }
-  }, [user, authLoading, router]);
+  }, [user]);
 
   // Close settings dropdown when clicking outside
   useEffect(() => {
@@ -352,8 +347,38 @@ export default function DashboardPage() {
     );
   }
 
+  // Show login button for unauthenticated users
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mb-8">
+            <svg
+              className="w-20 h-20 mx-auto text-violet-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+              />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-8">
+            Vision AI Labeler
+          </h1>
+          <button
+            onClick={() => router.push('/login')}
+            className="px-6 py-3 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all"
+          >
+            로그인
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
