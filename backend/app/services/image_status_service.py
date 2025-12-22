@@ -151,6 +151,9 @@ async def confirm_image_status(
 
     REFACTORING: Simplified to use task_type column directly.
 
+    Note: Annotations are already updated to 'confirmed' by the caller (projects.py),
+    so we only need to update the ImageAnnotationStatus record.
+
     Args:
         db: Database session
         project_id: Project ID
@@ -160,28 +163,7 @@ async def confirm_image_status(
     Returns:
         Updated ImageAnnotationStatus record
     """
-    # REFACTORING: Update all annotations for this image to 'confirmed' state
-    # Simple query using task_type column
-    ann_query = db.query(Annotation).filter(
-        Annotation.project_id == project_id,
-        Annotation.image_id == image_id,
-        Annotation.annotation_state == 'draft'  # Only update draft annotations
-    )
-
-    # REFACTORING: Filter by task_type (simple indexed lookup)
-    if task_type:
-        ann_query = ann_query.filter(Annotation.task_type == task_type)
-
-    # Update all matching annotations to confirmed
-    ann_query.update(
-        {Annotation.annotation_state: 'confirmed'},
-        synchronize_session='fetch'
-    )
-
-    # Then ensure the status record is up to date
-    await update_image_status(db, project_id, image_id, task_type)
-
-    # Get the status record (should exist after update_image_status)
+    # Get the status record (should exist, or create new)
     # Phase 2.9: Include task_type in query
     status_query = db.query(ImageAnnotationStatus).filter(
         ImageAnnotationStatus.project_id == project_id,
@@ -197,6 +179,19 @@ async def confirm_image_status(
 
     if not status_record:
         # Create a new one if it doesn't exist (edge case)
+        # Calculate counts from actual annotations
+        ann_query = db.query(Annotation).filter(
+            Annotation.project_id == project_id,
+            Annotation.image_id == image_id
+        )
+        if task_type:
+            ann_query = ann_query.filter(Annotation.task_type == task_type)
+
+        annotations = ann_query.all()
+        total_count = len(annotations)
+        confirmed_count = sum(1 for ann in annotations if ann.annotation_state == "confirmed")
+        draft_count = sum(1 for ann in annotations if ann.annotation_state == "draft")
+
         status_record = ImageAnnotationStatus(
             project_id=project_id,
             image_id=image_id,
@@ -205,17 +200,31 @@ async def confirm_image_status(
             first_modified_at=datetime.utcnow(),
             last_modified_at=datetime.utcnow(),
             confirmed_at=datetime.utcnow(),
-            total_annotations=0,
-            confirmed_annotations=0,
-            draft_annotations=0,
+            total_annotations=total_count,
+            confirmed_annotations=confirmed_count,
+            draft_annotations=draft_count,
             is_image_confirmed=True,
         )
         db.add(status_record)
     else:
-        # Mark as confirmed
+        # Mark as confirmed FIRST before updating counts
         status_record.is_image_confirmed = True
         status_record.confirmed_at = datetime.utcnow()
         status_record.status = "completed"
+        status_record.last_modified_at = datetime.utcnow()
+
+        # Update counts from actual annotations
+        ann_query = db.query(Annotation).filter(
+            Annotation.project_id == project_id,
+            Annotation.image_id == image_id
+        )
+        if task_type:
+            ann_query = ann_query.filter(Annotation.task_type == task_type)
+
+        annotations = ann_query.all()
+        status_record.total_annotations = len(annotations)
+        status_record.confirmed_annotations = sum(1 for ann in annotations if ann.annotation_state == "confirmed")
+        status_record.draft_annotations = sum(1 for ann in annotations if ann.annotation_state == "draft")
 
     db.flush()
     return status_record
