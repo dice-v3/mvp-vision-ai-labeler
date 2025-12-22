@@ -220,6 +220,7 @@ interface AnnotationState {
   // Visibility
   hiddenAnnotationIds: Set<string>;
   showAllAnnotations: boolean;
+  showTextLabelPreviews: boolean; // Phase 19: Toggle text label previews
 
   // Multi-image selection
   selectedImageIds: string[];
@@ -329,6 +330,7 @@ interface AnnotationState {
   // Visibility
   toggleAnnotationVisibility: (id: string) => void;
   toggleAllAnnotationsVisibility: () => void;
+  toggleTextLabelPreviews: () => void; // Phase 19: Toggle text label previews
   isAnnotationVisible: (id: string) => boolean;
 
   // Multi-image selection
@@ -359,9 +361,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   snapToEdges: true,
   showLabels: true,
   showGrid: false,
-  darkMode: true,
+  darkMode: false,
   autoSelectClass: true,
-  imageListView: 'grid',
+  imageListView: 'list',
   // Phase 2.10.2: Magnifier defaults
   autoMagnifier: true, // Auto-show in drawing tools
   magnifierMode: 'following', // Follow cursor by default
@@ -408,6 +410,7 @@ const initialState = {
   lastSelectedClassId: null,
   hiddenAnnotationIds: new Set<string>(),
   showAllAnnotations: true,
+  showTextLabelPreviews: true, // Phase 19: Show text label previews by default
   selectedImageIds: [],
   lastClickedImageIndex: null,
   canvasRef: null,
@@ -820,7 +823,7 @@ export const useAnnotationStore = create<AnnotationState>()(
           };
 
           // Phase 8.5.2: Try to acquire lock for undo (will fail if locked by another user)
-          if (project && currentImage) {
+          if (project && currentImage && process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK !== 'false') {
             try {
               const { imageLockAPI } = await import('@/lib/api/image-locks');
               const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
@@ -934,7 +937,7 @@ export const useAnnotationStore = create<AnnotationState>()(
           };
 
           // Phase 8.5.2: Try to acquire lock for redo (will fail if locked by another user)
-          if (project && currentImage) {
+          if (project && currentImage && process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK !== 'false') {
             try {
               const { imageLockAPI } = await import('@/lib/api/image-locks');
               const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
@@ -1126,6 +1129,11 @@ export const useAnnotationStore = create<AnnotationState>()(
       toggleAllAnnotationsVisibility: () => {
         const { showAllAnnotations } = get();
         set({ showAllAnnotations: !showAllAnnotations, hiddenAnnotationIds: new Set() });
+      },
+
+      toggleTextLabelPreviews: () => {
+        const { showTextLabelPreviews } = get();
+        set({ showTextLabelPreviews: !showTextLabelPreviews });
       },
 
       isAnnotationVisible: (id) => {

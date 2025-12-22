@@ -224,6 +224,8 @@ def verify_labeler_tables() -> bool:
         "dataset_permissions",
         "annotation_tasks",
         "comments",
+        "text_labels",  # Phase 19: VLM Text Labeling
+        "text_label_versions",  # Phase 19.8: Text Label Versioning
     ]
 
     try:

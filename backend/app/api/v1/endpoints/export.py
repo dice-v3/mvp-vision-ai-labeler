@@ -27,6 +27,7 @@ from app.schemas.version import (
 from app.services.coco_export_service import export_to_coco, get_export_stats as get_coco_stats
 from app.services.yolo_export_service import export_to_yolo, get_export_stats as get_yolo_stats
 from app.services.dice_export_service import export_to_dice, get_export_stats as get_dice_stats
+from app.services.text_label_version_service import publish_text_labels, auto_generate_version_number
 
 router = APIRouter()
 
@@ -131,6 +132,7 @@ def _export_dice(
     include_draft: bool,
     image_ids: Optional[list[str]],
     task_type: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> tuple[bytes, dict, str]:
     """Export to DICE format."""
     # Generate DICE JSON
@@ -142,6 +144,7 @@ def _export_dice(
         include_draft=include_draft,
         image_ids=image_ids,
         task_type=task_type,
+        version=version,
     )
 
     # Convert to JSON bytes
@@ -163,6 +166,7 @@ def _export_coco(
     project_id: str,
     include_draft: bool,
     image_ids: Optional[list[str]],
+    version: Optional[str] = None,
 ) -> tuple[bytes, dict, str]:
     """Export to COCO format."""
     # Generate COCO JSON
@@ -172,6 +176,7 @@ def _export_coco(
         project_id=project_id,
         include_draft=include_draft,
         image_ids=image_ids,
+        version=version,
     )
 
     # Convert to JSON bytes
@@ -194,8 +199,8 @@ def _export_yolo(
     image_ids: Optional[list[str]],
 ) -> tuple[bytes, dict, str]:
     """Export to YOLO format."""
-    # Generate YOLO format
-    image_annotations, classes_txt = export_to_yolo(
+    # Generate YOLO format (Phase 19: now includes text label files)
+    image_annotations, classes_txt, captions_files, region_descriptions_files, vqa_files = export_to_yolo(
         db=labeler_db,
         project_id=project_id,
         include_draft=include_draft,
@@ -216,6 +221,19 @@ def _export_yolo(
             txt_filename = f"{base_name}.txt"
 
             zip_file.writestr(f"labels/{txt_filename}", annotations_str)
+
+        # Phase 19: Add text label files
+        for image_id, captions_json in captions_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"captions/{base_name}.json", captions_json)
+
+        for image_id, region_desc_json in region_descriptions_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"region_descriptions/{base_name}.json", region_desc_json)
+
+        for image_id, vqa_json in vqa_files.items():
+            base_name = os.path.splitext(image_id)[0]
+            zip_file.writestr(f"vqa/{base_name}.json", vqa_json)
 
     export_data = zip_buffer.getvalue()
 
@@ -344,6 +362,7 @@ async def publish_version(
             include_draft=publish_request.include_draft,
             image_ids=None,
             task_type=task_type,
+            version=new_version_number,
         )
 
         # Upload DICE to S3 (Phase 2.9: include task_type in path)
@@ -367,6 +386,7 @@ async def publish_version(
                 project_id=project_id,
                 include_draft=publish_request.include_draft,
                 image_ids=None,
+                version=new_version_number,
             )
             additional_s3_key, _, _ = storage_client.upload_export(
                 project_id=project_id,
@@ -434,6 +454,29 @@ async def publish_version(
                 }
             )
             labeler_db.add(snapshot)
+
+        # Phase 19.8: Publish text labels (if any exist)
+        # Text labels are versioned independently from task-specific annotations
+        try:
+            text_label_version = publish_text_labels(
+                labeler_db=labeler_db,
+                user_db=user_db,
+                project_id=project_id,
+                version=new_version_number,  # Use same version number as annotations
+                user_id=current_user.id,
+                notes=f"Published with {task_type} annotations v{new_version_number}",
+            )
+            logger.info(
+                f"[Publish] Text labels published: version={text_label_version.version}, "
+                f"labels={text_label_version.label_count}"
+            )
+        except ValueError as e:
+            # Version already exists - this is OK (idempotent)
+            logger.warning(f"[Publish] Text label version already exists: {e}")
+        except Exception as e:
+            # Log error but don't fail the publish
+            # Annotation version is still created, just text label versioning failed
+            logger.error(f"[Publish] Failed to publish text labels: {e}")
 
         # Update Platform S3 with official task-specific DICE annotations
         try:

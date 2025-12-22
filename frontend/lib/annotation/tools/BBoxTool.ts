@@ -57,12 +57,17 @@ export class BBoxTool extends BaseAnnotationTool {
 
     // Draw label
     if (ctx.showLabels && className) {
-      ctx.ctx.fillStyle = classColor;
-      const textWidth = ctx.ctx.measureText(className).width;
-      ctx.ctx.fillRect(scaled.x, scaled.y - 20, textWidth + 8, 20);
-      ctx.ctx.fillStyle = '#ffffff';
+      // Set font first before measuring
       ctx.ctx.font = '12px sans-serif';
-      ctx.ctx.fillText(className, scaled.x + 4, scaled.y - 6);
+      const textWidth = ctx.ctx.measureText(className).width;
+
+      // Draw background
+      ctx.ctx.fillStyle = classColor;
+      ctx.ctx.fillRect(scaled.x, scaled.y - 20, textWidth + 16, 20);
+
+      // Draw text
+      ctx.ctx.fillStyle = '#ffffff';
+      ctx.ctx.fillText(className, scaled.x + 8, scaled.y - 6);
     }
   }
 

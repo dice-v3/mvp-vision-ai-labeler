@@ -7,6 +7,8 @@ from app.db.models.labeler import (
     AnnotationHistory,
     AnnotationTask,
     Comment,
+    TextLabel,
+    TextLabelVersion,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "AnnotationHistory",
     "AnnotationTask",
     "Comment",
+    "TextLabel",
+    "TextLabelVersion",
 ]

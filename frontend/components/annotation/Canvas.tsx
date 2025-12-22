@@ -55,10 +55,15 @@ import {
   useCanvasKeyboardShortcuts,
   useBatchOperations,
 } from '@/lib/annotation/hooks';
+import { useImagePrefetch } from '@/lib/annotation/hooks/useImagePrefetch';
 // Phase 18.4: Overlay Components
 import { LockOverlay } from './overlays/LockOverlay';
 // Phase 18.8.3: Canvas UI Components
 import { ToolSelector, ZoomControls, NavigationButtons, CanvasActionBar } from './canvas-ui';
+// Phase 19: VLM Text Labeling
+import { TextLabelDialog } from './text-labels/TextLabelDialog';
+import { ImageLevelTextLabelDialog } from './text-labels/ImageLevelTextLabelDialog';
+import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,6 +116,9 @@ export default function Canvas() {
   const diffMode = useAnnotationStore(useShallow(state => state.diffMode));
   const getDiffForCurrentImage = useAnnotationStore(state => state.getDiffForCurrentImage);
 
+  // Phase 19: VLM Text Labeling store
+  const { loadTextLabelsForImage, clearTextLabels, openImageLevelDialog, getImageLevelLabelCount } = useTextLabelStore();
+
   // Phase 18.3: Custom Hooks for State Management
 
   // Image loading and locking
@@ -127,6 +135,13 @@ export default function Canvas() {
     currentImage,
     project,
     imageRef,
+  });
+
+  // Image prefetch for faster navigation
+  useImagePrefetch({
+    images,
+    currentIndex,
+    prefetchRange: 2, // Prefetch 2 images before and after
   });
 
   // Canvas UI state
@@ -1084,7 +1099,6 @@ export default function Canvas() {
     setManualMagnifierActive,
     magnifierForceOff,
     setMagnifierForceOff,
-    isDrawingTool,
     preferences,
     diffMode,
     undo,
@@ -1104,11 +1118,33 @@ export default function Canvas() {
   // (Toggle mode is more reliable in remote desktop environments)
 
   // Mouse wheel handler (zoom)
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+  // Note: Use native WheelEvent instead of React.WheelEvent to avoid passive listener warning
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setZoom(canvasState.zoom + delta);
   }, [setZoom, canvasState.zoom]);
+
+  // Register wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
+
+  // Phase 19: Load text labels when image changes
+  useEffect(() => {
+    if (currentImage && project?.id) {
+      loadTextLabelsForImage(project.id, currentImage.id);
+    } else {
+      clearTextLabels();
+    }
+  }, [currentImage, project?.id, loadTextLabelsForImage, clearTextLabels]);
 
   if (!currentImage) {
     return (
@@ -1145,7 +1181,6 @@ export default function Canvas() {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
       />
 
       {/* Phase 18.8.3: Zoom Controls Component */}
@@ -1243,6 +1278,8 @@ export default function Canvas() {
         selectedImageCount={selectedImageIds.length}
         onNoObject={handleNoObject}
         onDeleteAll={handleDeleteAllAnnotations}
+        onImageLevelTextLabel={() => openImageLevelDialog('caption')}
+        imageLevelLabelCount={getImageLevelLabelCount()}
       />
 
       {/* AI Assistant button */}
@@ -1415,6 +1452,10 @@ export default function Canvas() {
           {currentImage.id}
         </div>
       )}
+
+      {/* Phase 19: Text Label Dialogs */}
+      <TextLabelDialog />
+      <ImageLevelTextLabelDialog />
     </div>
   );
 }
