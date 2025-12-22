@@ -12,11 +12,11 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from app.core.database import get_labeler_db
 from app.core.security import get_current_user
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import AnnotationProject, Annotation
 from app.schemas.class_schema import ClassCreateRequest, ClassUpdateRequest, ClassReorderRequest, ClassResponse
 
@@ -29,7 +29,7 @@ async def add_class(
     class_data: ClassCreateRequest,
     task_type: str = Query(..., description="Task type to add class to (e.g., 'detection', 'classification')"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Add a new class to a project's task.
@@ -144,7 +144,7 @@ async def update_class(
     class_data: ClassUpdateRequest,
     task_type: str = Query(..., description="Task type of the class"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Update an existing class in a task.
@@ -230,7 +230,7 @@ async def delete_class(
     class_id: str,
     task_type: str = Query(..., description="Task type of the class"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Delete a class from a project's task.
@@ -311,7 +311,7 @@ async def reorder_classes(
     reorder_data: ClassReorderRequest,
     task_type: str = Query(..., description="Task type of the classes to reorder"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Reorder classes in a project's task.

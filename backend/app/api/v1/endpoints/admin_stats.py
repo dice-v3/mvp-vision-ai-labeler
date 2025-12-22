@@ -18,8 +18,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_admin_user
-from app.core.database import get_labeler_db, get_user_db
-from app.db.models.user import User
+from app.core.database import get_labeler_db
 from app.services import system_stats_service
 
 
@@ -34,8 +33,7 @@ router = APIRouter()
 async def get_system_overview(
     days: int = Query(default=7, ge=1, le=90, description="Number of days for time-based metrics"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get comprehensive system overview statistics.
@@ -53,7 +51,6 @@ async def get_system_overview(
         - Session statistics (active sessions, duration)
     """
     return system_stats_service.get_system_overview(
-        user_db=user_db,
         labeler_db=labeler_db,
         days=days
     )
@@ -67,8 +64,7 @@ async def get_system_overview(
 async def get_user_activity_stats(
     days: int = Query(default=30, ge=1, le=90, description="Number of days to analyze"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get user activity statistics.
@@ -90,7 +86,6 @@ async def get_user_activity_stats(
         }
     """
     return system_stats_service.get_user_activity_stats(
-        user_db=user_db,
         labeler_db=labeler_db,
         days=days
     )
@@ -103,8 +98,7 @@ async def get_user_activity_stats(
 @router.get("/resources", response_model=Dict[str, Any])
 async def get_resource_usage_stats(
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get resource usage statistics.
@@ -120,8 +114,7 @@ async def get_resource_usage_stats(
         }
     """
     return system_stats_service.get_resource_usage_stats(
-        labeler_db=labeler_db,
-        user_db=user_db
+        labeler_db=labeler_db
     )
 
 
@@ -133,7 +126,7 @@ async def get_resource_usage_stats(
 async def get_performance_metrics(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to analyze"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get performance metrics.
@@ -168,7 +161,7 @@ async def get_performance_metrics(
 async def get_session_stats(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to analyze"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get user session statistics.

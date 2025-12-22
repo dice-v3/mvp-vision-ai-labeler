@@ -24,7 +24,7 @@ from app.db.models.labeler import (
     Dataset, AnnotationProject, Annotation,
     ImageAnnotationStatus, ImageMetadata, AuditLog, UserSession
 )
-from app.db.models.user import User
+# from app.db.models.user import User  # Commented out - User model no longer used
 
 
 # =============================================================================
@@ -32,8 +32,8 @@ from app.db.models.user import User
 # =============================================================================
 
 def get_user_activity_stats(
-    user_db: Session,
-    labeler_db: Session,
+    user_db: Optional[Session] = None,
+    labeler_db: Optional[Session] = None,
     days: int = 30
 ) -> Dict[str, Any]:
     """
@@ -60,70 +60,80 @@ def get_user_activity_stats(
     cutoff_30d = now - timedelta(days=30)
 
     # Total users
-    total_users = user_db.query(User).filter(User.is_active == True).count()
+    # total_users = user_db.query(User).filter(User.is_active == True).count()
+    total_users = 0  # User model no longer available
 
     # New users (last 7 and 30 days)
-    new_users_7d = user_db.query(User).filter(
-        User.created_at >= cutoff_7d
-    ).count()
+    # new_users_7d = user_db.query(User).filter(
+    #     User.created_at >= cutoff_7d
+    # ).count()
+    new_users_7d = 0  # User model no longer available
 
-    new_users_30d = user_db.query(User).filter(
-        User.created_at >= cutoff_30d
-    ).count()
+    # new_users_30d = user_db.query(User).filter(
+    #     User.created_at >= cutoff_30d
+    # ).count()
+    new_users_30d = 0  # User model no longer available
 
     # Active users (users who created annotations recently)
-    active_users_7d = labeler_db.query(
-        func.count(distinct(Annotation.created_by))
-    ).filter(
-        and_(
-            Annotation.created_by.isnot(None),
-            Annotation.created_at >= cutoff_7d
-        )
-    ).scalar() or 0
+    active_users_7d = 0
+    active_users_30d = 0
+    if labeler_db:
+        active_users_7d = labeler_db.query(
+            func.count(distinct(Annotation.created_by))
+        ).filter(
+            and_(
+                Annotation.created_by.isnot(None),
+                Annotation.created_at >= cutoff_7d
+            )
+        ).scalar() or 0
 
-    active_users_30d = labeler_db.query(
-        func.count(distinct(Annotation.created_by))
-    ).filter(
-        and_(
-            Annotation.created_by.isnot(None),
-            Annotation.created_at >= cutoff_30d
-        )
-    ).scalar() or 0
+        active_users_30d = labeler_db.query(
+            func.count(distinct(Annotation.created_by))
+        ).filter(
+            and_(
+                Annotation.created_by.isnot(None),
+                Annotation.created_at >= cutoff_30d
+            )
+        ).scalar() or 0
 
     # Registration trend (last 30 days, by day)
     registration_trend = []
-    for i in range(days):
-        day_start = now - timedelta(days=i+1)
-        day_end = now - timedelta(days=i)
+    # for i in range(days):
+    #     day_start = now - timedelta(days=i+1)
+    #     day_end = now - timedelta(days=i)
+    #
+    #     count = user_db.query(User).filter(
+    #         and_(
+    #             User.created_at >= day_start,
+    #             User.created_at < day_end
+    #         )
+    #     ).count()
+    #
+    #     registration_trend.append({
+    #         "date": day_start.strftime("%Y-%m-%d"),
+    #         "count": count
+    #     })
+    #
+    # registration_trend.reverse()  # Oldest to newest
+    # User model no longer available - returning empty trend
 
-        count = user_db.query(User).filter(
+    # Login activity (from audit logs)
+    login_count_7d = 0
+    login_count_30d = 0
+    if labeler_db:
+        login_count_7d = labeler_db.query(AuditLog).filter(
             and_(
-                User.created_at >= day_start,
-                User.created_at < day_end
+                AuditLog.action == 'login',
+                AuditLog.timestamp >= cutoff_7d
             )
         ).count()
 
-        registration_trend.append({
-            "date": day_start.strftime("%Y-%m-%d"),
-            "count": count
-        })
-
-    registration_trend.reverse()  # Oldest to newest
-
-    # Login activity (from audit logs)
-    login_count_7d = labeler_db.query(AuditLog).filter(
-        and_(
-            AuditLog.action == 'login',
-            AuditLog.timestamp >= cutoff_7d
-        )
-    ).count()
-
-    login_count_30d = labeler_db.query(AuditLog).filter(
-        and_(
-            AuditLog.action == 'login',
-            AuditLog.timestamp >= cutoff_30d
-        )
-    ).count()
+        login_count_30d = labeler_db.query(AuditLog).filter(
+            and_(
+                AuditLog.action == 'login',
+                AuditLog.timestamp >= cutoff_30d
+            )
+        ).count()
 
     return {
         "total_users": total_users,
@@ -145,7 +155,7 @@ def get_user_activity_stats(
 
 def get_resource_usage_stats(
     labeler_db: Session,
-    user_db: Session
+    user_db: Optional[Session] = None
 ) -> Dict[str, Any]:
     """
     Get resource usage statistics.
@@ -368,8 +378,8 @@ def get_session_stats(
 # =============================================================================
 
 def get_system_overview(
-    user_db: Session,
-    labeler_db: Session,
+    user_db: Optional[Session] = None,
+    labeler_db: Optional[Session] = None,
     days: int = 7
 ) -> Dict[str, Any]:
     """

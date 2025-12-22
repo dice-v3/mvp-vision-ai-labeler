@@ -1,17 +1,17 @@
 """Annotation project endpoints - REFACTORED."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user, require_project_permission
 from app.core.storage import storage_client
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import Dataset, AnnotationProject, ImageAnnotationStatus, Annotation, ProjectPermission
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, AddTaskTypeRequest
 # REFACTORING: Import task registry for task type validation
@@ -42,7 +42,7 @@ async def create_project(
     project: ProjectCreate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Create new annotation project.
@@ -106,7 +106,7 @@ async def list_projects(
     limit: int = 100,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Get list of annotation projects.
@@ -145,7 +145,7 @@ async def list_project_images(
     offset: int = 0,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -266,7 +266,7 @@ async def get_project(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -302,7 +302,7 @@ async def update_project(
     updates: ProjectUpdate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("admin")),
 ):
     """
@@ -344,7 +344,7 @@ async def update_project(
 async def delete_project(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("owner")),
 ):
     """
@@ -374,8 +374,7 @@ async def add_task_type(
     request: AddTaskTypeRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("admin")),
 ):
     """
@@ -467,15 +466,15 @@ async def add_task_type(
     # Get dataset information
     dataset = labeler_db.query(Dataset).filter(Dataset.id == project.dataset_id).first()
 
-    # Get user information (Phase 9: from User DB)
-    user = user_db.query(User).filter(User.id == project.last_updated_by).first()
+    # User information removed - User DB dependency eliminated
+    # user = user_db.query(User).filter(User.id == project.last_updated_by).first()
 
     response_dict = {
         **project.__dict__,
         "dataset_name": dataset.name if dataset else None,
         "dataset_num_items": dataset.num_images if dataset else None,
-        "last_updated_by_name": user.full_name if user else None,
-        "last_updated_by_email": user.email if user else None,
+        "last_updated_by_name": None,  # User DB dependency removed
+        "last_updated_by_email": None,  # User DB dependency removed
     }
 
     return ProjectResponse.model_validate(response_dict)
@@ -489,7 +488,7 @@ async def get_project_image_statuses(
     limit: int = 50,  # Phase 2.12: Pagination
     offset: int = 0,  # Phase 2.12: Pagination
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -596,7 +595,7 @@ async def get_project_image_statuses(
 async def get_project_stats(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -712,7 +711,7 @@ async def confirm_image(
     image_id: str,
     task_type: Optional[str] = None,  # Phase 2.9: Task type for task-specific confirmation
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("reviewer")),
 ):
     """
@@ -808,7 +807,7 @@ async def unconfirm_image(
     image_id: str,
     task_type: Optional[str] = None,  # Phase 2.9: Task type for task-specific unconfirmation
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission = Depends(require_project_permission("reviewer")),
 ):
     """

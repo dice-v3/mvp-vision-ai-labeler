@@ -1,211 +1,23 @@
 """
 Security & Authentication
 
-Handles JWT token validation and user authentication.
-Shares JWT secret with the Platform for seamless authentication.
+Handles Keycloak OIDC token validation and user authentication.
 """
 
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Tuple
+from typing import Dict, Any
+import jwt
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.database import get_labeler_db
+from app.core.keycloak import keycloak_auth
 
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT Bearer token
 security = HTTPBearer()
-
-# bcrypt has a 72-byte limit for passwords
-BCRYPT_MAX_PASSWORD_LENGTH = 72
-
-
-# =============================================================================
-# Password Utilities
-# =============================================================================
-
-def _truncate_password(password: str) -> str:
-    """
-    Truncate password to 72 bytes for bcrypt compatibility.
-
-    bcrypt only uses the first 72 bytes of a password, so we explicitly
-    truncate to ensure consistent behavior across different bcrypt versions.
-    """
-    password_bytes = password.encode("utf-8")
-    if len(password_bytes) > BCRYPT_MAX_PASSWORD_LENGTH:
-        password_bytes = password_bytes[:BCRYPT_MAX_PASSWORD_LENGTH]
-    return password_bytes.decode("utf-8", errors="ignore")
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
-    truncated_password = _truncate_password(plain_password)
-    return pwd_context.verify(truncated_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    """Generate password hash."""
-    truncated_password = _truncate_password(password)
-    return pwd_context.hash(truncated_password)
-
-
-# =============================================================================
-# JWT Token Utilities
-# =============================================================================
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Create JWT access token.
-
-    Args:
-        data: Payload data (typically user_id, email, etc.)
-        expires_delta: Token expiration time
-
-    Returns:
-        Encoded JWT token string
-    """
-    to_encode = data.copy()
-
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.JWT_ALGORITHM,
-    )
-    return encoded_jwt
-
-
-def decode_access_token(token: str) -> dict:
-    """
-    Decode and validate JWT token.
-
-    Args:
-        token: JWT token string
-
-    Returns:
-        Decoded token payload
-
-    Raises:
-        HTTPException: If token is invalid or expired
-    """
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-        )
-        return payload
-    except JWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-
-def decode_service_token(token: str) -> dict:
-    """
-    Decode and validate service JWT token from Platform.
-
-    Phase 17: SSO Integration - Service token validation for Platform → Labeler SSO.
-
-    Validates:
-    - Signature (SERVICE_JWT_SECRET)
-    - Expiration (5min from Platform)
-    - Token type (must be "service")
-    - Issuer (must be "platform")
-    - Audience (must be "labeler")
-
-    Args:
-        token: Service JWT token from Platform
-
-    Returns:
-        Decoded token payload containing:
-        - user_id: Platform user ID
-        - email: User email
-        - full_name: User full name
-        - system_role: User system role (admin/manager/user/guest)
-        - badge_color: User badge color
-        - exp: Expiration timestamp
-        - type: Token type ("service")
-        - iss: Issuer ("platform")
-        - aud: Audience ("labeler")
-
-    Raises:
-        JWTError: If token is invalid, expired, or not a service token
-
-    Example:
-        >>> payload = decode_service_token(service_token)
-        >>> user_id = payload["user_id"]
-        >>> email = payload["email"]
-    """
-    try:
-        # Decode with SERVICE_JWT_SECRET
-        # Disable default audience/issuer validation, we'll check manually
-        payload = jwt.decode(
-            token,
-            settings.SERVICE_JWT_SECRET,
-            algorithms=[settings.SERVICE_JWT_ALGORITHM],
-            options={"verify_aud": False, "verify_iss": False}
-        )
-
-        # Verify token type
-        if payload.get("type") != "service":
-            raise JWTError("Not a service token")
-
-        # Verify issuer
-        if payload.get("iss") != "platform":
-            raise JWTError("Invalid issuer - expected 'platform'")
-
-        # Verify audience
-        if payload.get("aud") != "labeler":
-            raise JWTError("Invalid audience - expected 'labeler'")
-
-        return payload
-
-    except JWTError as e:
-        raise JWTError(f"Invalid service token: {str(e)}")
-
-
-# =============================================================================
-# User Caching for Performance
-# =============================================================================
-
-# In-memory user cache with TTL
-# Format: {user_id: (user_object, expiry_timestamp)}
-_user_cache: Dict[int, Tuple[any, datetime]] = {}
-USER_CACHE_TTL = 30  # seconds
-
-
-def _get_cached_user(user_id: int):
-    """Get user from cache if not expired."""
-    if user_id in _user_cache:
-        user_obj, expiry = _user_cache[user_id]
-        if datetime.utcnow() < expiry:
-            return user_obj
-        else:
-            # Remove expired entry
-            del _user_cache[user_id]
-    return None
-
-
-def _cache_user(user_id: int, user_obj):
-    """Cache user object with TTL."""
-    expiry = datetime.utcnow() + timedelta(seconds=USER_CACHE_TTL)
-    _user_cache[user_id] = (user_obj, expiry)
 
 
 # =============================================================================
@@ -214,80 +26,87 @@ def _cache_user(user_id: int, user_obj):
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_user_db),
-):
+) -> Dict[str, Any]:
     """
-    Dependency to get current authenticated user.
+    Dependency to get current authenticated user from Keycloak token.
 
-    Phase 9: Validates JWT token and retrieves user from User database (PostgreSQL).
-
-    Performance: Uses in-memory cache with 30-second TTL to reduce DB queries.
+    Validates JWT token issued by Keycloak and extracts user information.
 
     Usage:
         @app.get("/me")
         def get_me(current_user = Depends(get_current_user)):
             return current_user
+
+    Returns:
+        User info dictionary with fields:
+        - sub: Keycloak user ID (UUID)
+        - email: User email
+        - name: Full name
+        - roles: List of roles
+        - is_admin: Whether user has admin role
     """
     token = credentials.credentials
-    payload = decode_access_token(token)
 
-    user_id: int = payload.get("user_id")
-    if user_id is None:
+    try:
+        payload = keycloak_auth.verify_token(token)
+        user_info = keycloak_auth.get_user_info_from_token(payload)
+        return user_info
+
+    except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    # Check cache first
-    cached_user = _get_cached_user(user_id)
-    if cached_user is not None:
-        return cached_user
-
-    # Import here to avoid circular imports
-    from app.db.models.user import User
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
+    except jwt.InvalidAudienceError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail="Invalid token audience",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    if not user.is_active:
+    except jwt.InvalidIssuerError:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token issuer",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-
-    # Cache user for future requests
-    _cache_user(user_id, user)
-
-    return user
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Authentication failed: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 async def get_current_active_user(
-    current_user = Depends(get_current_user),
-):
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
     """
     Dependency to get current active user.
 
     Usage:
         @app.get("/protected")
         def protected_route(current_user = Depends(get_current_active_user)):
-            return {"user": current_user.email}
+            return {"user": current_user["email"]}
     """
+    # Keycloak handles user active status
+    # If token is valid, user is considered active
     return current_user
 
 
 async def get_current_admin_user(
-    current_user = Depends(get_current_user),
-):
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
     """
     Dependency to get current admin user.
 
-    Raises 403 if user is not an admin.
+    Raises 403 if user does not have admin role in Keycloak.
 
     Usage:
         @app.delete("/datasets/{id}")
@@ -298,7 +117,7 @@ async def get_current_admin_user(
             # Only admins can delete
             pass
     """
-    if not current_user.is_admin:
+    if not current_user.get("is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required",
@@ -307,7 +126,7 @@ async def get_current_admin_user(
 
 
 # =============================================================================
-# Dataset Permission Middleware (2025-11-21)
+# Dataset Permission Middleware
 # =============================================================================
 
 def require_dataset_permission(required_role: str = "member"):
@@ -331,30 +150,22 @@ def require_dataset_permission(required_role: str = "member"):
         ):
             # Only owners can delete
             pass
-
-        @router.get("/datasets/{dataset_id}/images")
-        async def list_images(
-            dataset_id: str,
-            current_user = Depends(get_current_user),
-            _permission = Depends(require_dataset_permission("member")),
-        ):
-            # Owners and members can view
-            pass
     """
     async def check_permission(
         dataset_id: str,
-        current_user = Depends(get_current_user),
+        current_user: Dict[str, Any] = Depends(get_current_user),
         labeler_db: Session = Depends(get_labeler_db),
     ):
-        # Import here to avoid circular imports
         from app.db.models.labeler import DatasetPermission
 
-        # Check if user has permission
+        # Use Keycloak user ID (sub) for permission lookup
+        user_id = current_user.get("sub")
+
         permission = (
             labeler_db.query(DatasetPermission)
             .filter(
                 DatasetPermission.dataset_id == dataset_id,
-                DatasetPermission.user_id == current_user.id,
+                DatasetPermission.user_id == user_id,
             )
             .first()
         )
@@ -365,7 +176,6 @@ def require_dataset_permission(required_role: str = "member"):
                 detail=f"You don't have access to dataset {dataset_id}",
             )
 
-        # Check role requirement
         if required_role == "owner" and permission.role != "owner":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -378,7 +188,7 @@ def require_dataset_permission(required_role: str = "member"):
 
 
 # =============================================================================
-# Project Permission Middleware (Phase 8.1 - 2025-11-23)
+# Project Permission Middleware (Phase 8.1)
 # =============================================================================
 
 # Role hierarchy: owner > admin > reviewer > annotator > viewer
@@ -418,26 +228,18 @@ def require_project_permission(required_role: str = "viewer"):
         ):
             # Only owners can delete
             pass
-
-        @router.post("/projects/{project_id}/annotations")
-        async def create_annotation(
-            project_id: str,
-            current_user = Depends(get_current_user),
-            _permission = Depends(require_project_permission("annotator")),
-        ):
-            # Annotators and above can create annotations
-            pass
     """
     async def check_permission(
         project_id: str,
-        current_user = Depends(get_current_user),
+        current_user: Dict[str, Any] = Depends(get_current_user),
         labeler_db: Session = Depends(get_labeler_db),
     ):
-        # Import here to avoid circular imports
         from app.db.models.labeler import ProjectPermission, AnnotationProject
 
+        # Use Keycloak user ID (sub) for permission lookup
+        user_id = current_user.get("sub")
+
         # Support both dataset_id (ds_xxx) and project_id (proj_xxx)
-        # If project_id starts with 'ds_', it's a dataset_id, find the actual project
         actual_project_id = project_id
         if project_id.startswith('ds_'):
             project = (
@@ -448,12 +250,11 @@ def require_project_permission(required_role: str = "viewer"):
             if project:
                 actual_project_id = project.id
 
-        # Check if user has permission
         permission = (
             labeler_db.query(ProjectPermission)
             .filter(
                 ProjectPermission.project_id == actual_project_id,
-                ProjectPermission.user_id == current_user.id,
+                ProjectPermission.user_id == user_id,
             )
             .first()
         )
@@ -464,7 +265,6 @@ def require_project_permission(required_role: str = "viewer"):
                 detail=f"You don't have access to project {project_id}",
             )
 
-        # Check role hierarchy
         user_role_level = ROLE_HIERARCHY.get(permission.role, 0)
         required_role_level = ROLE_HIERARCHY.get(required_role, 0)
 

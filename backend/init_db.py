@@ -2,19 +2,19 @@
 """
 Database Initialization Script for Vision AI Labeler
 
-This script initializes both databases:
-1. User DB: Creates users table and test users
-2. Labeler DB: Runs Alembic migrations or creates tables directly
+This script initializes the Labeler database:
+- Runs Alembic migrations or creates tables directly
+
+Note: User authentication is handled by Keycloak.
+      User DB is no longer needed.
 
 Usage:
     python init_db.py [OPTIONS]
 
 Options:
-    --user-db-only    Initialize only User DB
-    --labeler-db-only Initialize only Labeler DB
-    --create-db       Create databases if they don't exist
-    --create-tables   Create Labeler tables directly using SQLAlchemy (no Alembic)
-    --skip-migration  Skip Alembic migrations for Labeler DB
+    --create-db       Create database if it doesn't exist
+    --create-tables   Create tables directly using SQLAlchemy (no Alembic)
+    --skip-migration  Skip Alembic migrations
     --wait            Wait for PostgreSQL to be ready (for Docker/K8s)
 """
 
@@ -26,14 +26,13 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import settings
 from app.core.database import LabelerBase
-from app.core.security import get_password_hash
 
 
 # =============================================================================
@@ -138,119 +137,6 @@ def create_database(host: str, port: int, user: str, password: str, dbname: str)
         return True
     except psycopg2.Error as e:
         print_status(f"Error creating database: {e}", "ERROR")
-        return False
-
-
-# =============================================================================
-# User DB Initialization
-# =============================================================================
-
-def init_user_db(create_db: bool = False) -> bool:
-    """Initialize User DB with users table and test users."""
-    print()
-    print("=" * 60)
-    print("Initializing User DB")
-    print("=" * 60)
-
-    print_status("Configuration:")
-    print(f"  Host: {settings.USER_DB_HOST}")
-    print(f"  Port: {settings.USER_DB_PORT}")
-    print(f"  Database: {settings.USER_DB_NAME}")
-    print(f"  User: {settings.USER_DB_USER}")
-    print()
-
-    # Create database if requested
-    if create_db:
-        if not create_database(
-            settings.USER_DB_HOST,
-            settings.USER_DB_PORT,
-            settings.USER_DB_USER,
-            settings.USER_DB_PASSWORD,
-            settings.USER_DB_NAME
-        ):
-            return False
-
-    try:
-        engine = create_engine(
-            f"postgresql://{settings.USER_DB_USER}:{settings.USER_DB_PASSWORD}@"
-            f"{settings.USER_DB_HOST}:{settings.USER_DB_PORT}/{settings.USER_DB_NAME}"
-        )
-
-        with engine.connect() as conn:
-            print_status("Step 1: Checking/Creating users table...")
-
-            # Create users table if not exists
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    email VARCHAR(255) NOT NULL UNIQUE,
-                    hashed_password VARCHAR(255) NOT NULL,
-                    full_name VARCHAR(255),
-                    company VARCHAR(100),
-                    company_custom VARCHAR(255),
-                    division VARCHAR(100),
-                    division_custom VARCHAR(255),
-                    department VARCHAR(255),
-                    organization_id INTEGER,
-                    phone_number VARCHAR(50),
-                    bio TEXT,
-                    system_role VARCHAR(11) NOT NULL,
-                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                    avatar_name VARCHAR(100),
-                    badge_color VARCHAR(20),
-                    password_reset_token VARCHAR(255),
-                    password_reset_expires TIMESTAMP,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-            """))
-            conn.commit()
-            print_status("Users table ready", "OK")
-
-            print_status("Step 2: Creating test users...")
-
-            # Password: 'admin123' - hash generated with 72-byte truncation
-            admin_password_hash = get_password_hash("admin123")
-            result = conn.execute(
-                text("""
-                INSERT INTO users (email, hashed_password, full_name, system_role, is_active, badge_color, created_at, updated_at)
-                VALUES
-                    ('admin@example.com', :admin_hash, 'Admin User', 'admin', TRUE, '#9333ea', NOW(), NOW()),
-                    ('user@example.com', :user_hash, 'Test User', 'user', TRUE, '#3b82f6', NOW(), NOW())
-                ON CONFLICT (email) DO NOTHING
-                RETURNING email
-                """),
-                {"admin_hash": admin_password_hash, "user_hash": admin_password_hash}
-            )
-            conn.commit()
-
-            inserted = result.fetchall()
-            if inserted:
-                print_status(f"Created {len(inserted)} users:", "OK")
-                for row in inserted:
-                    print(f"    - {row[0]}")
-            else:
-                print_status("Users already exist, skipping...", "INFO")
-
-            print_status("Step 3: Verifying users...")
-            result = conn.execute(text("SELECT email, system_role, is_active FROM users"))
-            users = result.fetchall()
-
-            print_status(f"Total users in database: {len(users)}", "OK")
-            for user in users:
-                print(f"    - {user[0]} (role: {user[1]}, active: {user[2]})")
-
-        print()
-        print_status("User DB initialized successfully!", "OK")
-        print("  Test credentials:")
-        print("    - admin@example.com / admin123 (admin)")
-        print("    - user@example.com / admin123 (user)")
-        return True
-
-    except Exception as e:
-        print_status(f"Error initializing User DB: {e}", "ERROR")
-        import traceback
-        traceback.print_exc()
         return False
 
 
@@ -448,12 +334,10 @@ def init_labeler_db(create_db: bool = False, create_tables: bool = False, skip_m
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Initialize Vision AI Labeler databases")
-    parser.add_argument("--user-db-only", action="store_true", help="Initialize only User DB")
-    parser.add_argument("--labeler-db-only", action="store_true", help="Initialize only Labeler DB")
-    parser.add_argument("--create-db", action="store_true", help="Create databases if not exists")
-    parser.add_argument("--create-tables", action="store_true", help="Create Labeler tables directly using SQLAlchemy (no Alembic)")
-    parser.add_argument("--skip-migration", action="store_true", help="Skip Alembic migrations for Labeler DB")
+    parser = argparse.ArgumentParser(description="Initialize Vision AI Labeler database")
+    parser.add_argument("--create-db", action="store_true", help="Create database if not exists")
+    parser.add_argument("--create-tables", action="store_true", help="Create tables directly using SQLAlchemy (no Alembic)")
+    parser.add_argument("--skip-migration", action="store_true", help="Skip Alembic migrations")
     parser.add_argument("--wait", action="store_true", help="Wait for PostgreSQL to be ready")
     args = parser.parse_args()
 
@@ -461,51 +345,33 @@ def main():
     print("=" * 60)
     print("Vision AI Labeler - Database Initialization")
     print("=" * 60)
+    print()
+    print_status("Note: User authentication is handled by Keycloak", "INFO")
+    print()
 
     # Wait for PostgreSQL if requested
     if args.wait:
-        # Wait for User DB
-        if not args.labeler_db_only:
-            if not wait_for_postgres(
-                settings.USER_DB_HOST,
-                settings.USER_DB_PORT,
-                settings.USER_DB_USER,
-                settings.USER_DB_PASSWORD
-            ):
-                sys.exit(1)
-
-        # Wait for Labeler DB
-        if not args.user_db_only:
-            if not wait_for_postgres(
-                settings.LABELER_DB_HOST,
-                settings.LABELER_DB_PORT,
-                settings.LABELER_DB_USER,
-                settings.LABELER_DB_PASSWORD
-            ):
-                sys.exit(1)
-
-    success = True
-
-    # Initialize User DB
-    if not args.labeler_db_only:
-        if not init_user_db(create_db=args.create_db):
-            success = False
+        if not wait_for_postgres(
+            settings.LABELER_DB_HOST,
+            settings.LABELER_DB_PORT,
+            settings.LABELER_DB_USER,
+            settings.LABELER_DB_PASSWORD
+        ):
+            sys.exit(1)
 
     # Initialize Labeler DB
-    if not args.user_db_only:
-        if not init_labeler_db(
-            create_db=args.create_db,
-            create_tables=args.create_tables,
-            skip_migration=args.skip_migration
-        ):
-            success = False
+    success = init_labeler_db(
+        create_db=args.create_db,
+        create_tables=args.create_tables,
+        skip_migration=args.skip_migration
+    )
 
     print()
     print("=" * 60)
     if success:
-        print_status("All databases initialized successfully!", "OK")
+        print_status("Database initialized successfully!", "OK")
     else:
-        print_status("Some databases failed to initialize", "ERROR")
+        print_status("Database initialization failed", "ERROR")
         sys.exit(1)
     print("=" * 60)
 

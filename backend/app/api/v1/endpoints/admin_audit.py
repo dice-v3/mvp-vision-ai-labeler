@@ -18,8 +18,7 @@ from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_admin_user
-from app.core.database import get_labeler_db, get_user_db
-from app.db.models.user import User
+from app.core.database import get_labeler_db
 from app.db.models.labeler import AuditLog
 from app.services.audit_service import get_recent_audit_logs, get_audit_log_count
 
@@ -42,8 +41,7 @@ async def list_audit_logs(
     start_date: Optional[datetime] = Query(default=None, description="Start date for time range filter"),
     end_date: Optional[datetime] = Query(default=None, description="End date for time range filter"),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get paginated list of audit logs with optional filters.
@@ -111,10 +109,11 @@ async def list_audit_logs(
         }
 
         # Get user email from User DB
-        if log.user_id:
-            user = user_db.query(User).filter(User.id == log.user_id).first()
-            if user:
-                item["user_email"] = user.email
+        # TODO: Restore when User DB is available
+        # if log.user_id:
+        #     user = user_db.query(User).filter(User.id == log.user_id).first()
+        #     if user:
+        #         item["user_email"] = user.email
 
         items.append(item)
 
@@ -130,8 +129,7 @@ async def list_audit_logs(
 async def get_audit_log_detail(
     log_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get detailed information for a specific audit log.
@@ -157,10 +155,11 @@ async def get_audit_log_detail(
 
     # Get user info if available
     user_email = None
-    if log.user_id:
-        user = user_db.query(User).filter(User.id == log.user_id).first()
-        if user:
-            user_email = user.email
+    # TODO: Restore when User DB is available
+    # if log.user_id:
+    #     user = user_db.query(User).filter(User.id == log.user_id).first()
+    #     if user:
+    #         user_email = user.email
 
     return {
         "id": log.id,
@@ -184,7 +183,7 @@ async def get_audit_log_detail(
 async def get_audit_log_stats(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to analyze"),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get audit log statistics for the specified time period.
@@ -283,7 +282,7 @@ async def get_audit_log_stats(
 @router.get("/meta/actions", response_model=List[str])
 async def get_available_actions(
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get list of all action types that have been logged.
@@ -300,7 +299,7 @@ async def get_available_actions(
 @router.get("/meta/resource-types", response_model=List[str])
 async def get_available_resource_types(
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """
     Get list of all resource types that have been logged.

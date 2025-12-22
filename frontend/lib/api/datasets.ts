@@ -4,6 +4,7 @@
  * Dataset management (Labeler DB)
  */
 
+import { getSession } from 'next-auth/react';
 import { apiClient } from './client';
 import type { Dataset, Project } from '../types';
 
@@ -257,16 +258,20 @@ export async function uploadDataset(
       reject(new Error('Upload cancelled'));
     });
 
-    // Get token from localStorage
-    const token = localStorage.getItem('access_token');
+    // Get token from NextAuth session
+    getSession().then((session) => {
+      const token = session?.accessToken;
 
-    xhr.open('POST', `${API_BASE_URL}/api/v1/datasets/upload`);
+      xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/upload`);
 
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    }
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
 
-    xhr.send(formData);
+      xhr.send(formData);
+    }).catch(() => {
+      reject(new Error('Failed to get authentication token'));
+    });
   });
 }
 
@@ -388,15 +393,19 @@ export async function addImagesToDataset(
       reject(new Error('Upload cancelled'));
     });
 
-    // Get token from localStorage
-    const token = localStorage.getItem('access_token');
+    // Get token from NextAuth session
+    getSession().then((session) => {
+      const token = session?.accessToken;
 
-    xhr.open('POST', `${API_BASE_URL}/api/v1/datasets/${datasetId}/images`);
+      xhr.open('POST', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/datasets/${datasetId}/images`);
 
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    }
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
 
-    xhr.send(formData);
+      xhr.send(formData);
+    }).catch(() => {
+      reject(new Error('Failed to get authentication token'));
+    });
   });
 }

@@ -24,7 +24,7 @@ from app.db.models.labeler import (
     Dataset, AnnotationProject, Annotation,
     ImageAnnotationStatus, ImageMetadata
 )
-from app.db.models.user import User
+# from app.db.models.user import User  # Commented out - User model no longer used
 
 
 # =============================================================================
@@ -33,7 +33,7 @@ from app.db.models.user import User
 
 def get_datasets_overview_stats(
     labeler_db: Session,
-    user_db: Session
+    user_db: Optional[Session] = None
 ) -> Dict[str, Any]:
     """
     Get high-level overview statistics for all datasets.
@@ -82,7 +82,7 @@ def get_datasets_overview_stats(
 
 def get_recent_dataset_updates(
     labeler_db: Session,
-    user_db: Session,
+    user_db: Optional[Session] = None,
     limit: int = 10
 ) -> List[Dict[str, Any]]:
     """
@@ -104,7 +104,8 @@ def get_recent_dataset_updates(
     result = []
     for dataset in recent_datasets:
         # Get owner info from User DB (cross-DB query)
-        owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
+        # owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
+        owner = None  # User model no longer available
 
         result.append({
             "dataset_id": dataset.id,
@@ -125,7 +126,7 @@ def get_recent_dataset_updates(
 def get_dataset_detail_stats(
     dataset_id: str,
     labeler_db: Session,
-    user_db: Session
+    user_db: Optional[Session] = None
 ) -> Dict[str, Any]:
     """
     Get detailed statistics for a specific dataset.
@@ -145,7 +146,8 @@ def get_dataset_detail_stats(
         return None
 
     # Get owner info
-    owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
+    # owner = user_db.query(User).filter(User.id == dataset.owner_id).first()
+    owner = None  # User model no longer available
 
     # Get associated projects
     projects = labeler_db.query(AnnotationProject).filter(
@@ -206,7 +208,7 @@ def get_labeling_progress_stats(
     dataset_id: str,
     project_id: Optional[str],
     labeler_db: Session,
-    user_db: Session
+    user_db: Optional[Session] = None
 ) -> Dict[str, Any]:
     """
     Get labeling progress statistics for a dataset or project.
@@ -309,7 +311,8 @@ def get_labeling_progress_stats(
     # Get user emails from User DB
     user_contributions = []
     for user_id, count in user_contribs:
-        user = user_db.query(User).filter(User.id == user_id).first()
+        # user = user_db.query(User).filter(User.id == user_id).first()
+        user = None  # User model no longer available
         user_contributions.append({
             "user_id": user_id,
             "user_email": user.email if user else "Unknown",
@@ -333,7 +336,7 @@ def get_labeling_progress_stats(
 def get_recent_activity_timeline(
     dataset_id: str,
     labeler_db: Session,
-    user_db: Session,
+    user_db: Optional[Session] = None,
     days: int = 7,
     limit: int = 50
 ) -> List[Dict[str, Any]]:
@@ -372,7 +375,8 @@ def get_recent_activity_timeline(
 
     activities = []
     for ann in recent_annotations:
-        user = user_db.query(User).filter(User.id == ann.created_by).first() if ann.created_by else None
+        # user = user_db.query(User).filter(User.id == ann.created_by).first() if ann.created_by else None
+        user = None  # User model no longer available
         activities.append({
             "type": "annotation_created",
             "timestamp": ann.created_at.isoformat() if ann.created_at else None,
