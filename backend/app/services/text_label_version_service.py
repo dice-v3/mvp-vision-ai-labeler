@@ -38,20 +38,29 @@ def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(KST).isoformat()
 
 
-def serialize_text_labels(text_labels: List[TextLabel], user_db: Session) -> List[Dict[str, Any]]:
+def serialize_text_labels_by_type(text_labels: List[TextLabel], user_db: Session) -> Dict[str, Any]:
     """
-    Serialize TextLabel objects to JSON-compatible dictionaries.
+    Serialize TextLabel objects into type-separated sections.
 
-    Follows DICE annotation format structure with metadata containing labeled_by, labeled_at, etc.
+    Follows COCO/DICE export format structure with separate sections for:
+    - captions: Image-level captions and descriptions
+    - region_descriptions: Region-level text annotations
+    - vqa: Visual Question Answering pairs
 
     Args:
         text_labels: List of TextLabel model instances
         user_db: User database session for querying user information
 
     Returns:
-        List of dictionaries with text label data (DICE-compatible format)
+        Dictionary with separated sections: {captions: [...], region_descriptions: [...], vqa: [...]}
     """
-    serialized = []
+    captions = []
+    region_descriptions = []
+    vqa = []
+
+    caption_id = 1
+    region_desc_id = 1
+    vqa_id = 1
 
     for label in text_labels:
         # Get labeled_by user info
@@ -70,36 +79,68 @@ def serialize_text_labels(text_labels: List[TextLabel], user_db: Session) -> Lis
         if hasattr(label, 'additional_metadata') and label.additional_metadata:
             metadata.update(label.additional_metadata)
 
-        serialized.append({
-            "id": label.id,
-            "image_id": label.image_id,
-            "annotation_id": label.annotation_id,  # NULL for image-level
-            "label_type": label.label_type,
-            "text_content": label.text_content,
-            "question": label.question,
-            "language": label.language,
-            "confidence": label.confidence,
-            "metadata": metadata,
-        })
+        # Image-level labels (caption, description, VQA)
+        if label.annotation_id is None:
+            if label.label_type in ["caption", "description"]:
+                captions.append({
+                    "id": caption_id,
+                    "image_id": label.image_id,
+                    "caption": label.text_content,
+                    "label_type": label.label_type,
+                    "language": label.language,
+                    "confidence": label.confidence,
+                    "metadata": metadata,
+                })
+                caption_id += 1
+            elif label.label_type == "qa" and label.question:
+                vqa.append({
+                    "id": vqa_id,
+                    "image_id": label.image_id,
+                    "question": label.question,
+                    "answer": label.text_content,
+                    "language": label.language,
+                    "confidence": label.confidence,
+                    "metadata": metadata,
+                })
+                vqa_id += 1
+        # Region-level labels
+        else:
+            region_descriptions.append({
+                "id": region_desc_id,
+                "image_id": label.image_id,
+                "annotation_id": label.annotation_id,
+                "phrase": label.text_content,
+                "language": label.language,
+                "confidence": label.confidence,
+                "metadata": metadata,
+            })
+            region_desc_id += 1
 
-    return serialized
+    return {
+        "captions": captions,
+        "region_descriptions": region_descriptions,
+        "vqa": vqa,
+    }
 
 
-def calculate_label_counts(text_labels: List[Dict[str, Any]]) -> Tuple[int, int, int]:
+def calculate_label_counts(text_labels_by_type: Dict[str, Any]) -> Tuple[int, int, int]:
     """
     Calculate counts for image-level and region-level labels.
 
     Args:
-        text_labels: List of serialized text label dictionaries
+        text_labels_by_type: Dictionary with separated sections {captions, region_descriptions, vqa}
 
     Returns:
         Tuple of (total_count, image_level_count, region_level_count)
     """
-    total_count = len(text_labels)
-    image_level_count = sum(1 for label in text_labels if label["annotation_id"] is None)
-    region_level_count = total_count - image_level_count
+    caption_count = len(text_labels_by_type.get("captions", []))
+    vqa_count = len(text_labels_by_type.get("vqa", []))
+    region_count = len(text_labels_by_type.get("region_descriptions", []))
 
-    return total_count, image_level_count, region_level_count
+    image_level_count = caption_count + vqa_count
+    total_count = image_level_count + region_count
+
+    return total_count, image_level_count, region_count
 
 
 def publish_text_labels(
@@ -154,8 +195,8 @@ def publish_text_labels(
     text_labels = text_labels_query.all()
     logger.info(f"[TextLabelVersion] Found {len(text_labels)} text labels to publish")
 
-    # 3. Serialize to JSON snapshot
-    text_labels_snapshot = serialize_text_labels(text_labels, user_db)
+    # 3. Serialize to JSON snapshot (type-separated structure)
+    text_labels_snapshot = serialize_text_labels_by_type(text_labels, user_db)
 
     # 4. Calculate counts for query performance
     total_count, image_level_count, region_level_count = calculate_label_counts(text_labels_snapshot)
@@ -202,7 +243,7 @@ def _upload_to_storage(
     labeler_db: Session,
     project_id: str,
     version: str,
-    text_labels_snapshot: List[Dict[str, Any]],
+    text_labels_snapshot: Dict[str, Any],
 ) -> Tuple[str, str]:
     """
     Upload text labels to both Internal and External S3 storage.
@@ -224,7 +265,7 @@ def _upload_to_storage(
         labeler_db: Labeler database session
         project_id: Project ID
         version: Version number
-        text_labels_snapshot: Serialized text labels
+        text_labels_snapshot: Type-separated text labels {captions, region_descriptions, vqa}
 
     Returns:
         Tuple of (internal_s3_key, external_s3_key)
@@ -251,22 +292,40 @@ def _upload_to_storage(
         "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
     }
 
-    # Prepare JSON content with DICE-compatible header
-    json_content = json.dumps(
-        {
-            "format_version": "1.0",
-            "dataset_id": project.dataset_id,
-            "dataset_name": dataset.name if dataset else project.name,
-            "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
-            "last_modified_at": to_kst_isoformat(datetime.utcnow()),
-            "version": version,
-            "storage_info": storage_info,
-            "label_count": len(text_labels_snapshot),
-            "text_labels": text_labels_snapshot,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+    # Calculate statistics
+    caption_count = len(text_labels_snapshot.get("captions", []))
+    region_count = len(text_labels_snapshot.get("region_descriptions", []))
+    vqa_count = len(text_labels_snapshot.get("vqa", []))
+    total_count = caption_count + region_count + vqa_count
+
+    # Prepare JSON content with DICE-compatible header and type-separated structure
+    json_data = {
+        "format_version": "1.0",
+        "dataset_id": project.dataset_id,
+        "dataset_name": dataset.name if dataset else project.name,
+        "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
+        "last_modified_at": to_kst_isoformat(datetime.utcnow()),
+        "version": version,
+        "storage_info": storage_info,
+    }
+
+    # Add type-separated sections
+    if text_labels_snapshot.get("captions"):
+        json_data["captions"] = text_labels_snapshot["captions"]
+    if text_labels_snapshot.get("region_descriptions"):
+        json_data["region_descriptions"] = text_labels_snapshot["region_descriptions"]
+    if text_labels_snapshot.get("vqa"):
+        json_data["vqa"] = text_labels_snapshot["vqa"]
+
+    # Add statistics
+    json_data["statistics"] = {
+        "total_count": total_count,
+        "caption_count": caption_count,
+        "region_description_count": region_count,
+        "vqa_count": vqa_count,
+    }
+
+    json_content = json.dumps(json_data, ensure_ascii=False, indent=2)
 
     # 1. Upload to Internal Storage (versioned)
     # Follow detection annotation path structure: exports/{project_id}/{task_type}/{version}/
