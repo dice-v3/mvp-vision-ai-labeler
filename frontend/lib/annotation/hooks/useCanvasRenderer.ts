@@ -130,6 +130,8 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
 
   // Get text label store for Phase 19 - VLM Text Labeling
   const { hasTextLabel, getTextLabelForAnnotation } = useTextLabelStore();
+  // Subscribe to textLabels to trigger re-render when labels change
+  const textLabelsCount = useTextLabelStore(state => state.textLabels.length);
 
   /**
    * Draw all annotations on the canvas
@@ -268,6 +270,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     diffModeViewMode,
     showAllAnnotations, // Annotation visibility toggle
     hiddenAnnotationCount, // Individual annotation visibility
+    textLabelsCount, // Text label changes trigger re-render
     // getDiffForCurrentImage, getCurrentClasses, isAnnotationVisible are stable store methods
     annotations,
     selectedAnnotationId,
@@ -325,7 +328,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
         textContent
       );
     });
-  }, [annotations, isAnnotationVisible, hasTextLabel, getTextLabelForAnnotation, showTextLabelPreviews, diffModeEnabled]);
+  }, [annotations, isAnnotationVisible, hasTextLabel, getTextLabelForAnnotation, showTextLabelPreviews, diffModeEnabled, textLabelsCount]);
 
   /**
    * Main rendering useEffect
