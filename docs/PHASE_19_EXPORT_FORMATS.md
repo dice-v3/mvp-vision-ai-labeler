@@ -411,5 +411,285 @@ assert caption_data[0]["text"] == "Expected caption"
 
 ---
 
-**Last Updated**: 2025-12-20
-**Phase**: 19.5 - VLM Text Label Export Integration
+## Phase 19.8: Text Label Versioning & Storage
+
+### Versioning Strategy
+
+**Problem**: Text labels need to be versioned alongside annotations to prevent data loss during publish workflow.
+
+**Solution**: Independent text label versioning with dual storage strategy.
+
+#### Version Management
+
+- **Version Numbers**: Same as annotation versions (v1.0, v2.0, etc.)
+- **Automatic Versioning**: Text labels automatically published when annotation versions are published
+- **Manual Versioning**: Can also publish text labels independently via API
+- **Immutable Snapshots**: Published versions are immutable (stored as JSONB snapshot)
+
+#### Database Schema
+
+```sql
+CREATE TABLE text_label_versions (
+    id SERIAL PRIMARY KEY,
+    project_id VARCHAR(50) NOT NULL,
+    version VARCHAR(20) NOT NULL,
+
+    -- Immutable snapshot
+    text_labels_snapshot JSONB NOT NULL,
+
+    -- Metadata
+    published_by INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    notes TEXT,
+
+    -- Statistics (computed for performance)
+    label_count INTEGER NOT NULL DEFAULT 0,
+    image_level_count INTEGER NOT NULL DEFAULT 0,
+    region_level_count INTEGER NOT NULL DEFAULT 0,
+
+    UNIQUE(project_id, version)
+);
+```
+
+---
+
+### Dual Storage Strategy
+
+**Architecture**: Text labels stored in TWO S3 buckets with different retention policies.
+
+#### 1. Internal Storage (Version History)
+
+**Purpose**: Full version history, rollback support, audit trail
+
+**Path Structure**:
+```
+s3://internal-bucket/
+└── projects/{project_id}/
+    └── annotations/
+        ├── classification/
+        │   └── v1.0/annotations_classification.json
+        ├── detection/
+        │   ├── v1.0/annotations_detection.json
+        │   ├── v7.0/annotations_detection.json
+        │   └── v8.0/annotations_detection.json
+        └── text_labels/
+            ├── v1.0/text_labels.json    ← All versions kept
+            ├── v2.0/text_labels.json
+            └── v3.0/text_labels.json
+```
+
+**Retention**: Forever (all versions)
+
+**Access**: Labeler application only
+
+---
+
+#### 2. External Storage (Trainer Access)
+
+**Purpose**: Training data consumption by trainers
+
+**Path Structure**:
+```
+s3://external-bucket/
+└── datasets/{dataset_id}/
+    ├── images/
+    │   ├── img001.jpg
+    │   └── img002.jpg
+    └── annotations/
+        ├── annotations_classification.json  (latest only)
+        ├── annotations_detection.json       (latest only)
+        ├── annotations_segmentation.json    (latest only)
+        └── text_labels.json                 (latest only) ← Overwritten
+```
+
+**Retention**: Latest version only (overwrite on publish)
+
+**Access**: Trainer applications
+
+---
+
+### Publish Workflow
+
+**When user publishes annotation version v8.0:**
+
+```
+1. User clicks "Publish Version" (v8.0)
+   ↓
+2. Create AnnotationSnapshots (existing - Phase 12)
+   → Store in annotation_snapshots table
+   ↓
+3. Create TextLabelVersion (NEW - Phase 19.8)
+   → Query all current text labels for project
+   → Serialize to JSONB snapshot
+   → Create text_label_versions record (project_id, v8.0)
+   ↓
+4. Upload to Internal S3 (versioned)
+   → projects/{project_id}/annotations/text_labels/v8.0/text_labels.json
+   ↓
+5. Upload to External S3 (latest, overwrite)
+   → datasets/{dataset_id}/annotations/text_labels.json
+   ↓
+6. Return success
+```
+
+**No Data Loss**: Even if External S3 fails, Internal S3 has full history.
+
+---
+
+### API Endpoints
+
+#### Publish Text Labels
+
+```http
+POST /api/v1/text-labels/project/{project_id}/versions/publish
+```
+
+**Request**:
+```json
+{
+  "version": "v2.0",  // Optional, auto-generated if not provided
+  "notes": "Added VQA pairs for training data"
+}
+```
+
+**Response**:
+```json
+{
+  "id": 123,
+  "project_id": "proj-abc",
+  "version": "v2.0",
+  "published_at": "2025-12-21T10:00:00Z",
+  "published_by": 5,
+  "label_count": 150,
+  "image_level_count": 50,
+  "region_level_count": 100,
+  "notes": "Added VQA pairs for training data",
+  "published_by_name": "John Doe",
+  "published_by_email": "john@example.com"
+}
+```
+
+#### List Versions
+
+```http
+GET /api/v1/text-labels/project/{project_id}/versions
+```
+
+**Response**:
+```json
+{
+  "versions": [
+    {
+      "id": 124,
+      "version": "v3.0",
+      "published_at": "2025-12-21T15:00:00Z",
+      "label_count": 200,
+      ...
+    },
+    {
+      "id": 123,
+      "version": "v2.0",
+      "published_at": "2025-12-21T10:00:00Z",
+      "label_count": 150,
+      ...
+    }
+  ],
+  "total": 2
+}
+```
+
+#### Get Specific Version
+
+```http
+GET /api/v1/text-labels/project/{project_id}/versions/{version}
+```
+
+**Response**: Includes full `text_labels_snapshot` JSONB data
+
+---
+
+### Trainer Download Flow
+
+**Recommended workflow for trainers:**
+
+```python
+import boto3
+import json
+
+def download_dataset(dataset_id):
+    """Download dataset from External S3."""
+    s3 = boto3.client('s3')
+    bucket = 'external-bucket'
+
+    # 1. Download annotations (DICE format)
+    annotations_key = f'datasets/{dataset_id}/annotations/annotations_detection.json'
+    annotations = json.loads(
+        s3.get_object(Bucket=bucket, Key=annotations_key)['Body'].read()
+    )
+
+    # 2. Download text labels (Phase 19.8)
+    text_labels_key = f'datasets/{dataset_id}/annotations/text_labels.json'
+    try:
+        text_labels = json.loads(
+            s3.get_object(Bucket=bucket, Key=text_labels_key)['Body'].read()
+        )
+    except s3.exceptions.NoSuchKey:
+        text_labels = None  # No text labels published yet
+
+    # 3. Merge and convert to model-specific format
+    dataset = merge_and_convert(annotations, text_labels, model='llava')
+
+    return dataset
+```
+
+---
+
+### Version Snapshot Structure
+
+**text_labels.json** (stored in both Internal and External S3):
+
+```json
+{
+  "version": "v2.0",
+  "project_id": "proj-abc",
+  "published_at": "2025-12-21T10:00:00Z",
+  "label_count": 150,
+  "text_labels": [
+    {
+      "id": 1,
+      "image_id": "img001.jpg",
+      "annotation_id": null,  // Image-level
+      "label_type": "caption",
+      "text_content": "A dog playing in the park",
+      "question": null,
+      "language": "en",
+      "confidence": null,
+      "created_at": "2025-12-20T14:30:00Z"
+    },
+    {
+      "id": 2,
+      "image_id": "img001.jpg",
+      "annotation_id": 5,  // Region-level
+      "label_type": "region_description",
+      "text_content": "Golden retriever running",
+      "language": "en",
+      "created_at": "2025-12-20T14:35:00Z"
+    }
+    // ... all text labels at publish time
+  ]
+}
+```
+
+---
+
+### Related Documentation
+
+- `docs/PHASE_19_VLM_MODEL_COMPATIBILITY.md` - VLM model compatibility guide
+- `backend/app/services/text_label_version_service.py` - Versioning service
+- `backend/app/db/models/labeler.py:879-932` - TextLabelVersion model
+- `backend/alembic/versions/20251221_1000_add_text_label_versions_table.py` - Migration
+
+---
+
+**Last Updated**: 2025-12-21
+**Phase**: 19.8 - Text Label Versioning & Publish Integration
