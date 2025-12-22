@@ -116,3 +116,61 @@ class TextLabelExportRequest(BaseModel):
         if v not in allowed_formats:
             raise ValueError(f"export_format must be one of {allowed_formats}")
         return v
+
+
+# ===== Phase 19.8: Text Label Versioning Schemas =====
+
+
+class TextLabelVersionPublishRequest(BaseModel):
+    """Publish text labels version request."""
+    version: Optional[str] = Field(None, description="Version number (auto-generated if not provided)")
+    notes: Optional[str] = Field(None, max_length=5000, description="Optional publish notes")
+
+
+class TextLabelVersionResponse(BaseModel):
+    """Text label version response (summary)."""
+    id: int
+    project_id: str
+    version: str
+    published_at: datetime
+    published_by: int
+    label_count: int
+    image_level_count: int
+    region_level_count: int
+    notes: Optional[str] = None
+
+    # User information (joined from User DB)
+    published_by_name: Optional[str] = None
+    published_by_email: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TextLabelVersionDetail(BaseModel):
+    """Text label version detail (includes full snapshot)."""
+    id: int
+    project_id: str
+    version: str
+    published_at: datetime
+    published_by: int
+    label_count: int
+    image_level_count: int
+    region_level_count: int
+    notes: Optional[str] = None
+
+    # Full snapshot data
+    text_labels_snapshot: List[Dict[str, Any]]
+
+    # User information
+    published_by_name: Optional[str] = None
+    published_by_email: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TextLabelVersionListResponse(BaseModel):
+    """List text label versions response."""
+    versions: List[TextLabelVersionResponse]
+    total: int

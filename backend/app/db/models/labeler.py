@@ -874,3 +874,58 @@ class TextLabel(LabelerBase):
 
     def __repr__(self):
         return f"<TextLabel(id={self.id}, type='{self.label_type}', image_id='{self.image_id}')>"
+
+
+class TextLabelVersion(LabelerBase):
+    """
+    Text Label Version model for publish/snapshot functionality (Phase 19.8).
+
+    Stores immutable snapshots of text labels when a version is published.
+    Enables version history, rollback, and trainer access to specific versions.
+
+    Storage Strategy:
+    - Internal S3: All versions (projects/{project_id}/annotations/text_labels/{version}/)
+    - External S3: Latest only (datasets/{dataset_id}/annotations/text_labels.json)
+    """
+
+    __tablename__ = "text_label_versions"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Foreign key (no actual FK constraint - different database)
+    project_id = Column(String(50), nullable=False, index=True)
+
+    # Version identifier (e.g., "v1.0", "v2.0")
+    version = Column(String(20), nullable=False)
+
+    # Snapshot data (immutable) - stores all text labels at publish time
+    text_labels_snapshot = Column(JSONB, nullable=False)
+
+    # Metadata
+    notes = Column(Text, nullable=True)  # Optional publish notes
+    published_by = Column(Integer, nullable=False)  # References User DB user.id
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    # Computed fields (stored for query performance)
+    label_count = Column(Integer, nullable=False, default=0)  # Total number of labels in snapshot
+    image_level_count = Column(Integer, nullable=False, default=0)  # Image-level labels count
+    region_level_count = Column(Integer, nullable=False, default=0)  # Region-level labels count
+
+    # Indexes
+    __table_args__ = (
+        # Unique constraint: one version per project
+        Index(
+            "uq_text_label_versions_project_version",
+            "project_id",
+            "version",
+            unique=True,
+        ),
+        # Timeline queries (list versions chronologically)
+        Index("ix_text_label_versions_project_created", "project_id", "created_at"),
+        # Publisher tracking
+        Index("ix_text_label_versions_published_by", "published_by"),
+    )
+
+    def __repr__(self):
+        return f"<TextLabelVersion(id={self.id}, project_id='{self.project_id}', version='{self.version}', labels={self.label_count})>"

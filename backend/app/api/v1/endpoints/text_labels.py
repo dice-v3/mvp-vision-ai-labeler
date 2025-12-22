@@ -9,7 +9,14 @@ from sqlalchemy import and_, or_
 from app.core.database import get_labeler_db, get_user_db
 from app.core.security import get_current_user, require_project_permission
 from app.db.models.user import User
-from app.db.models.labeler import TextLabel, AnnotationProject
+from app.db.models.labeler import TextLabel, AnnotationProject, TextLabelVersion
+from app.services.text_label_version_service import (
+    publish_text_labels,
+    get_latest_version,
+    get_version_by_number,
+    list_versions,
+    auto_generate_version_number,
+)
 from app.schemas.text_label import (
     TextLabelCreate,
     TextLabelUpdate,
@@ -18,6 +25,10 @@ from app.schemas.text_label import (
     TextLabelBatchCreate,
     TextLabelBatchResponse,
     TextLabelStatsResponse,
+    TextLabelVersionPublishRequest,
+    TextLabelVersionResponse,
+    TextLabelVersionDetail,
+    TextLabelVersionListResponse,
 )
 
 router = APIRouter()
@@ -451,4 +462,259 @@ async def get_text_label_stats(
         by_language=by_language,
         images_with_labels=images_with_labels,
         annotations_with_labels=annotations_with_labels
+    )
+
+
+# ===== Phase 19.8: Text Label Versioning Endpoints =====
+
+
+@router.post(
+    "/project/{project_id}/versions/publish",
+    response_model=TextLabelVersionResponse,
+    tags=["Text Label Versions"]
+)
+async def publish_text_label_version(
+    project_id: str,
+    publish_request: TextLabelVersionPublishRequest,
+    labeler_db: Session = Depends(get_labeler_db),
+    user_db: Session = Depends(get_user_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("admin")),
+):
+    """
+    Publish a new version of text labels.
+
+    Creates an immutable snapshot of all current text labels for the project.
+    Uploads to both Internal S3 (version history) and External S3 (trainer access).
+
+    Requires: admin role or higher
+
+    **Note**: Text labels are automatically published when annotation versions
+    are published via `/export/projects/{project_id}/versions/publish`.
+    This endpoint allows manual text label versioning independent of annotations.
+    """
+    # Verify project exists
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Auto-generate version if not provided
+    version_number = publish_request.version
+    if not version_number:
+        version_number = auto_generate_version_number(labeler_db, project_id)
+
+    try:
+        # Publish text labels
+        text_label_version = publish_text_labels(
+            labeler_db=labeler_db,
+            project_id=project_id,
+            version=version_number,
+            user_id=current_user.id,
+            notes=publish_request.notes,
+        )
+
+        # Get user info
+        published_by_name, published_by_email = _get_user_info(user_db, current_user.id)
+
+        return TextLabelVersionResponse(
+            id=text_label_version.id,
+            project_id=text_label_version.project_id,
+            version=text_label_version.version,
+            published_at=text_label_version.created_at,
+            published_by=text_label_version.published_by,
+            label_count=text_label_version.label_count,
+            image_level_count=text_label_version.image_level_count,
+            region_level_count=text_label_version.region_level_count,
+            notes=text_label_version.notes,
+            published_by_name=published_by_name,
+            published_by_email=published_by_email,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to publish text label version: {str(e)}",
+        )
+
+
+@router.get(
+    "/project/{project_id}/versions",
+    response_model=TextLabelVersionListResponse,
+    tags=["Text Label Versions"]
+)
+async def list_text_label_versions(
+    project_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    user_db: Session = Depends(get_user_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
+):
+    """
+    List all text label versions for a project.
+
+    Returns versions ordered by creation date (newest first).
+
+    Requires: viewer role or higher
+    """
+    # Verify project exists
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Get all versions
+    versions = list_versions(labeler_db, project_id)
+
+    # Build response with user info
+    version_responses = []
+    for version in versions:
+        published_by_name, published_by_email = _get_user_info(user_db, version.published_by)
+
+        version_responses.append(TextLabelVersionResponse(
+            id=version.id,
+            project_id=version.project_id,
+            version=version.version,
+            published_at=version.created_at,
+            published_by=version.published_by,
+            label_count=version.label_count,
+            image_level_count=version.image_level_count,
+            region_level_count=version.region_level_count,
+            notes=version.notes,
+            published_by_name=published_by_name,
+            published_by_email=published_by_email,
+        ))
+
+    return TextLabelVersionListResponse(
+        versions=version_responses,
+        total=len(version_responses),
+    )
+
+
+@router.get(
+    "/project/{project_id}/versions/latest",
+    response_model=TextLabelVersionResponse,
+    tags=["Text Label Versions"]
+)
+async def get_latest_text_label_version(
+    project_id: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    user_db: Session = Depends(get_user_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
+):
+    """
+    Get the latest text label version for a project.
+
+    Requires: viewer role or higher
+    """
+    # Verify project exists
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Get latest version
+    version = get_latest_version(labeler_db, project_id)
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No text label versions found for project {project_id}",
+        )
+
+    # Get user info
+    published_by_name, published_by_email = _get_user_info(user_db, version.published_by)
+
+    return TextLabelVersionResponse(
+        id=version.id,
+        project_id=version.project_id,
+        version=version.version,
+        published_at=version.created_at,
+        published_by=version.published_by,
+        label_count=version.label_count,
+        image_level_count=version.image_level_count,
+        region_level_count=version.region_level_count,
+        notes=version.notes,
+        published_by_name=published_by_name,
+        published_by_email=published_by_email,
+    )
+
+
+@router.get(
+    "/project/{project_id}/versions/{version}",
+    response_model=TextLabelVersionDetail,
+    tags=["Text Label Versions"]
+)
+async def get_text_label_version(
+    project_id: str,
+    version: str,
+    labeler_db: Session = Depends(get_labeler_db),
+    user_db: Session = Depends(get_user_db),
+    current_user: User = Depends(get_current_user),
+    _permission = Depends(require_project_permission("viewer")),
+):
+    """
+    Get a specific text label version with full snapshot data.
+
+    Returns complete version details including all text labels at the time of publishing.
+
+    Requires: viewer role or higher
+    """
+    # Verify project exists
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Get version
+    version_record = get_version_by_number(labeler_db, project_id, version)
+
+    if not version_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Text label version {version} not found for project {project_id}",
+        )
+
+    # Get user info
+    published_by_name, published_by_email = _get_user_info(user_db, version_record.published_by)
+
+    return TextLabelVersionDetail(
+        id=version_record.id,
+        project_id=version_record.project_id,
+        version=version_record.version,
+        published_at=version_record.created_at,
+        published_by=version_record.published_by,
+        label_count=version_record.label_count,
+        image_level_count=version_record.image_level_count,
+        region_level_count=version_record.region_level_count,
+        notes=version_record.notes,
+        text_labels_snapshot=version_record.text_labels_snapshot,
+        published_by_name=published_by_name,
+        published_by_email=published_by_email,
     )

@@ -27,6 +27,7 @@ from app.schemas.version import (
 from app.services.coco_export_service import export_to_coco, get_export_stats as get_coco_stats
 from app.services.yolo_export_service import export_to_yolo, get_export_stats as get_yolo_stats
 from app.services.dice_export_service import export_to_dice, get_export_stats as get_dice_stats
+from app.services.text_label_version_service import publish_text_labels, auto_generate_version_number
 
 router = APIRouter()
 
@@ -452,6 +453,28 @@ async def publish_version(
                 }
             )
             labeler_db.add(snapshot)
+
+        # Phase 19.8: Publish text labels (if any exist)
+        # Text labels are versioned independently from task-specific annotations
+        try:
+            text_label_version = publish_text_labels(
+                labeler_db=labeler_db,
+                project_id=project_id,
+                version=new_version_number,  # Use same version number as annotations
+                user_id=current_user.id,
+                notes=f"Published with {task_type} annotations v{new_version_number}",
+            )
+            logger.info(
+                f"[Publish] Text labels published: version={text_label_version.version}, "
+                f"labels={text_label_version.label_count}"
+            )
+        except ValueError as e:
+            # Version already exists - this is OK (idempotent)
+            logger.warning(f"[Publish] Text label version already exists: {e}")
+        except Exception as e:
+            # Log error but don't fail the publish
+            # Annotation version is still created, just text label versioning failed
+            logger.error(f"[Publish] Failed to publish text labels: {e}")
 
         # Update Platform S3 with official task-specific DICE annotations
         try:
