@@ -227,6 +227,11 @@ export default function ImageList() {
   useEffect(() => {
     if (!project?.id) return;
 
+    // Skip if feature is disabled
+    if (process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK === 'false') {
+      return;
+    }
+
     const loadProjectLocks = async () => {
       try {
         setLocksLoading(true);

@@ -823,7 +823,7 @@ export const useAnnotationStore = create<AnnotationState>()(
           };
 
           // Phase 8.5.2: Try to acquire lock for undo (will fail if locked by another user)
-          if (project && currentImage) {
+          if (project && currentImage && process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK !== 'false') {
             try {
               const { imageLockAPI } = await import('@/lib/api/image-locks');
               const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
@@ -937,7 +937,7 @@ export const useAnnotationStore = create<AnnotationState>()(
           };
 
           // Phase 8.5.2: Try to acquire lock for redo (will fail if locked by another user)
-          if (project && currentImage) {
+          if (project && currentImage && process.env.NEXT_PUBLIC_ENABLE_IMAGE_LOCK !== 'false') {
             try {
               const { imageLockAPI } = await import('@/lib/api/image-locks');
               const acquireResult = await imageLockAPI.acquireLock(project.id, currentImage.id);
