@@ -169,9 +169,14 @@ async def startup_event():
     print("=" * 60)
     print("DATABASE CONFIGURATION (loaded from .env)")
     print("=" * 60)
-    print(f"User DB:    {settings.USER_DB_HOST}:{settings.USER_DB_PORT}/{settings.USER_DB_NAME}")
-    print(f"Labeler DB: {settings.LABELER_DB_HOST}:{settings.LABELER_DB_PORT}/{settings.LABELER_DB_NAME}")
-    print(f"Labeler DB URL: {settings.LABELER_DB_URL}")
+    print(f"Platform DB: {settings.PLATFORM_DB_HOST}:{settings.PLATFORM_DB_PORT}/{settings.PLATFORM_DB_NAME}")
+    print(f"Labeler DB:  {settings.LABELER_DB_HOST}:{settings.LABELER_DB_PORT}/{settings.LABELER_DB_NAME}")
+    print("=" * 60)
+    print("KEYCLOAK CONFIGURATION")
+    print("=" * 60)
+    print(f"Server URL: {settings.KEYCLOAK_SERVER_URL}")
+    print(f"Realm:      {settings.KEYCLOAK_REALM}")
+    print(f"Client ID:  {settings.KEYCLOAK_CLIENT_ID}")
     print("=" * 60)
 
 
