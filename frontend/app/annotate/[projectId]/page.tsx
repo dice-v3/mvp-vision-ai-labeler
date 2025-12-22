@@ -173,9 +173,9 @@ export default function AnnotationPage() {
         useAnnotationStore.setState({ currentTask: initialTask });
       }
 
-      // Phase 2.12: Performance Optimization - Load only first 50 images
+      // Phase 2.12: Performance Optimization - Load first batch of images
       if (projectData.dataset_id) {
-        const imageResponse = await getProjectImages(projectId, 50, 0);
+        const imageResponse = await getProjectImages(projectId, 200, 0);
 
         // Phase 2.12: Store total image count for progress bar
         useAnnotationStore.setState({ totalImages: imageResponse.total });
