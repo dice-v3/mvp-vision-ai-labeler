@@ -85,9 +85,11 @@ export const useTextLabelStore = create<TextLabelState>()(
 
       // Load all text labels for an image
       loadTextLabelsForImage: async (projectId: string, imageId: string) => {
+        console.log('[TextLabelStore] loadTextLabelsForImage called:', { projectId, imageId });
         set({ loading: true, error: null });
         try {
           const response = await getTextLabels(projectId, { imageId });
+          console.log('[TextLabelStore] loadTextLabelsForImage response:', response);
           set({ textLabels: response.text_labels, loading: false });
         } catch (error: any) {
           console.error('[TextLabelStore] Failed to load text labels:', error);
@@ -112,13 +114,19 @@ export const useTextLabelStore = create<TextLabelState>()(
 
       // Create a new text label
       createLabel: async (data: TextLabelCreate) => {
+        console.log('[TextLabelStore] createLabel called:', data);
         set({ loading: true, error: null });
         try {
           const newLabel = await createTextLabel(data);
-          set((state) => ({
-            textLabels: [...state.textLabels, newLabel],
-            loading: false,
-          }));
+          console.log('[TextLabelStore] createLabel response:', newLabel);
+          set((state) => {
+            const updatedLabels = [...state.textLabels, newLabel];
+            console.log('[TextLabelStore] Updated textLabels:', updatedLabels);
+            return {
+              textLabels: updatedLabels,
+              loading: false,
+            };
+          });
           return newLabel;
         } catch (error: any) {
           console.error('[TextLabelStore] Failed to create text label:', error);

@@ -116,7 +116,7 @@ export default function Canvas() {
   const getDiffForCurrentImage = useAnnotationStore(state => state.getDiffForCurrentImage);
 
   // Phase 19: VLM Text Labeling store
-  const { loadTextLabelsForImage, clearTextLabels } = useTextLabelStore();
+  const { loadTextLabelsForImage, clearTextLabels, openImageLevelDialog, getImageLevelLabelCount } = useTextLabelStore();
 
   // Phase 18.3: Custom Hooks for State Management
 
@@ -1110,11 +1110,24 @@ export default function Canvas() {
   // (Toggle mode is more reliable in remote desktop environments)
 
   // Mouse wheel handler (zoom)
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+  // Note: Use native WheelEvent instead of React.WheelEvent to avoid passive listener warning
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setZoom(canvasState.zoom + delta);
   }, [setZoom, canvasState.zoom]);
+
+  // Register wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
 
   // Phase 19: Load text labels when image changes
   useEffect(() => {
@@ -1160,7 +1173,6 @@ export default function Canvas() {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
       />
 
       {/* Phase 18.8.3: Zoom Controls Component */}
@@ -1258,6 +1270,8 @@ export default function Canvas() {
         selectedImageCount={selectedImageIds.length}
         onNoObject={handleNoObject}
         onDeleteAll={handleDeleteAllAnnotations}
+        onImageLevelTextLabel={() => openImageLevelDialog('caption')}
+        imageLevelLabelCount={getImageLevelLabelCount()}
       />
 
       {/* AI Assistant button */}

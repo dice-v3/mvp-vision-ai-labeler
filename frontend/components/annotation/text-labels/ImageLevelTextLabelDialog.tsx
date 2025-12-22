@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { useShallow } from 'zustand/react/shallow';
 import { X } from 'lucide-react';
 
 /**
@@ -24,12 +25,16 @@ export function ImageLevelTextLabelDialog() {
   const {
     imageLevelDialogOpen,
     selectedImageLabelType,
-    imageLevelLabels,
     createImageLabel,
     updateImageLabel,
     deleteImageLabel,
     closeImageLevelDialog,
   } = useTextLabelStore();
+
+  // Use selector with shallow comparison to prevent infinite re-renders
+  const imageLevelLabels = useTextLabelStore(
+    useShallow(state => state.textLabels.filter(label => label.annotation_id === null))
+  );
 
   const { currentImage, project } = useAnnotationStore();
   const projectId = project?.id;
@@ -44,17 +49,30 @@ export function ImageLevelTextLabelDialog() {
   const MAX_CHARS = 500;
   const MAX_QUESTION_CHARS = 200;
 
-  // Initialize label type from store
+  // Initialize label type from store when dialog opens
   useEffect(() => {
-    if (selectedImageLabelType) {
+    if (imageLevelDialogOpen && selectedImageLabelType) {
       setLabelType(selectedImageLabelType);
     }
-  }, [selectedImageLabelType]);
+  }, [imageLevelDialogOpen, selectedImageLabelType]);
 
   // Find existing label of current type for current image
   const existingLabel = imageLevelLabels.find(
     (label) => label.label_type === labelType && label.image_id === currentImage?.id
   );
+
+  // Debug logging (only when dialog opens or type changes)
+  useEffect(() => {
+    if (imageLevelDialogOpen) {
+      console.log('[ImageLevelDialog] Debug:', {
+        labelType,
+        currentImageId: currentImage?.id,
+        imageLevelLabels,
+        existingLabel,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageLevelDialogOpen, labelType, currentImage?.id]);
 
   // Load existing label data when dialog opens or type changes
   useEffect(() => {
@@ -68,7 +86,9 @@ export function ImageLevelTextLabelDialog() {
       setQuestion('');
       setLanguage('en');
     }
-  }, [imageLevelDialogOpen, existingLabel, labelType]);
+    // Use existingLabel.id instead of existingLabel to prevent infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageLevelDialogOpen, existingLabel?.id, labelType]);
 
   // Keyboard shortcuts
   useEffect(() => {
