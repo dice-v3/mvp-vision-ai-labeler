@@ -29,6 +29,7 @@ def export_to_coco(
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
     task_type: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Export annotations to COCO format.
@@ -40,6 +41,7 @@ def export_to_coco(
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
         task_type: Task type to export (detection, segmentation) - required for multi-task projects
+        version: Version number (e.g., "v1.0", "v2.0")
 
     Returns:
         COCO format dictionary
@@ -112,7 +114,7 @@ def export_to_coco(
 
     # Build COCO structure
     coco_data = {
-        "info": _build_info(project, dataset),
+        "info": _build_info(project, dataset, version),
         "licenses": _build_licenses(),
         "images": _build_images(unique_image_ids),
         "annotations": _build_annotations(annotations, class_id_to_category),
@@ -135,13 +137,13 @@ def export_to_coco(
     return coco_data
 
 
-def _build_info(project: AnnotationProject, dataset: Dataset) -> Dict[str, Any]:
+def _build_info(project: AnnotationProject, dataset: Dataset, version: Optional[str] = None) -> Dict[str, Any]:
     """Build COCO info section."""
     now_kst = datetime.now(KST)
     return {
         "description": project.description or f"{project.name} - Annotations",
         "url": "",
-        "version": "1.0",
+        "version": version or "1.0",
         "year": now_kst.year,
         "contributor": "",
         "date_created": now_kst.strftime("%Y-%m-%d %H:%M:%S"),

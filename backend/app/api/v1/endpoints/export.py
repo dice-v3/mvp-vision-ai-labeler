@@ -135,6 +135,7 @@ def _export_dice(
     include_draft: bool,
     image_ids: Optional[list[str]],
     task_type: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> tuple[bytes, dict, str]:
     """Export to DICE format."""
     # Generate DICE JSON
@@ -146,6 +147,7 @@ def _export_dice(
         include_draft=include_draft,
         image_ids=image_ids,
         task_type=task_type,
+        version=version,
     )
 
     # Convert to JSON bytes
@@ -167,6 +169,7 @@ def _export_coco(
     project_id: str,
     include_draft: bool,
     image_ids: Optional[list[str]],
+    version: Optional[str] = None,
 ) -> tuple[bytes, dict, str]:
     """Export to COCO format."""
     # Generate COCO JSON
@@ -176,6 +179,7 @@ def _export_coco(
         project_id=project_id,
         include_draft=include_draft,
         image_ids=image_ids,
+        version=version,
     )
 
     # Convert to JSON bytes
@@ -363,6 +367,7 @@ async def publish_version(
             include_draft=publish_request.include_draft,
             image_ids=None,
             task_type=task_type,
+            version=new_version_number,
         )
 
         # Upload DICE to S3 (Phase 2.9: include task_type in path)
@@ -386,6 +391,7 @@ async def publish_version(
                 project_id=project_id,
                 include_draft=publish_request.include_draft,
                 image_ids=None,
+                version=new_version_number,
             )
             additional_s3_key, _, _ = storage_client.upload_export(
                 project_id=project_id,

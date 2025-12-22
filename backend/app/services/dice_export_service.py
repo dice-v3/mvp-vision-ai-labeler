@@ -99,6 +99,7 @@ def export_to_dice(
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
     task_type: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Export annotations to DICE format.
@@ -382,7 +383,7 @@ def export_to_dice(
         "task_type": dice_task_type,
         "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
         "last_modified_at": to_kst_isoformat(datetime.utcnow()),
-        "version": 1,  # TODO: Get actual version number
+        "version": version or "1.0",  # Use provided version or default to "1.0"
         "storage_info": storage_info,  # Phase 16.6: Image storage location
         "classes": _convert_classes_to_dice(task_classes),
         "images": dice_images_with_mapping,
