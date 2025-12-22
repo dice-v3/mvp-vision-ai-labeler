@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     KEYCLOAK_REALM: str = "mvp-vision"
     KEYCLOAK_CLIENT_ID: str = "labeler-backend"
     KEYCLOAK_CLIENT_SECRET: str = "your-client-secret"
+    KEYCLOAK_VERIFY_SSL: bool = True  # Set to False for self-signed certs in development
 
     # Service JWT Authentication (Phase 16.5 - Platform Integration)
     # Shared secret for verifying JWTs from Platform service

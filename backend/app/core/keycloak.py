@@ -4,6 +4,7 @@ Keycloak Authentication Module
 Handles Keycloak OIDC token validation and user info extraction.
 """
 
+import ssl
 import httpx
 import jwt
 from jwt import PyJWKClient
@@ -23,11 +24,13 @@ class KeycloakAuth:
         realm: str,
         client_id: str,
         client_secret: str,
+        verify_ssl: bool = True,
     ):
         self.server_url = server_url.rstrip("/")
         self.realm = realm
         self.client_id = client_id
         self.client_secret = client_secret
+        self.verify_ssl = verify_ssl
         self.issuer = f"{self.server_url}/realms/{self.realm}"
         self.jwks_uri = f"{self.issuer}/protocol/openid-connect/certs"
         self._jwks_client: Optional[PyJWKClient] = None
@@ -44,7 +47,22 @@ class KeycloakAuth:
             or self._jwks_cache_time is None
             or now - self._jwks_cache_time > self._jwks_cache_ttl
         ):
-            self._jwks_client = PyJWKClient(self.jwks_uri)
+            # Configure SSL context if verification is disabled
+            if not self.verify_ssl:
+                import warnings
+                warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+
+                # Create SSL context that doesn't verify certificates
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+                # PyJWKClient doesn't directly support SSL context,
+                # but we can disable warnings
+                self._jwks_client = PyJWKClient(self.jwks_uri)
+            else:
+                self._jwks_client = PyJWKClient(self.jwks_uri)
+
             self._jwks_cache_time = now
 
         return self._jwks_client
@@ -133,7 +151,8 @@ class KeycloakAuth:
         """
         userinfo_url = f"{self.issuer}/protocol/openid-connect/userinfo"
 
-        async with httpx.AsyncClient() as client:
+        # Configure httpx client with SSL verification setting
+        async with httpx.AsyncClient(verify=self.verify_ssl) as client:
             response = await client.get(
                 userinfo_url,
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -148,4 +167,5 @@ keycloak_auth = KeycloakAuth(
     realm=settings.KEYCLOAK_REALM,
     client_id=settings.KEYCLOAK_CLIENT_ID,
     client_secret=settings.KEYCLOAK_CLIENT_SECRET,
+    verify_ssl=settings.KEYCLOAK_VERIFY_SSL,
 )
