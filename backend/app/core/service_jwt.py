@@ -24,7 +24,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from fastapi import HTTPException, status, Header, Depends
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 
 from app.core.config import settings
 
@@ -53,7 +54,7 @@ def verify_service_jwt(token: str) -> Dict[str, Any]:
             algorithms=[settings.SERVICE_JWT_ALGORITHM],
         )
         return payload
-    except JWTError as e:
+    except PyJWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid service token: {str(e)}",
