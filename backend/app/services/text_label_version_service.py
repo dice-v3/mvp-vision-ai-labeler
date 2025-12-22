@@ -13,16 +13,28 @@ Features:
 import json
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.db.models.labeler import TextLabel, TextLabelVersion, AnnotationProject
+from app.db.models.labeler import TextLabel, TextLabelVersion, AnnotationProject, Dataset
 from app.core.storage import storage_client
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Korea Standard Time (UTC+9)
+KST = timezone(timedelta(hours=9))
+
+
+def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
+    """Convert datetime to KST timezone and return ISO format string."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(KST).isoformat()
 
 
 def serialize_text_labels(text_labels: List[TextLabel]) -> List[Dict[str, Any]]:
@@ -203,12 +215,35 @@ def _upload_to_storage(
     Raises:
         Exception: If upload fails
     """
-    # Prepare JSON content
+    # Get project and dataset for header information
+    project = labeler_db.query(AnnotationProject).filter(
+        AnnotationProject.id == project_id
+    ).first()
+
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    dataset = labeler_db.query(Dataset).filter(
+        Dataset.id == project.dataset_id
+    ).first()
+
+    # Build storage_info (same as DICE format)
+    storage_info = {
+        "storage_type": dataset.storage_type if dataset else "s3",
+        "bucket": settings.S3_BUCKET_DATASETS,
+        "image_root": f"{dataset.storage_path}images/" if dataset and dataset.storage_path else f"datasets/{project.dataset_id}/images/",
+    }
+
+    # Prepare JSON content with DICE-compatible header
     json_content = json.dumps(
         {
+            "format_version": "1.0",
+            "dataset_id": project.dataset_id,
+            "dataset_name": dataset.name if dataset else project.name,
+            "created_at": to_kst_isoformat(project.created_at) if project.created_at else to_kst_isoformat(datetime.utcnow()),
+            "last_modified_at": to_kst_isoformat(datetime.utcnow()),
             "version": version,
-            "project_id": project_id,
-            "published_at": datetime.utcnow().isoformat(),
+            "storage_info": storage_info,
             "label_count": len(text_labels_snapshot),
             "text_labels": text_labels_snapshot,
         },
@@ -239,17 +274,8 @@ def _upload_to_storage(
         raise
 
     # 2. Upload to External Storage (same level as annotations_detection.json)
-    # Get dataset_id from AnnotationProject
-    project = labeler_db.query(AnnotationProject).filter(
-        AnnotationProject.id == project_id
-    ).first()
-
-    if not project:
-        logger.warning(f"[TextLabelVersion] Project {project_id} not found. Skipping external storage upload.")
-        return internal_key, ""
-
-    dataset_id = project.dataset_id
-    external_key = f"datasets/{dataset_id}/text_labels.json"
+    # Use dataset_id from project (already queried above)
+    external_key = f"datasets/{project.dataset_id}/text_labels.json"
 
     try:
         storage_client.s3_client.put_object(
@@ -259,12 +285,12 @@ def _upload_to_storage(
             ContentType='application/json',
             Metadata={
                 'project_id': project_id,
-                'dataset_id': dataset_id,
+                'dataset_id': project.dataset_id,
                 'version': version,
                 'uploaded_at': datetime.utcnow().isoformat()
             }
         )
-        logger.info(f"[TextLabelVersion] Uploaded to External S3: {external_key} (dataset_id={dataset_id})")
+        logger.info(f"[TextLabelVersion] Uploaded to External S3: {external_key} (dataset_id={project.dataset_id})")
     except Exception as e:
         logger.error(f"[TextLabelVersion] Failed to upload to External S3: {e}")
         # Re-raise to catch the actual error
