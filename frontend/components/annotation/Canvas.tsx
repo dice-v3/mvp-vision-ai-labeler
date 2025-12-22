@@ -55,6 +55,7 @@ import {
   useCanvasKeyboardShortcuts,
   useBatchOperations,
 } from '@/lib/annotation/hooks';
+import { useImagePrefetch } from '@/lib/annotation/hooks/useImagePrefetch';
 // Phase 18.4: Overlay Components
 import { LockOverlay } from './overlays/LockOverlay';
 // Phase 18.8.3: Canvas UI Components
@@ -134,6 +135,13 @@ export default function Canvas() {
     currentImage,
     project,
     imageRef,
+  });
+
+  // Image prefetch for faster navigation
+  useImagePrefetch({
+    images,
+    currentIndex,
+    prefetchRange: 2, // Prefetch 2 images before and after
   });
 
   // Canvas UI state
