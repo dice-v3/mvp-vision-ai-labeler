@@ -46,7 +46,7 @@ export function useAuth(): AuthState {
     : null
 
   const login = useCallback(() => {
-    signIn("keycloak", { callbackUrl: "/dashboard" })
+    signIn("keycloak", { callbackUrl: "/" })
   }, [])
 
   const logout = useCallback(async () => {
