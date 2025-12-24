@@ -2,7 +2,13 @@
  * NextAuth Middleware
  *
  * Protects routes that require authentication
- * Redirects unauthenticated users directly to Keycloak
+ * Redirects unauthenticated users to login page
+ *
+ * Public routes (no auth required):
+ * - / (landing page with login button)
+ * - /login (login redirect page)
+ * - /auth/* (NextAuth routes including logout-success)
+ * - /api/auth/* (NextAuth API routes)
  */
 
 import { withAuth } from "next-auth/middleware"
@@ -18,8 +24,8 @@ export default withAuth(
       authorized: ({ token }) => !!token,
     },
     pages: {
-      // 바로 Keycloak으로 리다이렉트
-      signIn: "/auth/signin/keycloak",
+      // Redirect to Keycloak login
+      signIn: "/login",
     },
   }
 )
@@ -29,10 +35,13 @@ export const config = {
   matcher: [
     /*
      * Match all paths except:
-     * - /auth (NextAuth routes - NOT /api/auth to avoid Istio routing)
+     * - / (landing page - shows login button for unauthenticated users)
+     * - /login (login redirect page)
+     * - /auth/* (NextAuth pages including /auth/logout-success - REQUIRED for SSO logout!)
+     * - /api/auth/* (NextAuth API routes)
      * - /_next (Next.js internals)
      * - /favicon.ico, /images, /fonts (static files)
      */
-    "/((?!auth|_next|favicon.ico|images|fonts).*)",
+    "/((?!$|login|auth|api/auth|_next|favicon.ico|images|fonts).*)",
   ],
 }

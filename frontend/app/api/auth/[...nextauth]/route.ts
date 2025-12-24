@@ -8,6 +8,7 @@ import NextAuth, { NextAuthOptions } from "next-auth"
 import KeycloakProvider from "next-auth/providers/keycloak"
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     KeycloakProvider({
       clientId: process.env.KEYCLOAK_CLIENT_ID!,
@@ -15,6 +16,14 @@ export const authOptions: NextAuthOptions = {
       issuer: process.env.KEYCLOAK_ISSUER!,
     }),
   ],
+  pages: {
+    signIn: "/login",
+    error: "/auth/error",
+  },
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60, // 1 hour
+  },
   callbacks: {
     async jwt({ token, account, profile }) {
       // Initial sign in - save tokens
@@ -53,21 +62,9 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
-  events: {
-    async signOut({ token }) {
-      // Keycloak logout - end session on Keycloak server
-      if (token.idToken) {
-        const issuer = process.env.KEYCLOAK_ISSUER
-        const logoutUrl = `${issuer}/protocol/openid-connect/logout?id_token_hint=${token.idToken}`
-
-        try {
-          await fetch(logoutUrl)
-        } catch (error) {
-          console.error("Keycloak logout error:", error)
-        }
-      }
-    },
-  },
+  // Note: Keycloak logout is handled by /api/auth/logout endpoint
+  // which redirects browser to Keycloak (clearing SSO cookies)
+  // Server-side fetch here would NOT clear browser cookies!
 }
 
 /**
