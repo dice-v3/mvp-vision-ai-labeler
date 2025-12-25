@@ -46,11 +46,14 @@ export function useAuth(): AuthState {
     : null
 
   const login = useCallback(() => {
-    signIn("keycloak", { callbackUrl: "/dashboard" })
+    signIn("keycloak", { callbackUrl: "/" })
   }, [])
 
   const logout = useCallback(async () => {
-    await signOut({ callbackUrl: "/" })
+    // Redirect to custom logout endpoint for proper SSO logout
+    // This ensures both NextAuth and Keycloak sessions are cleared
+    // DO NOT call signOut() here - it deletes session cookie before we can get id_token
+    window.location.href = '/api/auth/logout'
   }, [])
 
   return {

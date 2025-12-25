@@ -37,7 +37,7 @@ interface TaskStats {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, loading: authLoading, logout, refetch } = useAuth();
+  const { user, loading: authLoading, login, logout } = useAuth();
 
   // Phase 17: SSO token handling
   useEffect(() => {
@@ -371,7 +371,7 @@ export default function DashboardPage() {
             Vision AI Labeler
           </h1>
           <button
-            onClick={() => router.push('/login')}
+            onClick={login}
             className="px-6 py-3 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/50 transition-all"
           >
             로그인
