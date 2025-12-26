@@ -4,105 +4,124 @@ version: '3.8'
 # Vision AI Labeler - Development Environment
 # =============================================================================
 #
-# IMPORTANT: Database Architecture Update (2025-12-09)
+# Prerequisites:
+#   Platform infrastructure must be running first:
+#     cd ../mvp-vision-ai-platform && docker-compose up -d
 #
-# The Platform team now manages a single PostgreSQL instance with 3 databases:
-# - platform (Platform team)
-# - users (Platform team, shared with Labeler)
-# - labeler (Labeler team)
-#
-# For local development, use Platform's infrastructure instead of this file:
-#   cd ../mvp-vision-ai-platform/infrastructure
-#   docker-compose up -d
-#
-# This creates:
-#   - PostgreSQL 16 (port 5432) with all 3 databases
-#   - Redis (port 6379)
-#
-# Then run Labeler schema initialization:
-#   cd backend
-#   python scripts/init_database.py
-#
-# =============================================================================
-#
-# LEGACY: This file is kept for reference only.
-# If you need to run Labeler independently (not recommended), uncomment below.
+# Usage:
+#   docker-compose up -d              # Start Labeler services
+#   docker-compose --profile init up  # First time: init DB + start services
+#   docker-compose down               # Stop services
+#   docker-compose logs -f            # View logs
 #
 # =============================================================================
 
 services:
-  # Redis (Labeler-specific caching)
-  redis:
-    image: redis:7-alpine
-    container_name: labeler-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+  # ================================
+  # Database Initialization (run once)
+  # ================================
+  labeler-db-init:
+    image: postgres:16-alpine
+    container_name: labeler-db-init
+    environment:
+      PGPASSWORD: devpass
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for PostgreSQL...';
+      until pg_isready -h postgres -U admin -d vision_platform; do sleep 2; done;
+      echo 'Creating labeler database if not exists...';
+      psql -h postgres -U admin -d vision_platform -tc \"SELECT 1 FROM pg_database WHERE datname = 'labeler'\" | grep -q 1 || psql -h postgres -U admin -d vision_platform -c 'CREATE DATABASE labeler';
+      echo 'Database ready!';
+      "
     networks:
-      - labeler-network
+      - vision-network
+    profiles:
+      - init  # Run with: docker-compose --profile init up
 
-  # =============================================================================
-  # LEGACY: PostgreSQL Containers (NOT USED - Use Platform's infrastructure)
-  # =============================================================================
-  #
-  # The sections below are kept for reference only.
-  # DO NOT start these containers - they will conflict with Platform's PostgreSQL.
-  #
-  # # Platform Database (Managed by Platform team)
-  # postgres-platform:
-  #   image: postgres:16-alpine
-  #   container_name: labeler-postgres-platform
-  #   environment:
-  #     POSTGRES_DB: platform
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: devpass
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_platform_data:/var/lib/postgresql/data
-  #
-  # # User Database (Managed by Platform team)
-  # postgres-user:
-  #   image: postgres:16-alpine
-  #   container_name: labeler-postgres-user
-  #   environment:
-  #     POSTGRES_DB: users
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: devpass
-  #   ports:
-  #     - "5433:5432"
-  #   volumes:
-  #     - postgres_user_data:/var/lib/postgresql/data
-  #
-  # # Labeler Database (Schema managed by Labeler team)
-  # postgres-labeler:
-  #   image: postgres:16-alpine
-  #   container_name: labeler-postgres-labeler
-  #   environment:
-  #     POSTGRES_DB: labeler
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: devpass
-  #   ports:
-  #     - "5435:5432"
-  #   volumes:
-  #     - postgres_labeler_data:/var/lib/postgresql/data
+  # ================================
+  # Labeler Backend - FastAPI
+  # ================================
+  labeler-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vision-labeler-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      # App
+      ENVIRONMENT: development
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      API_HOST: "0.0.0.0"
+      API_PORT: "8001"
+      CORS_ORIGINS: "http://localhost:3010,http://localhost:3000"
+      FRONTEND_URL: http://localhost:3010
+      # Platform Database (read-only)
+      PLATFORM_DB_HOST: postgres
+      PLATFORM_DB_PORT: "5432"
+      PLATFORM_DB_NAME: vision_platform
+      PLATFORM_DB_USER: admin
+      PLATFORM_DB_PASSWORD: devpass
+      # Labeler Database
+      LABELER_DB_HOST: postgres
+      LABELER_DB_PORT: "5432"
+      LABELER_DB_NAME: labeler
+      LABELER_DB_USER: admin
+      LABELER_DB_PASSWORD: devpass
+      # S3/MinIO (shared with Platform)
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET_DATASETS: vision-platform-dev
+      S3_BUCKET_ANNOTATIONS: vision-platform-dev
+      S3_REGION: us-east-1
+      S3_USE_SSL: "false"
+      # Keycloak (shared with Platform)
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KEYCLOAK_REALM: vision-ai
+      KEYCLOAK_CLIENT_ID: labeler-backend
+      KEYCLOAK_CLIENT_SECRET: ""
+      KEYCLOAK_VERIFY_SSL: "false"
+      # Service JWT
+      SERVICE_JWT_SECRET: dev-service-jwt-secret
+      SERVICE_JWT_ALGORITHM: HS256
+    networks:
+      - vision-network
+    profiles:
+      - app
 
-volumes:
-  redis_data:
-    driver: local
-  # postgres_platform_data:
-  #   driver: local
-  # postgres_user_data:
-  #   driver: local
-  # postgres_labeler_data:
-  #   driver: local
+  # ================================
+  # Labeler Frontend - Next.js
+  # ================================
+  labeler-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vision-labeler-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+      NEXT_PUBLIC_APP_NAME: Vision AI Labeler
+      NEXTAUTH_URL: http://localhost:3010
+      NEXTAUTH_SECRET: dev-labeler-secret
+      KEYCLOAK_CLIENT_ID: labeler-frontend
+      KEYCLOAK_CLIENT_SECRET: ""
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/vision-ai
+    depends_on:
+      - labeler-backend
+    networks:
+      - vision-network
+    profiles:
+      - app
 
+# =============================================================================
+# Networks - Use Platform's network
+# =============================================================================
 networks:
-  labeler-network:
-    driver: bridge
+  vision-network:
+    external: true
+    name: vision-network
