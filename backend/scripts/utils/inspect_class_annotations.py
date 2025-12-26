@@ -4,7 +4,7 @@ Inspect annotations by class name to debug classification task display issue
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.core.database import get_labeler_db
 from app.db.models.labeler import Annotation, AnnotationProject

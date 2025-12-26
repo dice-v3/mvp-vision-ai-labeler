@@ -16,7 +16,7 @@ import os
 from datetime import datetime
 
 # Add backend to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy.orm import Session
 from app.core.database import LabelerSessionLocal  # Labeler DB session factory

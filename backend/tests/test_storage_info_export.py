@@ -5,7 +5,8 @@ Verifies that annotation exports include storage_info for Platform integration.
 """
 import json
 import sys
-sys.path.insert(0, 'C:/Users/flyto/Project/Github/mvp-vision-ai-labeler/backend')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

@@ -2,7 +2,8 @@
 Cleanup old annotations before yesterday (2025-11-19)
 """
 import sys
-sys.path.insert(0, '.')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text

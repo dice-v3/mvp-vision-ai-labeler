@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 # Add parent directory to path to import app modules
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sqlalchemy.orm import Session
 from app.core.database import get_labeler_db

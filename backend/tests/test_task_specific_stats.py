@@ -4,13 +4,13 @@ Phase 16.6 Task-Specific Statistics Test
 Verifies that task_type parameter returns task-specific statistics,
 not dataset-level statistics.
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
-
-# Import after setting up path
-import sys
-sys.path.insert(0, 'C:/Users/flyto/Project/Github/mvp-vision-ai-labeler/backend')
 
 from app.db.models.labeler import Dataset, AnnotationProject, AnnotationVersion
 from app.api.v1.endpoints.platform_datasets import _dataset_to_platform_response
