@@ -25,9 +25,14 @@ interface SidebarProps {
 }
 
 // Helper function to convert badge color names to hex values
-const getBadgeColorHex = (colorName: string): string => {
+const getBadgeColorHex = (colorName: string | null | undefined): string => {
+  // Handle null/undefined
+  if (!colorName) {
+    return '#6B7280'; // Default to gray-500
+  }
+
   // If already a hex color, return as-is
-  if (colorName && colorName.startsWith('#')) {
+  if (colorName.startsWith('#')) {
     return colorName;
   }
 
