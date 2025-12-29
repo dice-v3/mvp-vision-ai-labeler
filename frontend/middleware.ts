@@ -1,8 +1,8 @@
 /**
  * NextAuth Middleware
  *
- * Protects routes that require authentication
- * Redirects unauthenticated users to login page
+ * Protects routes that require authentication.
+ * Redirects unauthenticated users to login page with callbackUrl.
  *
  * Public routes (no auth required):
  * - / (landing page with login button)
@@ -11,24 +11,45 @@
  * - /api/auth/* (NextAuth API routes)
  */
 
-import { withAuth } from "next-auth/middleware"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getToken } from "next-auth/jwt"
 
-export default withAuth(
-  function middleware(req) {
-    // Token is valid, allow access
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl
+
+  // Public routes - no auth required
+  if (pathname === "/") {
     return NextResponse.next()
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      // Redirect to Keycloak login
-      signIn: "/login",
-    },
   }
-)
+
+  // NextAuth API routes - pass through
+  if (pathname.startsWith("/api/auth/")) {
+    return NextResponse.next()
+  }
+
+  // Auth pages (login, logout-success) - pass through
+  if (pathname.startsWith("/login") || pathname.startsWith("/auth/")) {
+    return NextResponse.next()
+  }
+
+  // Check token
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+  })
+
+  // Authenticated users - allow access
+  if (token) {
+    return NextResponse.next()
+  }
+
+  // Unauthenticated users - redirect to login with callbackUrl
+  const loginUrl = new URL("/login", request.url)
+  const originalPath = pathname + search
+  loginUrl.searchParams.set("callbackUrl", originalPath)
+
+  return NextResponse.redirect(loginUrl)
+}
 
 // Protect all routes except public ones
 export const config = {
