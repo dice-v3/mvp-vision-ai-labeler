@@ -92,8 +92,11 @@ export default function DashboardPage() {
     // Load datasets if authenticated
     if (user) {
       fetchDatasets();
+    } else if (!authLoading) {
+      // Not authenticated and not loading - stop loading state
+      setLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   // Close settings dropdown when clicking outside
   useEffect(() => {
