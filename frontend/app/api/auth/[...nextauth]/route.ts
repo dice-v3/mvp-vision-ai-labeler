@@ -72,6 +72,12 @@ export const authOptions: NextAuthOptions = {
  */
 async function refreshAccessToken(token: any) {
   try {
+    // 개발 환경에서 self-signed certificate 허용
+    if (process.env.NODE_ENV === "development" && typeof process !== "undefined") {
+      // @ts-ignore - Node.js only
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+    }
+
     const issuer = process.env.KEYCLOAK_ISSUER
     const tokenEndpoint = `${issuer}/protocol/openid-connect/token`
 
