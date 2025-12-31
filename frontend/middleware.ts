@@ -3,9 +3,9 @@
  *
  * Protects routes that require authentication.
  * Redirects unauthenticated users to login page with callbackUrl.
+ * Login page automatically redirects to Keycloak for SSO.
  *
  * Public routes (no auth required):
- * - / (landing page with login button)
  * - /login (login redirect page)
  * - /auth/* (NextAuth routes including logout-success)
  * - /api/auth/* (NextAuth API routes)
@@ -16,11 +16,6 @@ import { getToken } from "next-auth/jwt"
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
-
-  // Public routes - no auth required
-  if (pathname === "/") {
-    return NextResponse.next()
-  }
 
   // NextAuth API routes - pass through
   if (pathname.startsWith("/api/auth/")) {
@@ -56,13 +51,12 @@ export const config = {
   matcher: [
     /*
      * Match all paths except:
-     * - / (landing page - shows login button for unauthenticated users)
-     * - /login (login redirect page)
+     * - /login (login redirect page - auto redirects to Keycloak)
      * - /auth/* (NextAuth pages including /auth/logout-success - REQUIRED for SSO logout!)
      * - /api/auth/* (NextAuth API routes)
      * - /_next (Next.js internals)
      * - /favicon.ico, /images, /fonts (static files)
      */
-    "/((?!$|login|auth|api/auth|_next|favicon.ico|images|fonts).*)",
+    "/((?!login|auth|api/auth|_next|favicon.ico|images|fonts).*)",
   ],
 }
