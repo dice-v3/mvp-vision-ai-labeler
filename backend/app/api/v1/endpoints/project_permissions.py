@@ -351,7 +351,7 @@ async def remove_project_member(
         )
 
     # User cannot remove themselves
-    if user_id == current_user.id:
+    if user_id == current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot remove yourself from the project.",
@@ -401,7 +401,7 @@ async def transfer_project_ownership(
     new_owner_id = request.new_owner_user_id
 
     # Cannot transfer to yourself
-    if new_owner_id == current_user.id:
+    if new_owner_id == current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot transfer ownership to yourself",
@@ -412,7 +412,7 @@ async def transfer_project_ownership(
         labeler_db.query(ProjectPermission)
         .filter(
             ProjectPermission.project_id == actual_project_id,
-            ProjectPermission.user_id == current_user.id,
+            ProjectPermission.user_id == current_user["sub"],
             ProjectPermission.role == "owner",
         )
         .first()
@@ -449,5 +449,5 @@ async def transfer_project_ownership(
     return {
         "message": "Ownership transferred successfully",
         "new_owner_user_id": new_owner_id,
-        "previous_owner_user_id": current_user.id,
+        "previous_owner_user_id": current_user["sub"],
     }

@@ -1,17 +1,17 @@
 """Annotation endpoints."""
 
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, distinct
 import boto3
 from botocore.config import Config
 
-from app.core.database import get_platform_db, get_user_db, get_labeler_db
+from app.core.database import get_platform_db, get_labeler_db
 from app.core.security import get_current_user, require_project_permission
 from app.core.config import settings
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import Dataset, Annotation, AnnotationHistory, AnnotationProject
 from app.schemas.annotation import (
     AnnotationCreate,
@@ -162,7 +162,7 @@ async def create_annotation(
     annotation: AnnotationCreate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Create new annotation.
@@ -194,7 +194,7 @@ async def create_annotation(
     # Check permission (requires annotator role or higher)
     permission = labeler_db.query(ProjectPermission).filter(
         ProjectPermission.project_id == annotation.project_id,
-        ProjectPermission.user_id == current_user.id,
+        ProjectPermission.user_id == current_user["sub"],
     ).first()
 
     if not permission:
@@ -213,7 +213,7 @@ async def create_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user.id)
+    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user["sub"])
 
     # REFACTORING: Infer and store task_type using task registry
     # This is done ONCE at creation time, not on every query!
@@ -259,7 +259,7 @@ async def create_annotation(
         attributes=annotation.attributes or {},
         confidence=annotation.confidence,
         notes=annotation.notes,
-        created_by=current_user.id,
+        created_by=current_user["sub"],
         is_verified=False,
         annotation_state=annotation_state,
     )
@@ -280,14 +280,14 @@ async def create_annotation(
             "class_id": annotation.class_id,
             "class_name": annotation.class_name,
         },
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Update project stats
     await update_project_stats(
         db=labeler_db,
         project_id=annotation.project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # REFACTORING: Update image annotation status with task_type
@@ -305,7 +305,7 @@ async def create_annotation(
     # Add user info
     response_dict = {
         **new_annotation.__dict__,
-        "created_by_name": current_user.full_name,
+        "created_by_name": current_user.get("name"),
         "confirmed_by_name": None,  # New annotations are in draft state
     }
 
@@ -317,8 +317,7 @@ async def get_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Get annotation by ID."""
     annotation = labeler_db.query(Annotation).filter(
@@ -331,25 +330,26 @@ async def get_annotation(
             detail=f"Annotation {annotation_id} not found",
         )
 
-    # Fetch user info (Phase 9: from User DB)
+    # User info removed - User DB dependency eliminated
     created_by_name = None
     updated_by_name = None
     confirmed_by_name = None
 
-    if annotation.created_by:
-        user = user_db.query(User).filter(User.id == annotation.created_by).first()
-        if user:
-            created_by_name = user.full_name
-
-    if annotation.updated_by:
-        user = user_db.query(User).filter(User.id == annotation.updated_by).first()
-        if user:
-            updated_by_name = user.full_name
-
-    if annotation.confirmed_by:
-        user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
-        if user:
-            confirmed_by_name = user.full_name
+    # User lookups commented out - no User DB access
+    # if annotation.created_by:
+    #     user = user_db.query(User).filter(User.id == annotation.created_by).first()
+    #     if user:
+    #         created_by_name = user.full_name
+    #
+    # if annotation.updated_by:
+    #     user = user_db.query(User).filter(User.id == annotation.updated_by).first()
+    #     if user:
+    #         updated_by_name = user.full_name
+    #
+    # if annotation.confirmed_by:
+    #     user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
+    #     if user:
+    #         confirmed_by_name = user.full_name
 
     response_dict = {
         **annotation.__dict__,
@@ -367,8 +367,7 @@ async def update_annotation(
     update_data: AnnotationUpdate,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update annotation."""
     annotation = labeler_db.query(Annotation).filter(
@@ -387,8 +386,8 @@ async def update_annotation(
         AnnotationProject.id == annotation.project_id
     ).first()
 
-    is_owner = project and project.owner_id == current_user.id
-    is_creator = annotation.created_by == current_user.id
+    is_owner = project and project.owner_id == current_user["sub"]
+    is_creator = annotation.created_by == current_user["sub"]
 
     if not (is_owner or is_creator):
         raise HTTPException(
@@ -397,7 +396,7 @@ async def update_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user.id)
+    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user["sub"])
 
     # Phase 8.5.1: Optimistic locking - check version
     if update_data.version is not None:
@@ -433,7 +432,7 @@ async def update_annotation(
     for key, value in update_dict.items():
         setattr(annotation, key, value)
 
-    annotation.updated_by = current_user.id
+    annotation.updated_by = current_user["sub"]
     annotation.updated_at = datetime.utcnow()
 
     # Phase 8.5.1: Increment version for optimistic locking
@@ -458,14 +457,14 @@ async def update_annotation(
         action="update",
         previous_state=previous_state,
         new_state=new_state,
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Update project stats
     await update_project_stats(
         db=labeler_db,
         project_id=annotation.project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -480,20 +479,21 @@ async def update_annotation(
     labeler_db.commit()
     labeler_db.refresh(annotation)
 
-    # Add user info (Phase 9: from User DB)
-    updated_by_name = current_user.full_name
+    # User info removed - User DB dependency eliminated
+    updated_by_name = current_user.get("name")
     created_by_name = None
     confirmed_by_name = None
 
-    if annotation.created_by:
-        user = user_db.query(User).filter(User.id == annotation.created_by).first()
-        if user:
-            created_by_name = user.full_name
-
-    if annotation.confirmed_by:
-        user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
-        if user:
-            confirmed_by_name = user.full_name
+    # User lookups commented out - no User DB access
+    # if annotation.created_by:
+    #     user = user_db.query(User).filter(User.id == annotation.created_by).first()
+    #     if user:
+    #         created_by_name = user.full_name
+    #
+    # if annotation.confirmed_by:
+    #     user = user_db.query(User).filter(User.id == annotation.confirmed_by).first()
+    #     if user:
+    #         confirmed_by_name = user.full_name
 
     response_dict = {
         **annotation.__dict__,
@@ -509,7 +509,7 @@ async def update_annotation(
 async def delete_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Delete annotation."""
     annotation = labeler_db.query(Annotation).filter(
@@ -531,8 +531,8 @@ async def delete_annotation(
         AnnotationProject.id == project_id
     ).first()
 
-    is_owner = project and project.owner_id == current_user.id
-    is_creator = annotation.created_by == current_user.id
+    is_owner = project and project.owner_id == current_user["sub"]
+    is_creator = annotation.created_by == current_user["sub"]
 
     if not (is_owner or is_creator):
         raise HTTPException(
@@ -541,7 +541,7 @@ async def delete_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, project_id, image_id, current_user.id)
+    check_image_lock(labeler_db, project_id, image_id, current_user["sub"])
 
     # Store state before deletion
     previous_state = {
@@ -559,7 +559,7 @@ async def delete_annotation(
         project_id=project_id,
         action="delete",
         previous_state=previous_state,
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Delete annotation
@@ -569,7 +569,7 @@ async def delete_annotation(
     await update_project_stats(
         db=labeler_db,
         project_id=project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status after deletion
@@ -593,8 +593,7 @@ async def list_project_annotations(
     image_id: Optional[str] = None,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -614,29 +613,30 @@ async def list_project_annotations(
 
     annotations = query.offset(skip).limit(min(limit, 1000)).all()
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info for all unique user IDs (Phase 9: from User DB)
-    user_ids = set()
-    for ann in annotations:
-        if ann.created_by:
-            user_ids.add(ann.created_by)
-        if ann.updated_by:
-            user_ids.add(ann.updated_by)
-        if ann.confirmed_by:
-            user_ids.add(ann.confirmed_by)
+    # user_ids = set()
+    # for ann in annotations:
+    #     if ann.created_by:
+    #         user_ids.add(ann.created_by)
+    #     if ann.updated_by:
+    #         user_ids.add(ann.updated_by)
+    #     if ann.confirmed_by:
+    #         user_ids.add(ann.confirmed_by)
+    #
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: u.full_name for u in user_results}
 
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: u.full_name for u in user_results}
-
-    # Build responses
+    # Build responses with user names set to None
     result = []
     for ann in annotations:
         response_dict = {
             **ann.__dict__,
-            "created_by_name": users.get(ann.created_by),
-            "updated_by_name": users.get(ann.updated_by),
-            "confirmed_by_name": users.get(ann.confirmed_by),
+            "created_by_name": None,
+            "updated_by_name": None,
+            "confirmed_by_name": None,
         }
         result.append(AnnotationResponse.model_validate(response_dict))
 
@@ -647,7 +647,7 @@ async def list_project_annotations(
 async def batch_create_annotations(
     batch: AnnotationBatchCreate,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Batch create annotations.
@@ -683,7 +683,7 @@ async def batch_create_annotations(
                 # Check permission (requires annotator role or higher)
                 permission = labeler_db.query(ProjectPermission).filter(
                     ProjectPermission.project_id == project_id,
-                    ProjectPermission.user_id == current_user.id,
+                    ProjectPermission.user_id == current_user["sub"],
                 ).first()
 
                 if not permission:
@@ -719,7 +719,7 @@ async def batch_create_annotations(
                 attributes=annotation_data.attributes or {},
                 confidence=annotation_data.confidence,
                 notes=annotation_data.notes,
-                created_by=current_user.id,
+                created_by=current_user["sub"],
                 is_verified=False,
                 annotation_state=ann_state,
             )
@@ -738,7 +738,7 @@ async def batch_create_annotations(
                     "geometry": annotation_data.geometry,
                     "class_id": annotation_data.class_id,
                 },
-                changed_by=current_user.id,
+                changed_by=current_user["sub"],
             )
 
             created_ids.append(new_annotation.id)
@@ -752,7 +752,7 @@ async def batch_create_annotations(
         await update_project_stats(
             db=labeler_db,
             project_id=project_id,
-            user_id=current_user.id,
+            user_id=current_user["sub"],
         )
 
     labeler_db.commit()
@@ -772,8 +772,7 @@ async def list_project_history(
     limit: int = 100,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("viewer")),
 ):
     """
@@ -795,21 +794,21 @@ async def list_project_history(
         .all()
     )
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info (Phase 9: from User DB)
-    user_ids = set(h.changed_by for h in history_entries if h.changed_by)
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
+    # user_ids = set(h.changed_by for h in history_entries if h.changed_by)
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
 
-    # Build responses
+    # Build responses with user info set to None
     result = []
     for history in history_entries:
-        user_info = users.get(history.changed_by, {})
         response_dict = {
             **history.__dict__,
-            "changed_by_name": user_info.get("name"),
-            "changed_by_email": user_info.get("email"),
+            "changed_by_name": None,
+            "changed_by_email": None,
         }
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
@@ -821,8 +820,7 @@ async def list_annotation_history(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Get history for a specific annotation.
@@ -838,21 +836,21 @@ async def list_annotation_history(
         .all()
     )
 
+    # User info removed - User DB dependency eliminated
     # Fetch user info (Phase 9: from User DB)
-    user_ids = set(h.changed_by for h in history_entries if h.changed_by)
-    users = {}
-    if user_ids:
-        user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
-        users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
+    # user_ids = set(h.changed_by for h in history_entries if h.changed_by)
+    # users = {}
+    # if user_ids:
+    #     user_results = user_db.query(User).filter(User.id.in_(user_ids)).all()
+    #     users = {u.id: {"name": u.full_name, "email": u.email} for u in user_results}
 
-    # Build responses
+    # Build responses with user info set to None
     result = []
     for history in history_entries:
-        user_info = users.get(history.changed_by, {})
         response_dict = {
             **history.__dict__,
-            "changed_by_name": user_info.get("name"),
-            "changed_by_email": user_info.get("email"),
+            "changed_by_name": None,
+            "changed_by_email": None,
         }
         result.append(AnnotationHistoryResponse.model_validate(response_dict))
 
@@ -865,7 +863,7 @@ async def confirm_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Confirm an annotation.
@@ -887,7 +885,7 @@ async def confirm_annotation(
     previous_state = annotation.annotation_state
     annotation.annotation_state = "confirmed"
     annotation.confirmed_at = datetime.utcnow()
-    annotation.confirmed_by = current_user.id
+    annotation.confirmed_by = current_user["sub"]
     annotation.updated_at = datetime.utcnow()
 
     # Phase 8.5.1: Increment version for optimistic locking
@@ -901,7 +899,7 @@ async def confirm_annotation(
         action="confirm",
         previous_state={"annotation_state": previous_state},
         new_state={"annotation_state": "confirmed"},
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -921,7 +919,7 @@ async def confirm_annotation(
         annotation_state=annotation.annotation_state,
         confirmed_at=annotation.confirmed_at,
         confirmed_by=annotation.confirmed_by,
-        confirmed_by_name=current_user.full_name,
+        confirmed_by_name=current_user.get("name"),
     )
 
 
@@ -930,7 +928,7 @@ async def unconfirm_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Unconfirm an annotation.
@@ -966,7 +964,7 @@ async def unconfirm_annotation(
         action="unconfirm",
         previous_state={"annotation_state": previous_state},
         new_state={"annotation_state": "draft"},
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -995,7 +993,7 @@ async def bulk_confirm_annotations(
     request: BulkConfirmRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Bulk confirm multiple annotations.
@@ -1024,7 +1022,7 @@ async def bulk_confirm_annotations(
             previous_state = annotation.annotation_state
             annotation.annotation_state = "confirmed"
             annotation.confirmed_at = datetime.utcnow()
-            annotation.confirmed_by = current_user.id
+            annotation.confirmed_by = current_user["sub"]
             annotation.updated_at = datetime.utcnow()
 
             # Phase 8.5.1: Increment version for optimistic locking
@@ -1038,7 +1036,7 @@ async def bulk_confirm_annotations(
                 action="confirm",
                 previous_state={"annotation_state": previous_state},
                 new_state={"annotation_state": "confirmed"},
-                changed_by=current_user.id,
+                changed_by=current_user["sub"],
             )
 
             # Phase 2.7: Track affected image for status update
@@ -1051,7 +1049,7 @@ async def bulk_confirm_annotations(
                 annotation_state=annotation.annotation_state,
                 confirmed_at=annotation.confirmed_at,
                 confirmed_by=annotation.confirmed_by,
-                confirmed_by_name=current_user.full_name,
+                confirmed_by_name=current_user.get("name"),
             ))
 
         except Exception as e:
@@ -1107,7 +1105,7 @@ async def import_annotations_from_json(
     force: bool = Query(False, description="Force re-import by deleting existing annotations"),
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     _permission=Depends(require_project_permission("annotator")),
 ):
     """
@@ -1216,8 +1214,8 @@ async def import_annotations_from_json(
                     'iscrowd': ann_data.get('iscrowd', 0),
                     'imported_from': 'annotations.json',
                 },
-                created_by=current_user.id,
-                updated_by=current_user.id,
+                created_by=current_user["sub"],
+                updated_by=current_user["sub"],
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )
@@ -1241,7 +1239,7 @@ async def import_annotations_from_json(
         )
 
     # Update project statistics
-    await update_project_stats(labeler_db, project_id, current_user.id)
+    await update_project_stats(labeler_db, project_id, current_user["sub"])
     labeler_db.commit()
 
     return {

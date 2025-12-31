@@ -68,7 +68,7 @@ async def create_project(
         name=project.name,
         description=project.description,
         dataset_id=project.dataset_id,
-        owner_id=current_user.id,
+        owner_id=current_user["sub"],
         task_types=project.task_types,
         task_config=project.task_config,
         task_classes=project.task_classes or {},  # REFACTORED: Use task_classes instead of classes
@@ -83,9 +83,9 @@ async def create_project(
     # Phase 8.1: Create owner permission for the project creator
     owner_permission = ProjectPermission(
         project_id=db_project.id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role="owner",
-        granted_by=current_user.id,
+        granted_by=current_user["sub"],
     )
     labeler_db.add(owner_permission)
     labeler_db.commit()
@@ -117,7 +117,7 @@ async def list_projects(
     # Query projects
     projects = (
         labeler_db.query(AnnotationProject)
-        .filter(AnnotationProject.owner_id == current_user.id)
+        .filter(AnnotationProject.owner_id == current_user["sub"])
         .offset(skip)
         .limit(min(limit, 100))
         .all()
@@ -463,7 +463,7 @@ async def add_task_type(
             project.task_config[request.task_type] = {}
 
     # Update last_updated_by
-    project.last_updated_by = current_user.id
+    project.last_updated_by = current_user["sub"]
 
     labeler_db.commit()
     labeler_db.refresh(project)
@@ -779,7 +779,7 @@ async def confirm_image(
     for annotation in draft_annotations:
         annotation.annotation_state = "confirmed"
         annotation.confirmed_at = datetime.utcnow()
-        annotation.confirmed_by = current_user.id
+        annotation.confirmed_by = current_user["sub"]
         annotation.updated_at = datetime.utcnow()
         # Phase 8.5.1: Increment version for optimistic locking
         annotation.version += 1

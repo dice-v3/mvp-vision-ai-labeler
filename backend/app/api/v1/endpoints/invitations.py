@@ -9,13 +9,13 @@ Supports 5-role RBAC: owner, admin, reviewer, annotator, viewer.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import secrets
 
-from app.core.database import get_user_db, get_labeler_db
+from app.core.database import get_labeler_db
 from app.core.security import get_current_user
-from app.db.models.user import User
+# from app.db.models.user import User
 from app.db.models.labeler import AnnotationProject, ProjectPermission, Invitation
 from app.schemas.invitation import (
     CreateInvitationRequest,
@@ -35,17 +35,18 @@ def generate_invitation_token() -> str:
 
 def enrich_invitation(
     invitation: Invitation,
-    user_db: Session,
     labeler_db: Session,
 ) -> InvitationResponse:
     """Enrich invitation with user and project information."""
     # Get inviter info
-    inviter = user_db.query(User).filter(User.id == invitation.inviter_id).first()
-    inviter_name = inviter.full_name if inviter and inviter.full_name else None
+    # inviter = user_db.query(User).filter(User.id == invitation.inviter_id).first()
+    # inviter_name = inviter.full_name if inviter and inviter.full_name else None
+    inviter_name = None
 
     # Get invitee info
-    invitee = user_db.query(User).filter(User.id == invitation.invitee_id).first() if invitation.invitee_id else None
-    invitee_name = invitee.full_name if invitee and invitee.full_name else None
+    # invitee = user_db.query(User).filter(User.id == invitation.invitee_id).first() if invitation.invitee_id else None
+    # invitee_name = invitee.full_name if invitee and invitee.full_name else None
+    invitee_name = None
 
     # Get project info (invitation.project_id is dataset_id)
     project_name = None
@@ -77,9 +78,8 @@ def enrich_invitation(
 @router.post("", response_model=InvitationResponse, tags=["Invitations"])
 async def create_invitation(
     request: CreateInvitationRequest,
-    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Create a new project invitation (Phase 8.2).
@@ -104,7 +104,7 @@ async def create_invitation(
     # Check inviter has permission (owner or admin)
     inviter_permission = labeler_db.query(ProjectPermission).filter(
         ProjectPermission.project_id == actual_project_id,
-        ProjectPermission.user_id == current_user.id,
+        ProjectPermission.user_id == current_user["sub"],
     ).first()
 
     if not inviter_permission or inviter_permission.role not in ["owner", "admin"]:
@@ -114,12 +114,19 @@ async def create_invitation(
         )
 
     # Verify invitee exists
-    invitee = user_db.query(User).filter(
-        User.id == request.invitee_user_id
-    ).first()
+    # NOTE: User DB lookup disabled - cannot verify invitee exists
+    # invitee = user_db.query(User).filter(
+    #     User.id == request.invitee_user_id
+    # ).first()
+    # if not invitee:
+    #     raise HTTPException(status_code=404, detail="Invitee user not found")
 
-    if not invitee:
-        raise HTTPException(status_code=404, detail="Invitee user not found")
+    # TODO: Without User DB, we cannot verify invitee exists or get their email
+    # This endpoint may need to accept email in the request or use Keycloak
+    raise HTTPException(
+        status_code=501,
+        detail="Cannot create invitation: User DB lookup disabled. Need Keycloak integration."
+    )
 
     # Check if invitee is already a member
     existing_permission = labeler_db.query(ProjectPermission).filter(
@@ -150,24 +157,25 @@ async def create_invitation(
     token = generate_invitation_token()
     expires_at = datetime.utcnow() + timedelta(days=7)
 
-    new_invitation = Invitation(
-        token=token,
-        project_id=request.project_id,
-        inviter_id=current_user.id,
-        invitee_id=request.invitee_user_id,
-        invitee_email=invitee.email,
-        role=request.role.value,
-        status="pending",
-        message=None,
-        created_at=datetime.utcnow(),
-        expires_at=expires_at,
-    )
-
-    labeler_db.add(new_invitation)
-    labeler_db.commit()
-    labeler_db.refresh(new_invitation)
-
-    return enrich_invitation(new_invitation, user_db, labeler_db)
+    # NOTE: Code below unreachable due to exception above, but kept commented for reference
+    # new_invitation = Invitation(
+    #     token=token,
+    #     project_id=request.project_id,
+    #     inviter_id=current_user["sub"],
+    #     invitee_id=request.invitee_user_id,
+    #     invitee_email=invitee.email,  # Cannot get email without User DB
+    #     role=request.role.value,
+    #     status="pending",
+    #     message=None,
+    #     created_at=datetime.utcnow(),
+    #     expires_at=expires_at,
+    # )
+    #
+    # labeler_db.add(new_invitation)
+    # labeler_db.commit()
+    # labeler_db.refresh(new_invitation)
+    #
+    # return enrich_invitation(new_invitation, labeler_db)
 
 
 @router.get("", response_model=InvitationListResponse, tags=["Invitations"])
@@ -175,9 +183,8 @@ async def list_invitations(
     type: str = Query("received", description="'sent' or 'received'"),
     status: Optional[str] = Query(None, description="Filter by status"),
     project_id: Optional[str] = Query(None, description="Filter by project"),
-    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     List invitations sent by or received by current user (Phase 8.2).
@@ -191,9 +198,9 @@ async def list_invitations(
     query = labeler_db.query(Invitation)
 
     if type == "sent":
-        query = query.filter(Invitation.inviter_id == current_user.id)
+        query = query.filter(Invitation.inviter_id == current_user["sub"])
     elif type == "received":
-        query = query.filter(Invitation.invitee_id == current_user.id)
+        query = query.filter(Invitation.invitee_id == current_user["sub"])
     else:
         raise HTTPException(
             status_code=400,
@@ -212,7 +219,7 @@ async def list_invitations(
 
     # Enrich with user/project info
     enriched_invitations = [
-        enrich_invitation(inv, user_db, labeler_db)
+        enrich_invitation(inv, labeler_db)
         for inv in invitations
     ]
 
@@ -225,9 +232,8 @@ async def list_invitations(
 @router.post("/accept", response_model=AcceptInvitationResponse, tags=["Invitations"])
 async def accept_invitation(
     request: AcceptInvitationRequest,
-    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Accept a project invitation (Phase 8.2).
@@ -247,7 +253,7 @@ async def accept_invitation(
         raise HTTPException(status_code=404, detail="Invalid invitation token")
 
     # Verify invitation is for current user
-    if invitation.invitee_id != current_user.id:
+    if invitation.invitee_id != current_user["sub"]:
         raise HTTPException(
             status_code=403,
             detail="This invitation is not for you"
@@ -278,7 +284,7 @@ async def accept_invitation(
     # Create ProjectPermission with the actual project.id
     new_permission = ProjectPermission(
         project_id=project.id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role=invitation.role,
         granted_at=datetime.utcnow(),
         granted_by=invitation.inviter_id,
@@ -304,9 +310,8 @@ async def accept_invitation(
 @router.post("/{invitation_id}/cancel", response_model=InvitationResponse, tags=["Invitations"])
 async def cancel_invitation(
     invitation_id: int,
-    user_db: Session = Depends(get_user_db),
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Cancel a pending invitation (Phase 8.2).
@@ -323,7 +328,7 @@ async def cancel_invitation(
         raise HTTPException(status_code=404, detail="Invitation not found")
 
     # Check if current user is inviter or invitee
-    if invitation.inviter_id != current_user.id and invitation.invitee_id != current_user.id:
+    if invitation.inviter_id != current_user["sub"] and invitation.invitee_id != current_user["sub"]:
         raise HTTPException(
             status_code=403,
             detail="You can only cancel invitations you sent or received"
@@ -341,4 +346,4 @@ async def cancel_invitation(
     invitation.cancelled_at = datetime.utcnow()
     labeler_db.commit()
 
-    return enrich_invitation(invitation, user_db, labeler_db)
+    return enrich_invitation(invitation, labeler_db)

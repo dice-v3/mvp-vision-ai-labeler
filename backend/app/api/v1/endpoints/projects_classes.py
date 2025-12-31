@@ -54,7 +54,7 @@ async def add_class(
         )
 
     # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
+    if project.owner_id != current_user["sub"] and not current_user.get("is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to modify this project",
@@ -118,7 +118,7 @@ async def add_class(
         {
             "task_classes": project.task_classes,
             "updated_at": datetime.utcnow(),
-            "last_updated_by": current_user.id,
+            "last_updated_by": current_user["sub"],
         },
         synchronize_session=False
     )
@@ -168,7 +168,7 @@ async def update_class(
         )
 
     # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
+    if project.owner_id != current_user["sub"] and not current_user.get("is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to modify this project",
@@ -204,7 +204,7 @@ async def update_class(
         {
             "task_classes": project.task_classes,
             "updated_at": datetime.utcnow(),
-            "last_updated_by": current_user.id,
+            "last_updated_by": current_user["sub"],
         },
         synchronize_session=False
     )
@@ -253,7 +253,7 @@ async def delete_class(
         )
 
     # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
+    if project.owner_id != current_user["sub"] and not current_user.get("is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to modify this project",
@@ -295,7 +295,7 @@ async def delete_class(
         {
             "task_classes": project.task_classes,
             "updated_at": datetime.utcnow(),
-            "last_updated_by": current_user.id,
+            "last_updated_by": current_user["sub"],
         },
         synchronize_session=False
     )
@@ -333,7 +333,7 @@ async def reorder_classes(
         )
 
     # Check ownership
-    if project.owner_id != current_user.id and not current_user.is_admin:
+    if project.owner_id != current_user["sub"] and not current_user.get("is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to modify this project",
@@ -367,7 +367,7 @@ async def reorder_classes(
         {
             "task_classes": project.task_classes,
             "updated_at": datetime.utcnow(),
-            "last_updated_by": current_user.id,
+            "last_updated_by": current_user["sub"],
         },
         synchronize_session=False
     )
