@@ -57,9 +57,8 @@ class KeycloakAuth:
                 ssl_context.check_hostname = False
                 ssl_context.verify_mode = ssl.CERT_NONE
 
-                # PyJWKClient doesn't directly support SSL context,
-                # but we can disable warnings
-                self._jwks_client = PyJWKClient(self.jwks_uri)
+                # Pass ssl_context to PyJWKClient
+                self._jwks_client = PyJWKClient(self.jwks_uri, ssl_context=ssl_context)
             else:
                 self._jwks_client = PyJWKClient(self.jwks_uri)
 
