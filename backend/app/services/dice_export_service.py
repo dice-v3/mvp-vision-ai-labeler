@@ -215,18 +215,18 @@ def export_to_dice(
         reviewed_by_user = None
 
         # Find labeled_by: Check all annotations for created_by
-        if image_annotations:
+        if image_annotations and platform_db:
             # Try to find any annotation with created_by
             for ann in image_annotations:
                 if ann.created_by:
-                    labeled_by_user = user_db.query(User).filter(
+                    labeled_by_user = platform_db.query(User).filter(
                         User.id == ann.created_by
                     ).first()
                     if labeled_by_user:
                         break
 
         # Find reviewed_by: Look for confirmed_by
-        if status and status.is_image_confirmed:
+        if status and status.is_image_confirmed and platform_db:
             confirmed_by_id = None
             for ann in image_annotations:
                 if ann.confirmed_by:
@@ -234,7 +234,7 @@ def export_to_dice(
                     break
 
             if confirmed_by_id:
-                reviewed_by_user = user_db.query(User).filter(
+                reviewed_by_user = platform_db.query(User).filter(
                     User.id == confirmed_by_id
                 ).first()
 
