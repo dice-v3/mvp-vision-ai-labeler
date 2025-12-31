@@ -45,7 +45,7 @@ class DatasetResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    owner_id: int
+    owner_id: str  # Keycloak user sub (UUID)
     format: str
     source: str
     visibility: str

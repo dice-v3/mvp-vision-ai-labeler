@@ -44,7 +44,7 @@ class ProjectResponse(BaseModel):
     name: str
     description: Optional[str] = None
     dataset_id: str
-    owner_id: int
+    owner_id: str  # Keycloak user sub (UUID)
     task_types: List[str]
     task_config: Dict[str, Any]
     task_classes: Dict[str, Dict[str, Any]] = {}  # Task-based classes (REFACTORED: classes field removed)
