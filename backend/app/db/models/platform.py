@@ -19,18 +19,43 @@ class User(PlatformBase):
 
     __tablename__ = "users"
 
+    # Primary key
     id = Column(Integer, primary_key=True, index=True)
+
+    # Keycloak SSO (must match Platform schema)
+    keycloak_id = Column(String(36), unique=True, nullable=True, index=True)
+
+    # Basic info
     email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
-    full_name = Column(String(255))
-    company = Column(String(100))
-    division = Column(String(100))
-    department = Column(String(255))
-    system_role = Column(String(20))  # 'admin' or 'user'
-    is_active = Column(Boolean, default=True)
-    badge_color = Column(String(20))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    hashed_password = Column(String(255), nullable=True)
+    full_name = Column(String(255), nullable=True)
+
+    # Organization info
+    company = Column(String(100), nullable=True)
+    company_custom = Column(String(255), nullable=True)
+    division = Column(String(100), nullable=True)
+    division_custom = Column(String(255), nullable=True)
+    department = Column(String(255), nullable=True)
+    organization_id = Column(Integer, nullable=True, index=True)  # FK to organizations
+
+    phone_number = Column(String(50), nullable=True)
+    bio = Column(Text, nullable=True)
+
+    # Role and permissions
+    system_role = Column(String(20), nullable=False, default='guest', index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Avatar
+    avatar_name = Column(String(100), nullable=True)
+    badge_color = Column(String(20), nullable=True)
+
+    # Password reset
+    password_reset_token = Column(String(255), nullable=True, unique=True, index=True)
+    password_reset_expires = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     @property
     def is_admin(self) -> bool:
