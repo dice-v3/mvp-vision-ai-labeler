@@ -27,7 +27,7 @@ router = APIRouter()
 class LockInfo(BaseModel):
     """Lock information."""
     image_id: str
-    user_id: int
+    user_id: str  # Keycloak user sub (UUID)
     locked_at: datetime
     expires_at: datetime
     heartbeat_at: datetime
