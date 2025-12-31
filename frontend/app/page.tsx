@@ -63,29 +63,31 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Silent SSO check: Try to login with Keycloak session if exists
+  // Silent SSO check: Verify Keycloak session on every page load
+  // This ensures logout from other apps is detected
   useEffect(() => {
-    // Skip if already authenticated or still loading
-    if (authLoading || user) return;
+    // Wait for auth loading to complete
+    if (authLoading) return;
 
-    // Check if SSO check was already attempted (from sessionStorage)
+    // Check if SSO check was already attempted in this browser session
     const ssoCheckAttempted = sessionStorage.getItem('sso_check_done');
     if (ssoCheckAttempted) {
       setSsoCheckDone(true);
       return;
     }
 
-    // Attempt silent SSO check
+    // Perform silent SSO check (whether logged in or not)
+    // This verifies Keycloak session is still valid
     setSsoChecking(true);
     
     // Set flag before redirect to prevent infinite loop
     sessionStorage.setItem('sso_check_done', 'true');
     
     // Redirect to Keycloak with prompt=none for silent check
-    // If Keycloak has session → auto login → callback to /
-    // If no session → error page → redirects to / with sso_check_done flag
+    // If Keycloak has session → auto login/verify → callback to /
+    // If no session → error page → clears NextAuth session → redirects to /
     signIn('keycloak', { callbackUrl: '/' }, { prompt: 'none' });
-  }, [authLoading, user]);
+  }, [authLoading]);
 
   // Phase 15: View state management (dataset view vs admin views)
   const [currentView, setCurrentView] = useState<'dataset' | 'admin-datasets' | 'admin-audit-logs' | 'admin-stats'>('dataset');
