@@ -10,7 +10,7 @@ class VersionMetadata(BaseModel):
     version_number: str
     version_type: str
     created_at: str
-    created_by: int
+    created_by: str  # Keycloak user sub (UUID)
 
 
 class ImageDiffSummary(BaseModel):

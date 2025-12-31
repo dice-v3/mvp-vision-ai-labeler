@@ -43,7 +43,7 @@ class AnnotationResponse(BaseModel):
     class_name: Optional[str] = None
     attributes: Dict[str, Any]
     confidence: Optional[int] = None
-    created_by: int
+    created_by: str  # Keycloak user sub (UUID)
     updated_by: Optional[int] = None
     is_verified: bool
     notes: Optional[str] = None
@@ -76,7 +76,7 @@ class AnnotationHistoryResponse(BaseModel):
     action: str  # create, update, delete, restore
     previous_state: Optional[Dict[str, Any]] = None
     new_state: Optional[Dict[str, Any]] = None
-    changed_by: int
+    changed_by: str  # Keycloak user sub (UUID)
     timestamp: datetime
 
     # User information

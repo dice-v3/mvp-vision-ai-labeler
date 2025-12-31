@@ -33,7 +33,7 @@ class CreateInvitationRequest(BaseModel):
     """Request to create a new invitation."""
 
     project_id: str
-    invitee_user_id: int
+    invitee_user_id: str  # Keycloak user sub (UUID)
     role: ProjectRole
 
 
@@ -42,8 +42,8 @@ class InvitationResponse(BaseModel):
 
     id: int
     project_id: str
-    inviter_user_id: int
-    invitee_user_id: int
+    inviter_user_id: str  # Keycloak user sub (UUID)
+    invitee_user_id: str  # Keycloak user sub (UUID)
     invitee_email: EmailStr
     role: str
     status: str

@@ -23,9 +23,9 @@ class PermissionResponse(BaseModel):
     """Dataset permission information."""
     id: int
     dataset_id: str
-    user_id: int
+    user_id: str  # Keycloak user sub (UUID)
     role: str
-    granted_by: int
+    granted_by: str  # Keycloak user sub (UUID)
     granted_at: datetime
 
     # User information (joined from Platform DB)
@@ -55,7 +55,7 @@ class PermissionUpdateRequest(BaseModel):
 
 class TransferOwnershipRequest(BaseModel):
     """Request to transfer dataset ownership."""
-    new_owner_user_id: int = Field(..., description="User ID of new owner")
+    new_owner_user_id: str = Field(..., description="User ID of new owner (Keycloak UUID)")
 
     class Config:
         json_schema_extra = {
@@ -91,9 +91,9 @@ class ProjectPermissionResponse(BaseModel):
     """Project permission information."""
     id: int
     project_id: str
-    user_id: int
+    user_id: str  # Keycloak user sub (UUID)
     role: ProjectRole
-    granted_by: int
+    granted_by: str  # Keycloak user sub (UUID)
     granted_at: datetime
 
     # User information (joined from Platform DB)
@@ -123,7 +123,7 @@ class ProjectPermissionUpdateRequest(BaseModel):
 
 class ProjectTransferOwnershipRequest(BaseModel):
     """Request to transfer project ownership."""
-    new_owner_user_id: int = Field(..., description="User ID of new owner")
+    new_owner_user_id: str = Field(..., description="User ID of new owner (Keycloak UUID)")
 
     class Config:
         json_schema_extra = {

@@ -40,7 +40,7 @@ class PlatformDatasetResponse(BaseModel):
     # Metadata
     tags: Optional[List[str]] = None
     visibility: str  # 'private', 'public', 'organization'
-    owner_id: int
+    owner_id: str  # Keycloak user sub (UUID)
 
     # Versioning
     version: int
@@ -108,7 +108,7 @@ class PlatformPermissionCheckResponse(BaseModel):
     Tells Platform whether a user can access a dataset.
     """
     dataset_id: str
-    user_id: int
+    user_id: str  # Keycloak user sub (UUID)
     has_access: bool
     role: Optional[str] = None  # 'owner' or 'member'
     reason: str  # 'owner', 'public_dataset', 'organization_member', 'explicit_permission', 'no_access'
