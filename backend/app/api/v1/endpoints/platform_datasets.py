@@ -172,7 +172,7 @@ async def get_dataset_for_platform(
     summary="List datasets (Platform)",
 )
 async def list_datasets_for_platform(
-    user_id: Optional[int] = Query(None, description="Filter by owner user ID"),
+    user_id: Optional[str] = Query(None, description="Filter by owner keycloak_id (UUID)"),
     visibility: Optional[str] = Query(None, description="Filter by visibility (public/private/organization)"),
     labeled: Optional[bool] = Query(None, description="Filter by labeled status"),
     format: Optional[str] = Query(None, description="Filter by format (coco/yolo/dice/imagefolder)"),
@@ -334,7 +334,7 @@ async def get_datasets_batch_for_platform(
 )
 async def check_dataset_permission_for_platform(
     dataset_id: str,
-    user_id: int,
+    user_id: str,  # Keycloak UUID
     jwt_payload: Dict[str, Any] = Depends(get_service_jwt_payload),
     _scope: Dict = Depends(require_service_scope("labeler:read")),
     labeler_db: Session = Depends(get_labeler_db),
