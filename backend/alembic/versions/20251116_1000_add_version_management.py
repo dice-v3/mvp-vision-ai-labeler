@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column('version_number', sa.String(length=20), nullable=False),
         sa.Column('version_type', sa.String(length=20), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('created_by', sa.Integer(), nullable=True),
+        sa.Column('created_by', sa.String(length=36), nullable=True),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('annotation_count', sa.Integer(), nullable=True),
         sa.Column('image_count', sa.Integer(), nullable=True),

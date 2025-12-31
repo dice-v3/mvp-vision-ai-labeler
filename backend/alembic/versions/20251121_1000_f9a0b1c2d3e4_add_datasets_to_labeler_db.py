@@ -44,7 +44,7 @@ def upgrade() -> None:
         # Basic info
         sa.Column('name', sa.String(200), nullable=False),
         sa.Column('description', sa.Text, nullable=True),
-        sa.Column('owner_id', sa.Integer, nullable=False),  # References Platform users.id (NO FK, different DB) - index created below
+        sa.Column('owner_id', sa.String(length=36), nullable=False),  # References Platform users.id (NO FK, different DB) - index created below
 
         # Dataset configuration
         sa.Column('visibility', sa.String(20), nullable=False, server_default='private'),
@@ -104,11 +104,11 @@ def upgrade() -> None:
 
         # Foreign keys
         sa.Column('dataset_id', sa.String(100), nullable=False),  # Index created below
-        sa.Column('user_id', sa.Integer, nullable=False),  # References Platform users.id (NO FK, different DB) - index created below
+        sa.Column('user_id', sa.String(length=36), nullable=False),  # References Platform users.id (NO FK, different DB) - index created below
 
         # Permission info
         sa.Column('role', sa.String(20), nullable=False),  # 'owner' or 'member'
-        sa.Column('granted_by', sa.Integer, nullable=False),  # User ID who granted this permission
+        sa.Column('granted_by', sa.String(length=36), nullable=False),  # User ID who granted this permission
         sa.Column('granted_at', sa.DateTime, nullable=False, server_default=sa.text('NOW()')),
 
         # Constraints
