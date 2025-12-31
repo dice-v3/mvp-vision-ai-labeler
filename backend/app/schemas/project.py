@@ -55,7 +55,7 @@ class ProjectResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
-    last_updated_by: Optional[int] = None
+    last_updated_by: Optional[str] = None  # Keycloak user sub (UUID)
 
     # Dataset information (joined)
     dataset_name: Optional[str] = None
