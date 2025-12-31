@@ -172,7 +172,7 @@ async def get_dataset_for_platform(
     summary="List datasets (Platform)",
 )
 async def list_datasets_for_platform(
-    user_id: Optional[str] = Query(None, description="Filter by owner keycloak_id (UUID)"),
+    user_id: Optional[str] = Query(None, description="Filter by owner user_id (Keycloak UUID)"),
     visibility: Optional[str] = Query(None, description="Filter by visibility (public/private/organization)"),
     labeled: Optional[bool] = Query(None, description="Filter by labeled status"),
     format: Optional[str] = Query(None, description="Filter by format (coco/yolo/dice/imagefolder)"),

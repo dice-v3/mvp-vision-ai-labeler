@@ -19,11 +19,8 @@ class User(PlatformBase):
 
     __tablename__ = "users"
 
-    # Primary key
-    id = Column(Integer, primary_key=True, index=True)
-
-    # Keycloak SSO (must match Platform schema)
-    keycloak_id = Column(String(36), unique=True, nullable=True, index=True)
+    # Primary key - Keycloak UUID
+    id = Column(String(36), primary_key=True, index=True)
 
     # Basic info
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -74,7 +71,7 @@ class Dataset(PlatformBase):
     id = Column(String(100), primary_key=True)
     name = Column(String(200), nullable=False)
     description = Column(Text)
-    owner_id = Column(Integer, index=True)
+    owner_id = Column(String(36), index=True)  # Keycloak user UUID
     visibility = Column(String(20), nullable=False)
     tags = Column(Text)  # JSON stored as Text
     storage_path = Column(String(500), nullable=False)

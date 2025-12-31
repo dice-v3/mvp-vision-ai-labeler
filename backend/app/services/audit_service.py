@@ -162,7 +162,7 @@ async def _write_audit_log(
 # =============================================================================
 
 async def log_create(
-    user_id: int,
+    user_id: str,
     resource_type: str,
     resource_id: str,
     data: Optional[Dict[str, Any]] = None,
@@ -189,7 +189,7 @@ async def log_create(
 
 
 async def log_update(
-    user_id: int,
+    user_id: str,
     resource_type: str,
     resource_id: str,
     changes: Optional[Dict[str, Any]] = None,
@@ -216,7 +216,7 @@ async def log_update(
 
 
 async def log_delete(
-    user_id: int,
+    user_id: str,
     resource_type: str,
     resource_id: str,
     data: Optional[Dict[str, Any]] = None,
@@ -247,7 +247,7 @@ async def log_delete(
 # =============================================================================
 
 async def log_login(
-    user_id: int,
+    user_id: str,
     session_id: str,
     request: Optional[Request] = None,
     success: bool = True,
@@ -273,7 +273,7 @@ async def log_login(
 
 
 async def log_logout(
-    user_id: int,
+    user_id: str,
     session_id: str,
     request: Optional[Request] = None,
 ) -> None:
@@ -300,8 +300,8 @@ async def log_logout(
 # =============================================================================
 
 async def log_permission_grant(
-    user_id: int,
-    target_user_id: int,
+    user_id: str,
+    target_user_id: str,
     project_id: str,
     role: str,
     request: Optional[Request] = None,
@@ -330,8 +330,8 @@ async def log_permission_grant(
 
 
 async def log_permission_revoke(
-    user_id: int,
-    target_user_id: int,
+    user_id: str,
+    target_user_id: str,
     project_id: str,
     request: Optional[Request] = None,
 ) -> None:

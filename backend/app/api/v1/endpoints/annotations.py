@@ -43,7 +43,7 @@ def check_image_lock(
     db: Session,
     project_id: str,
     image_id: str,
-    user_id: int,
+    user_id: str,
 ):
     """
     Check if user has lock on the image.
@@ -128,7 +128,7 @@ async def create_history_entry(
 async def update_project_stats(
     db: Session,
     project_id: str,
-    user_id: int,
+    user_id: str,
 ):
     """Update project statistics after annotation changes."""
     project = db.query(AnnotationProject).filter(

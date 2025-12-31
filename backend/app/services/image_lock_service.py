@@ -50,7 +50,7 @@ class ImageLockService:
         db: Session,
         project_id: str,
         image_id: str,
-        user_id: int,
+        user_id: str,
     ) -> Dict:
         """
         Acquire lock on an image for a user.
@@ -151,7 +151,7 @@ class ImageLockService:
         db: Session,
         project_id: str,
         image_id: str,
-        user_id: int,
+        user_id: str,
     ) -> Dict:
         """
         Release lock on an image.
@@ -186,7 +186,7 @@ class ImageLockService:
         db: Session,
         project_id: str,
         image_id: str,
-        user_id: int,
+        user_id: str,
     ) -> Dict:
         """
         Send heartbeat to keep lock alive.
