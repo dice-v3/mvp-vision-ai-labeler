@@ -4,28 +4,46 @@
  * NextAuth Error Page
  *
  * Handles authentication errors from Keycloak.
- * For silent SSO check failures (login_required), redirects to main page
- * with sso_checked flag to show login button instead of retry.
+ * For silent SSO check failures (login_required), clears any existing
+ * NextAuth session and redirects to main page with sso_checked flag.
+ * 
+ * This is critical for SSO logout synchronization:
+ * When user logs out from App A, App B's SSO check will fail here,
+ * and we clear App B's NextAuth session to complete the logout.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
+  const [isProcessing, setIsProcessing] = useState(false)
 
   useEffect(() => {
-    // For silent SSO check failures, set flag and redirect to main
-    // This allows the main page to show login button instead of retrying SSO check
+    // For silent SSO check failures, clear session and redirect to main
+    // This handles the case where user logged out from another app
     if (error === 'OAuthCallback' || error === 'AccessDenied') {
+      if (isProcessing) return
+      setIsProcessing(true)
+
       // Mark SSO check as done (failed) - prevents infinite redirect loop
       sessionStorage.setItem('sso_check_done', 'true')
-      // Redirect to main page
-      window.location.replace('/')
+      
+      // Clear any existing NextAuth session (important for SSO logout sync)
+      // This ensures if user was logged in but Keycloak session ended,
+      // the local NextAuth session is also cleared
+      signOut({ redirect: false }).then(() => {
+        // Redirect to main page
+        window.location.replace('/')
+      }).catch(() => {
+        // Even if signOut fails, redirect to main page
+        window.location.replace('/')
+      })
       return
     }
-  }, [error])
+  }, [error, isProcessing])
 
   // For other errors, show error message
   return (
