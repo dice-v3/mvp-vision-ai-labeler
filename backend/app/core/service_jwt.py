@@ -276,7 +276,7 @@ async def get_service_user_id(
         @router.get("/datasets/{dataset_id}")
         async def get_dataset(
             dataset_id: str,
-            user_id: int = Depends(get_service_user_id),
+            user_id: str = Depends(get_service_user_id),
             db: Session = Depends(get_labeler_db),
         ):
             # Use user_id for permission checks

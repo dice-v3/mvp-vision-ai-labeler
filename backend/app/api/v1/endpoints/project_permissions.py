@@ -153,7 +153,7 @@ async def add_project_member(
 )
 async def update_project_member_role(
     project_id: str,
-    user_id: int,
+    user_id: str,
     request: ProjectPermissionUpdateRequest,
     current_user=Depends(get_current_user),
     _permission=Depends(require_project_permission("admin")),
@@ -241,7 +241,7 @@ async def update_project_member_role(
 )
 async def remove_project_member(
     project_id: str,
-    user_id: int,
+    user_id: str,
     current_user=Depends(get_current_user),
     _permission=Depends(require_project_permission("admin")),
     labeler_db: Session = Depends(get_labeler_db),

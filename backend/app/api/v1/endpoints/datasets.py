@@ -1004,7 +1004,7 @@ async def list_dataset_permissions(
 @router.put("/{dataset_id}/permissions/{user_id}", response_model=PermissionResponse, tags=["Permissions"])
 async def update_user_permission(
     dataset_id: str,
-    user_id: int,
+    user_id: str,
     request: PermissionUpdateRequest,
     labeler_db: Session = Depends(get_labeler_db),
     platform_db: Session = Depends(get_platform_db),
@@ -1073,7 +1073,7 @@ async def update_user_permission(
 @router.delete("/{dataset_id}/permissions/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Permissions"])
 async def remove_user_permission(
     dataset_id: str,
-    user_id: int,
+    user_id: str,
     labeler_db: Session = Depends(get_labeler_db),
     current_user = Depends(get_current_user),
     _permission = Depends(require_dataset_permission("owner")),
