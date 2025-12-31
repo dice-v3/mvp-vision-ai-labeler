@@ -4,11 +4,13 @@
  * Authentication Context (Keycloak via NextAuth)
  *
  * React hooks for managing authentication state with NextAuth/Keycloak
+ * 보안: HttpOnly Cookie 기반 세션 사용 (localStorage 미사용)
  */
 
 import { useSession, signIn, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { useCallback } from "react"
+import { useCallback, useMemo, useEffect } from "react"
+import { APIClient } from "../api/client"
 
 export interface KeycloakUser {
   id: string
@@ -35,21 +37,34 @@ export function useAuth(): AuthState {
   const { data: session, status } = useSession()
   const router = useRouter()
 
-  const user: KeycloakUser | null = session?.user
-    ? {
-        id: session.user.id,
-        email: session.user.email ?? null,
-        name: session.user.name ?? null,
-        roles: session.roles ?? [],
-        isAdmin: session.roles?.includes("admin") ?? false,
-      }
-    : null
+  // Sync token cache with session changes
+  useEffect(() => {
+    if (session?.accessToken) {
+      APIClient.updateToken(session.accessToken)
+    } else if (status === "unauthenticated") {
+      APIClient.clearTokenCache()
+    }
+  }, [session?.accessToken, status])
+
+  const user: KeycloakUser | null = useMemo(() => {
+    if (!session?.user) return null
+    return {
+      id: session.user.id,
+      email: session.user.email ?? null,
+      name: session.user.name ?? null,
+      roles: session.roles ?? [],
+      isAdmin: session.roles?.includes("admin") ?? false,
+    }
+  }, [session?.user?.id, session?.user?.email, session?.user?.name, session?.roles])
 
   const login = useCallback(() => {
     signIn("keycloak", { callbackUrl: "/" })
   }, [])
 
   const logout = useCallback(async () => {
+    // Clear API client token cache
+    APIClient.clearTokenCache()
+    
     // Redirect to custom logout endpoint for proper SSO logout
     // This ensures both NextAuth and Keycloak sessions are cleared
     // DO NOT call signOut() here - it deletes session cookie before we can get id_token
