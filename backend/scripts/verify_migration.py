@@ -46,12 +46,12 @@ try:
                 AnnotationProject.id == perm.project_id
             ).first()
 
-            # Get user info
-            user = platform_db.query(User).filter(User.id == perm.user_id).first()
+            # Get user info (perm.user_id is Keycloak UUID, not User.id)
+            user = platform_db.query(User).filter(User.keycloak_id == perm.user_id).first()
             user_name = user.full_name if user else f"User {perm.user_id}"
 
-            # Get granted by user
-            granted_by_user = platform_db.query(User).filter(User.id == perm.granted_by).first()
+            # Get granted by user (perm.granted_by is Keycloak UUID, not User.id)
+            granted_by_user = platform_db.query(User).filter(User.keycloak_id == perm.granted_by).first()
             granted_by_name = granted_by_user.full_name if granted_by_user else f"User {perm.granted_by}"
 
             print(f"{perm.id:<6} {perm.project_id[:16]:<18} {user_name[:23]:<25} {perm.role:<12} {str(perm.granted_at)[:19]:<20}")
