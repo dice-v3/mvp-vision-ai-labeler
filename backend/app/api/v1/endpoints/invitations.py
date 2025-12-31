@@ -104,7 +104,7 @@ async def create_invitation(
     # Check inviter has permission (owner or admin)
     inviter_permission = labeler_db.query(ProjectPermission).filter(
         ProjectPermission.project_id == actual_project_id,
-        ProjectPermission.user_id == current_user.id,
+        ProjectPermission.user_id == current_user["sub"],
     ).first()
 
     if not inviter_permission or inviter_permission.role not in ["owner", "admin"]:
@@ -161,7 +161,7 @@ async def create_invitation(
     # new_invitation = Invitation(
     #     token=token,
     #     project_id=request.project_id,
-    #     inviter_id=current_user.id,
+    #     inviter_id=current_user["sub"],
     #     invitee_id=request.invitee_user_id,
     #     invitee_email=invitee.email,  # Cannot get email without User DB
     #     role=request.role.value,
@@ -198,9 +198,9 @@ async def list_invitations(
     query = labeler_db.query(Invitation)
 
     if type == "sent":
-        query = query.filter(Invitation.inviter_id == current_user.id)
+        query = query.filter(Invitation.inviter_id == current_user["sub"])
     elif type == "received":
-        query = query.filter(Invitation.invitee_id == current_user.id)
+        query = query.filter(Invitation.invitee_id == current_user["sub"])
     else:
         raise HTTPException(
             status_code=400,
@@ -253,7 +253,7 @@ async def accept_invitation(
         raise HTTPException(status_code=404, detail="Invalid invitation token")
 
     # Verify invitation is for current user
-    if invitation.invitee_id != current_user.id:
+    if invitation.invitee_id != current_user["sub"]:
         raise HTTPException(
             status_code=403,
             detail="This invitation is not for you"
@@ -284,7 +284,7 @@ async def accept_invitation(
     # Create ProjectPermission with the actual project.id
     new_permission = ProjectPermission(
         project_id=project.id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role=invitation.role,
         granted_at=datetime.utcnow(),
         granted_by=invitation.inviter_id,
@@ -328,7 +328,7 @@ async def cancel_invitation(
         raise HTTPException(status_code=404, detail="Invitation not found")
 
     # Check if current user is inviter or invitee
-    if invitation.inviter_id != current_user.id and invitation.invitee_id != current_user.id:
+    if invitation.inviter_id != current_user["sub"] and invitation.invitee_id != current_user["sub"]:
         raise HTTPException(
             status_code=403,
             detail="You can only cancel invitations you sent or received"

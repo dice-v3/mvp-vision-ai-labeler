@@ -403,7 +403,7 @@ async def publish_version(
             task_type=task_type,  # Phase 2.9: Task-specific versioning
             version_number=new_version_number,
             version_type="published",
-            created_by=current_user.id,
+            created_by=current_user["sub"],
             description=publish_request.description,
             annotation_count=len(annotations),
             image_count=len(unique_image_ids),
@@ -488,8 +488,8 @@ async def publish_version(
             export_path=version.export_path,
             download_url=version.download_url,
             download_url_expires_at=version.download_url_expires_at,
-            created_by_name=current_user.full_name if current_user else None,
-            created_by_email=current_user.email if current_user else None,
+            created_by_name=current_user.get("name") if current_user else None,
+            created_by_email=current_user.get("email") if current_user else None,
         )
 
     except HTTPException:

@@ -194,7 +194,7 @@ async def create_annotation(
     # Check permission (requires annotator role or higher)
     permission = labeler_db.query(ProjectPermission).filter(
         ProjectPermission.project_id == annotation.project_id,
-        ProjectPermission.user_id == current_user.id,
+        ProjectPermission.user_id == current_user["sub"],
     ).first()
 
     if not permission:
@@ -213,7 +213,7 @@ async def create_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user.id)
+    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user["sub"])
 
     # REFACTORING: Infer and store task_type using task registry
     # This is done ONCE at creation time, not on every query!
@@ -259,7 +259,7 @@ async def create_annotation(
         attributes=annotation.attributes or {},
         confidence=annotation.confidence,
         notes=annotation.notes,
-        created_by=current_user.id,
+        created_by=current_user["sub"],
         is_verified=False,
         annotation_state=annotation_state,
     )
@@ -280,14 +280,14 @@ async def create_annotation(
             "class_id": annotation.class_id,
             "class_name": annotation.class_name,
         },
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Update project stats
     await update_project_stats(
         db=labeler_db,
         project_id=annotation.project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # REFACTORING: Update image annotation status with task_type
@@ -305,7 +305,7 @@ async def create_annotation(
     # Add user info
     response_dict = {
         **new_annotation.__dict__,
-        "created_by_name": current_user.full_name,
+        "created_by_name": current_user.get("name"),
         "confirmed_by_name": None,  # New annotations are in draft state
     }
 
@@ -386,8 +386,8 @@ async def update_annotation(
         AnnotationProject.id == annotation.project_id
     ).first()
 
-    is_owner = project and project.owner_id == current_user.id
-    is_creator = annotation.created_by == current_user.id
+    is_owner = project and project.owner_id == current_user["sub"]
+    is_creator = annotation.created_by == current_user["sub"]
 
     if not (is_owner or is_creator):
         raise HTTPException(
@@ -396,7 +396,7 @@ async def update_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user.id)
+    check_image_lock(labeler_db, annotation.project_id, annotation.image_id, current_user["sub"])
 
     # Phase 8.5.1: Optimistic locking - check version
     if update_data.version is not None:
@@ -432,7 +432,7 @@ async def update_annotation(
     for key, value in update_dict.items():
         setattr(annotation, key, value)
 
-    annotation.updated_by = current_user.id
+    annotation.updated_by = current_user["sub"]
     annotation.updated_at = datetime.utcnow()
 
     # Phase 8.5.1: Increment version for optimistic locking
@@ -457,14 +457,14 @@ async def update_annotation(
         action="update",
         previous_state=previous_state,
         new_state=new_state,
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Update project stats
     await update_project_stats(
         db=labeler_db,
         project_id=annotation.project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -480,7 +480,7 @@ async def update_annotation(
     labeler_db.refresh(annotation)
 
     # User info removed - User DB dependency eliminated
-    updated_by_name = current_user.full_name
+    updated_by_name = current_user.get("name")
     created_by_name = None
     confirmed_by_name = None
 
@@ -531,8 +531,8 @@ async def delete_annotation(
         AnnotationProject.id == project_id
     ).first()
 
-    is_owner = project and project.owner_id == current_user.id
-    is_creator = annotation.created_by == current_user.id
+    is_owner = project and project.owner_id == current_user["sub"]
+    is_creator = annotation.created_by == current_user["sub"]
 
     if not (is_owner or is_creator):
         raise HTTPException(
@@ -541,7 +541,7 @@ async def delete_annotation(
         )
 
     # Phase 8.5.2: Check image lock (strict lock policy)
-    check_image_lock(labeler_db, project_id, image_id, current_user.id)
+    check_image_lock(labeler_db, project_id, image_id, current_user["sub"])
 
     # Store state before deletion
     previous_state = {
@@ -559,7 +559,7 @@ async def delete_annotation(
         project_id=project_id,
         action="delete",
         previous_state=previous_state,
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Delete annotation
@@ -569,7 +569,7 @@ async def delete_annotation(
     await update_project_stats(
         db=labeler_db,
         project_id=project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status after deletion
@@ -683,7 +683,7 @@ async def batch_create_annotations(
                 # Check permission (requires annotator role or higher)
                 permission = labeler_db.query(ProjectPermission).filter(
                     ProjectPermission.project_id == project_id,
-                    ProjectPermission.user_id == current_user.id,
+                    ProjectPermission.user_id == current_user["sub"],
                 ).first()
 
                 if not permission:
@@ -719,7 +719,7 @@ async def batch_create_annotations(
                 attributes=annotation_data.attributes or {},
                 confidence=annotation_data.confidence,
                 notes=annotation_data.notes,
-                created_by=current_user.id,
+                created_by=current_user["sub"],
                 is_verified=False,
                 annotation_state=ann_state,
             )
@@ -738,7 +738,7 @@ async def batch_create_annotations(
                     "geometry": annotation_data.geometry,
                     "class_id": annotation_data.class_id,
                 },
-                changed_by=current_user.id,
+                changed_by=current_user["sub"],
             )
 
             created_ids.append(new_annotation.id)
@@ -752,7 +752,7 @@ async def batch_create_annotations(
         await update_project_stats(
             db=labeler_db,
             project_id=project_id,
-            user_id=current_user.id,
+            user_id=current_user["sub"],
         )
 
     labeler_db.commit()
@@ -885,7 +885,7 @@ async def confirm_annotation(
     previous_state = annotation.annotation_state
     annotation.annotation_state = "confirmed"
     annotation.confirmed_at = datetime.utcnow()
-    annotation.confirmed_by = current_user.id
+    annotation.confirmed_by = current_user["sub"]
     annotation.updated_at = datetime.utcnow()
 
     # Phase 8.5.1: Increment version for optimistic locking
@@ -899,7 +899,7 @@ async def confirm_annotation(
         action="confirm",
         previous_state={"annotation_state": previous_state},
         new_state={"annotation_state": "confirmed"},
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -919,7 +919,7 @@ async def confirm_annotation(
         annotation_state=annotation.annotation_state,
         confirmed_at=annotation.confirmed_at,
         confirmed_by=annotation.confirmed_by,
-        confirmed_by_name=current_user.full_name,
+        confirmed_by_name=current_user.get("name"),
     )
 
 
@@ -964,7 +964,7 @@ async def unconfirm_annotation(
         action="unconfirm",
         previous_state={"annotation_state": previous_state},
         new_state={"annotation_state": "draft"},
-        changed_by=current_user.id,
+        changed_by=current_user["sub"],
     )
 
     # Phase 2.7: Update image annotation status
@@ -1022,7 +1022,7 @@ async def bulk_confirm_annotations(
             previous_state = annotation.annotation_state
             annotation.annotation_state = "confirmed"
             annotation.confirmed_at = datetime.utcnow()
-            annotation.confirmed_by = current_user.id
+            annotation.confirmed_by = current_user["sub"]
             annotation.updated_at = datetime.utcnow()
 
             # Phase 8.5.1: Increment version for optimistic locking
@@ -1036,7 +1036,7 @@ async def bulk_confirm_annotations(
                 action="confirm",
                 previous_state={"annotation_state": previous_state},
                 new_state={"annotation_state": "confirmed"},
-                changed_by=current_user.id,
+                changed_by=current_user["sub"],
             )
 
             # Phase 2.7: Track affected image for status update
@@ -1049,7 +1049,7 @@ async def bulk_confirm_annotations(
                 annotation_state=annotation.annotation_state,
                 confirmed_at=annotation.confirmed_at,
                 confirmed_by=annotation.confirmed_by,
-                confirmed_by_name=current_user.full_name,
+                confirmed_by_name=current_user.get("name"),
             ))
 
         except Exception as e:
@@ -1214,8 +1214,8 @@ async def import_annotations_from_json(
                     'iscrowd': ann_data.get('iscrowd', 0),
                     'imported_from': 'annotations.json',
                 },
-                created_by=current_user.id,
-                updated_by=current_user.id,
+                created_by=current_user["sub"],
+                updated_by=current_user["sub"],
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )
@@ -1239,7 +1239,7 @@ async def import_annotations_from_json(
         )
 
     # Update project statistics
-    await update_project_stats(labeler_db, project_id, current_user.id)
+    await update_project_stats(labeler_db, project_id, current_user["sub"])
     labeler_db.commit()
 
     return {

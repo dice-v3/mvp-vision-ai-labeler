@@ -98,8 +98,8 @@ def import_annotations_to_db(
                 annotation_type=annotation_type,
                 geometry=geometry,
                 annotation_state='confirmed',
-                created_by=current_user.id,
-                confirmed_by=current_user.id,
+                created_by=current_user["sub"],
+                confirmed_by=current_user["sub"],
                 confirmed_at=datetime.utcnow(),
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()

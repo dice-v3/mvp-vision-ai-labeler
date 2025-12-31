@@ -103,7 +103,7 @@ async def acquire_lock(
         db=labeler_db,
         project_id=project_id,
         image_id=image_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Enrich with user info
@@ -135,7 +135,7 @@ async def release_lock(
         db=labeler_db,
         project_id=project_id,
         image_id=image_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     return result
@@ -161,7 +161,7 @@ async def send_heartbeat(
         db=labeler_db,
         project_id=project_id,
         image_id=image_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
     )
 
     # Enrich with user info

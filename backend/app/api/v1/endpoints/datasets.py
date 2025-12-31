@@ -193,7 +193,7 @@ async def create_dataset(
         id=dataset_id,
         name=dataset.name,
         description=dataset.description,
-        owner_id=current_user.id,
+        owner_id=current_user["sub"],
         storage_path=storage_path,
         storage_type="s3",
         format="images",
@@ -212,9 +212,9 @@ async def create_dataset(
     # Create owner permission record (SAME TRANSACTION)
     db_permission = DatasetPermission(
         dataset_id=dataset_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role="owner",
-        granted_by=current_user.id,
+        granted_by=current_user["sub"],
         granted_at=datetime.utcnow(),
     )
     labeler_db.add(db_permission)
@@ -240,7 +240,7 @@ async def create_dataset(
         name=dataset.name,
         description=dataset.description or f"Annotation project for {dataset.name}",
         dataset_id=dataset_id,
-        owner_id=current_user.id,
+        owner_id=current_user["sub"],
         task_types=task_types,
         task_config=task_config,
         task_classes={},  # Empty classes - to be added later
@@ -251,7 +251,7 @@ async def create_dataset(
         status="active",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        last_updated_by=current_user.id,
+        last_updated_by=current_user["sub"],
     )
     labeler_db.add(db_project)
 
@@ -260,9 +260,9 @@ async def create_dataset(
 
     db_project_permission = ProjectPermission(
         project_id=project_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role="owner",
-        granted_by=current_user.id,
+        granted_by=current_user["sub"],
         granted_at=datetime.utcnow(),
     )
     labeler_db.add(db_project_permission)
@@ -314,14 +314,14 @@ async def list_datasets(
     # Get dataset IDs where user has explicit permissions
     user_dataset_permissions = (
         labeler_db.query(DatasetPermission.dataset_id)
-        .filter(DatasetPermission.user_id == current_user.id)
+        .filter(DatasetPermission.user_id == current_user["sub"])
         .all()
     )
     permitted_dataset_ids = [perm.dataset_id for perm in user_dataset_permissions]
 
     # Build filter conditions
     filter_conditions = [
-        Dataset.owner_id == current_user.id,  # User owns the dataset
+        Dataset.owner_id == current_user["sub"],  # User owns the dataset
         Dataset.visibility == 'public'  # Dataset is public
     ]
 
@@ -549,7 +549,7 @@ async def get_or_create_project_for_dataset(
             name=dataset.name,
             description=f"Annotation project for {dataset.name}",
             dataset_id=dataset_id,
-            owner_id=current_user.id,
+            owner_id=current_user["sub"],
             task_types=task_types,
             task_config=task_config,
             task_classes=task_classes,  # Phase 2.9: Task-based classes
@@ -559,7 +559,7 @@ async def get_or_create_project_for_dataset(
             annotated_images=annotated_images,
             total_annotations=total_annotations,
             status="active",
-            last_updated_by=current_user.id,
+            last_updated_by=current_user["sub"],
         )
         labeler_db.add(project)
         labeler_db.commit()
@@ -850,7 +850,7 @@ async def delete_dataset(
         )
 
     # Check permissions - only owner can delete
-    if dataset.owner_id != current_user.id:
+    if dataset.owner_id != current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the dataset owner can delete the dataset"
@@ -937,7 +937,7 @@ async def invite_user_to_dataset(
     #     dataset_id=dataset_id,
     #     user_id=user.id,
     #     role=request.role,
-    #     granted_by=current_user.id,
+    #     granted_by=current_user["sub"],
     #     granted_at=datetime.utcnow(),
     # )
     # labeler_db.add(permission)
@@ -945,7 +945,7 @@ async def invite_user_to_dataset(
     # labeler_db.refresh(permission)
     #
     # # Get granted_by user info
-    # granted_by_user = user_db.query(User).filter(User.id == current_user.id).first()
+    # granted_by_user = user_db.query(User).filter(User.id == current_user["sub"]).first()
     #
     # # Build response
     # response_dict = {
@@ -1042,7 +1042,7 @@ async def update_user_permission(
         )
 
     # Can't change own permission
-    if user_id == current_user.id:
+    if user_id == current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot change your own permission"
@@ -1101,7 +1101,7 @@ async def remove_user_permission(
         )
 
     # Can't remove own permission
-    if user_id == current_user.id:
+    if user_id == current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot remove your own permission"
@@ -1167,7 +1167,7 @@ async def transfer_dataset_ownership(
         )
 
     # Can't transfer to yourself
-    if request.new_owner_user_id == current_user.id:
+    if request.new_owner_user_id == current_user["sub"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You are already the owner"
@@ -1178,7 +1178,7 @@ async def transfer_dataset_ownership(
         labeler_db.query(DatasetPermission)
         .filter(
             DatasetPermission.dataset_id == dataset_id,
-            DatasetPermission.user_id == current_user.id,
+            DatasetPermission.user_id == current_user["sub"],
         )
         .first()
     )
@@ -1286,7 +1286,7 @@ async def upload_dataset(
         id=dataset_id,
         name=dataset_name,
         description=dataset_description,
-        owner_id=current_user.id,
+        owner_id=current_user["sub"],
         storage_path=storage_path,
         storage_type="s3",
         format="images",
@@ -1305,9 +1305,9 @@ async def upload_dataset(
     # Step 5: Create owner permission
     db_permission = DatasetPermission(
         dataset_id=dataset_id,
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         role="owner",
-        granted_by=current_user.id,
+        granted_by=current_user["sub"],
         granted_at=datetime.utcnow(),
     )
     labeler_db.add(db_permission)
@@ -1353,7 +1353,7 @@ async def upload_dataset(
         name=dataset_name,
         description=dataset_description or f"Annotation project for {dataset_name}",
         dataset_id=dataset_id,
-        owner_id=current_user.id,
+        owner_id=current_user["sub"],
         task_types=task_types_list,
         task_config=task_config,
         task_classes=task_classes,
@@ -1364,7 +1364,7 @@ async def upload_dataset(
         status="active",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        last_updated_by=current_user.id,
+        last_updated_by=current_user["sub"],
     )
     labeler_db.add(db_project)
 
