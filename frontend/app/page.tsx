@@ -8,6 +8,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { useAuth } from '@/lib/auth/context';
 import { APIClient } from '@/lib/api/client';
 import { listDatasets, updateDataset } from '@/lib/api/datasets';
@@ -40,6 +41,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading, login, logout } = useAuth();
 
+  // Silent SSO check state
+  const [ssoCheckDone, setSsoCheckDone] = useState(false);
+  const [ssoChecking, setSsoChecking] = useState(false);
+
   // Phase 17: SSO token handling (Platform → Labeler)
   useEffect(() => {
     // Check for SSO token in query parameters
@@ -57,6 +62,30 @@ export default function DashboardPage() {
       window.location.reload();
     }
   }, []);
+
+  // Silent SSO check: Try to login with Keycloak session if exists
+  useEffect(() => {
+    // Skip if already authenticated or still loading
+    if (authLoading || user) return;
+
+    // Check if SSO check was already attempted (from sessionStorage)
+    const ssoCheckAttempted = sessionStorage.getItem('sso_check_done');
+    if (ssoCheckAttempted) {
+      setSsoCheckDone(true);
+      return;
+    }
+
+    // Attempt silent SSO check
+    setSsoChecking(true);
+    
+    // Set flag before redirect to prevent infinite loop
+    sessionStorage.setItem('sso_check_done', 'true');
+    
+    // Redirect to Keycloak with prompt=none for silent check
+    // If Keycloak has session → auto login → callback to /
+    // If no session → error page → redirects to / with sso_check_done flag
+    signIn('keycloak', { callbackUrl: '/' }, { prompt: 'none' });
+  }, [authLoading, user]);
 
   // Phase 15: View state management (dataset view vs admin views)
   const [currentView, setCurrentView] = useState<'dataset' | 'admin-datasets' | 'admin-audit-logs' | 'admin-stats'>('dataset');
@@ -337,7 +366,8 @@ export default function DashboardPage() {
     setCurrentView('admin-stats');
   };
 
-  if (authLoading || loading) {
+  // Show loading while checking auth or SSO
+  if (authLoading || loading || ssoChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -345,13 +375,13 @@ export default function DashboardPage() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
-          <p className="text-gray-600">로딩 중...</p>
+          <p className="text-gray-600">{ssoChecking ? 'SSO 확인 중...' : '로딩 중...'}</p>
         </div>
       </div>
     );
   }
 
-  // Show login button for unauthenticated users
+  // Show login button for unauthenticated users (after SSO check completed)
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
