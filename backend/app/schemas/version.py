@@ -22,7 +22,7 @@ class VersionResponse(BaseModel):
     version_number: str
     version_type: str  # 'working' | 'published'
     created_at: datetime
-    created_by: Optional[int] = None
+    created_by: Optional[str] = None  # Keycloak user sub (UUID)
     description: Optional[str] = None
     annotation_count: Optional[int] = None
     image_count: Optional[int] = None

@@ -44,7 +44,7 @@ class AnnotationResponse(BaseModel):
     attributes: Dict[str, Any]
     confidence: Optional[int] = None
     created_by: str  # Keycloak user sub (UUID)
-    updated_by: Optional[int] = None
+    updated_by: Optional[str] = None  # Keycloak user sub (UUID)
     is_verified: bool
     notes: Optional[str] = None
 
@@ -54,7 +54,7 @@ class AnnotationResponse(BaseModel):
     # Phase 2.7: Confirmation fields
     annotation_state: str = "draft"  # draft, confirmed, verified
     confirmed_at: Optional[datetime] = None
-    confirmed_by: Optional[int] = None
+    confirmed_by: Optional[str] = None  # Keycloak user sub (UUID)
 
     created_at: datetime
     updated_at: datetime
@@ -116,7 +116,7 @@ class ConfirmResponse(BaseModel):
     annotation_id: int
     annotation_state: str
     confirmed_at: Optional[datetime] = None
-    confirmed_by: Optional[int] = None
+    confirmed_by: Optional[str] = None  # Keycloak user sub (UUID)
     confirmed_by_name: Optional[str] = None
 
 
