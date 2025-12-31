@@ -41,7 +41,7 @@ def upgrade():
         'audit_logs',
         sa.Column('id', sa.BigInteger(), nullable=False, autoincrement=True),
         sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('user_id', sa.Integer(), nullable=True),  # Nullable for system events
+        sa.Column('user_id', sa.String(length=36), nullable=True),  # Nullable for system events
         sa.Column('action', sa.String(length=100), nullable=False),  # 'create', 'update', 'delete', 'login', etc.
         sa.Column('resource_type', sa.String(length=50), nullable=True),  # 'dataset', 'project', 'annotation', etc.
         sa.Column('resource_id', sa.String(length=255), nullable=True),  # ID of the affected resource
@@ -67,7 +67,7 @@ def upgrade():
     op.create_table(
         'user_sessions',
         sa.Column('id', sa.BigInteger(), nullable=False, autoincrement=True),
-        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.String(length=36), nullable=False),
         sa.Column('session_id', sa.String(length=255), nullable=False),
         sa.Column('login_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('logout_at', sa.DateTime(), nullable=True),

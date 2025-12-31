@@ -27,9 +27,9 @@ def upgrade():
         'project_permissions',
         sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('project_id', sa.String(length=50), nullable=False),
-        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.String(length=36), nullable=False),
         sa.Column('role', sa.String(length=20), nullable=False),
-        sa.Column('granted_by', sa.Integer(), nullable=False),
+        sa.Column('granted_by', sa.String(length=36), nullable=False),
         sa.Column('granted_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(

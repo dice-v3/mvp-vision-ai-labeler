@@ -48,7 +48,7 @@ def upgrade() -> None:
     # Add new columns to annotations table
     op.add_column('annotations', sa.Column('annotation_state', sa.String(length=20), nullable=False, server_default='draft'))
     op.add_column('annotations', sa.Column('confirmed_at', sa.DateTime(), nullable=True))
-    op.add_column('annotations', sa.Column('confirmed_by', sa.Integer(), nullable=True))
+    op.add_column('annotations', sa.Column('confirmed_by', sa.String(length=36), nullable=True))
 
     # Create index on annotation_state
     op.create_index('ix_annotations_annotation_state', 'annotations', ['annotation_state'])

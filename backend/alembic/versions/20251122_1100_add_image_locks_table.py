@@ -25,7 +25,7 @@ def upgrade():
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('project_id', sa.String(50), nullable=False),
         sa.Column('image_id', sa.String(255), nullable=False),
-        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.String(length=36), nullable=False),
         sa.Column('locked_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
         sa.Column('heartbeat_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
