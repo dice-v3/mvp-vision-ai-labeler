@@ -9,6 +9,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
+import { APIClient } from '@/lib/api/client';
 import { listDatasets, updateDataset } from '@/lib/api/datasets';
 import { getProjectForDataset, getDatasetImages, getDatasetSize, type DatasetImage, type DatasetSize } from '@/lib/api/datasets';
 import { getProjectHistory, type AnnotationHistory } from '@/lib/api/annotations';
@@ -39,20 +40,20 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading, login, logout } = useAuth();
 
-  // Phase 17: SSO token handling
+  // Phase 17: SSO token handling (Platform → Labeler)
   useEffect(() => {
     // Check for SSO token in query parameters
     const params = new URLSearchParams(window.location.search);
     const ssoToken = params.get('sso_token');
 
     if (ssoToken) {
-      // Store token in localStorage and update apiClient
-      localStorage.setItem('access_token', ssoToken);
+      // Update API client token cache (no localStorage for security)
+      APIClient.updateToken(ssoToken);
 
       // Remove token from URL (clean URL)
       window.history.replaceState({}, '', '/');
 
-      // Reload page to reinitialize auth context with new token
+      // Force re-render to use new token
       window.location.reload();
     }
   }, []);
