@@ -216,11 +216,12 @@ def export_to_dice(
 
         # Find labeled_by: Check all annotations for created_by
         if image_annotations and platform_db:
-            # Try to find any annotation with created_by
+            # Try to find any annotation with created_by (Keycloak UUID)
             for ann in image_annotations:
                 if ann.created_by:
+                    # Note: ann.created_by is Keycloak UUID (string), not User.id (integer)
                     labeled_by_user = platform_db.query(User).filter(
-                        User.id == ann.created_by
+                        User.keycloak_id == ann.created_by
                     ).first()
                     if labeled_by_user:
                         break
@@ -234,8 +235,9 @@ def export_to_dice(
                     break
 
             if confirmed_by_id:
+                # Note: confirmed_by is Keycloak UUID (string), not User.id (integer)
                 reviewed_by_user = platform_db.query(User).filter(
-                    User.id == confirmed_by_id
+                    User.keycloak_id == confirmed_by_id
                 ).first()
 
         # image_id is now file_path, so use it directly as file_name
