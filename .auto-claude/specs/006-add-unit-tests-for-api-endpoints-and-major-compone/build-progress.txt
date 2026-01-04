@@ -3,7 +3,7 @@
 ## Task Overview
 Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend components to improve code quality, enable safe refactoring, and catch regressions early.
 
-## Current Status: In Progress (8/30 subtasks complete)
+## Current Status: In Progress (9/30 subtasks complete)
 - Implementation plan created with 10 phases and 30 subtasks
 - Phase 1 (Testing Infrastructure) COMPLETE
 - Phase 2 (Backend Core API Endpoint Tests) COMPLETE
@@ -16,6 +16,7 @@ Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend c
 - ✅ Subtask 2.4: Project permissions endpoint tests complete
 - ✅ Subtask 2.5: Projects classes endpoint tests complete
 - ✅ Subtask 3.1: Dataset endpoint tests complete
+- ✅ Subtask 3.2: Platform dataset endpoint tests complete
 
 ## Plan Summary
 
@@ -599,10 +600,96 @@ Created comprehensive test suite for dataset endpoints:
 - ✅ Tests follow pytest conventions and existing patterns
 - ✅ Covers pagination, filtering, access control, and statistics
 
+### Subtask 3.2: Test platform_datasets.py Endpoints ✅
+**Date**: 2026-01-04
+**Commit**: df47629
+
+Created comprehensive test suite for platform dataset endpoints (service-to-service API):
+
+**Files Created**:
+- `backend/tests/api/test_platform_datasets.py` (1,320 lines, 6 test classes, 40 test methods)
+
+**Test Coverage**:
+
+**GetDatasetForPlatform** (5 test scenarios):
+- Successful dataset retrieval with complete metadata
+- Dataset not found (404)
+- Access without service JWT (401/403)
+- Task-specific statistics from AnnotationVersion
+- JSON field parsing (class_names, tags)
+
+**ListDatasetsForPlatform** (12 test scenarios):
+- Empty dataset list
+- Basic listing with pagination
+- Pagination with custom page and limit
+- Filter by user_id (owner)
+- Filter by visibility (public/private/organization)
+- Filter by labeled status (true/false)
+- Filter by format (coco/yolo/dice)
+- Filter by task_type (using published_task_types array)
+- Multiple filters combined
+- Limit validation (max 200)
+- Page validation (min 1)
+
+**GetDatasetsBatchForPlatform** (6 test scenarios):
+- Successful batch retrieval (multiple datasets)
+- Batch with some missing datasets (partial success)
+- Specific fields selection (partial data)
+- All fields request (complete data)
+- Empty dataset_ids validation (422)
+- Exceeds max items validation (50 limit)
+
+**CheckDatasetPermissionForPlatform** (8 test scenarios):
+- Owner permission check (has_access=true, role=owner)
+- Public dataset access (has_access=true, reason=public_dataset)
+- Public dataset with explicit permission (includes role)
+- Explicit permission on private dataset (has_access=true)
+- No access (has_access=false, reason=no_access)
+- Dataset not found (404)
+- Various role types (admin, reviewer, annotator, viewer)
+
+**GenerateDownloadUrlForPlatform** (11 test scenarios):
+- Successful download URL generation with presigned S3 URL
+- Owner access to download
+- Public dataset download access
+- Download with explicit permission
+- No access (403)
+- Dataset not found (404)
+- No annotation file (404)
+- Expiration validation (min 60s, max 86400s)
+- Default expiration (3600s)
+
+**Integration Tests** (2 test scenarios):
+- Full workflow: discover → check permission → download
+- Batch get with permission checks
+
+**Key Features**:
+- Service JWT authentication fixtures (mock Platform service credentials)
+- Read-only and read-write scope testing
+- Filtering by published_task_types using PostgreSQL array queries
+- Batch operations with flexible field selection
+- Access control: owner, public, explicit permission
+- Presigned URL generation (mocked StorageClient)
+- Integration tests for realistic workflows
+
+**Testing Approach**:
+- Created platform_client fixtures with service JWT mocking
+- Uses pytest fixtures from conftest.py and db_fixtures.py
+- Mocks get_service_jwt_payload and require_service_scope dependencies
+- Comprehensive validation of all filter combinations
+- Tests pagination, access control, and batch operations
+- Mocks StorageClient for S3 presigned URL generation
+
+**Verification**:
+- ✅ Python syntax check passed
+- ✅ 40 test scenarios covering all platform dataset endpoints
+- ✅ Tests follow pytest conventions and existing patterns
+- ✅ Covers service authentication, filtering, permissions, and downloads
+
 ## Next Steps
-1. Continue Phase 3: Write tests for platform_datasets.py (subtask 3.2)
-2. OR continue Phase 3: Write tests for admin_datasets.py (subtask 3.3)
-3. OR continue Phase 4: Write tests for annotations.py (subtask 4.1)
+1. Continue Phase 3: Write tests for admin_datasets.py (subtask 3.3)
+2. OR continue Phase 4: Write tests for annotations.py (subtask 4.1)
+3. OR continue Phase 4: Write tests for image_locks.py (subtask 4.2)
 
 ---
-Last Updated: 2026-01-04 19:00:00
+Last Updated: 2026-01-04 19:50:00
