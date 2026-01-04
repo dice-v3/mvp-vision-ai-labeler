@@ -13,9 +13,17 @@ The test infrastructure provides:
 
 ## Running Tests
 
+### Quick Start (Limited - SQLite)
+
 ```bash
-# Run all tests
-pytest
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pip install pytest pytest-asyncio pytest-cov
+
+# Run tests (some will be skipped due to SQLite limitations)
+pytest tests/
 
 # Run with verbose output
 pytest -v
@@ -25,10 +33,39 @@ pytest tests/api/test_auth.py
 
 # Run with coverage
 pytest --cov=app --cov-report=html
-
-# Run specific test
-pytest tests/api/test_auth.py::test_get_current_user_info
 ```
+
+### Full Test Suite (Recommended - PostgreSQL)
+
+**Important**: Some models use PostgreSQL ARRAY types which are not supported in SQLite. For complete test execution, use PostgreSQL:
+
+```bash
+# Option 1: Use Docker (recommended)
+docker run -d -p 5432:5432 \
+  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=test_db \
+  --name test_postgres \
+  postgres:15
+
+# Option 2: Use existing PostgreSQL instance
+export TEST_DATABASE_URL="postgresql://user:password@localhost:5432/test_db"
+
+# Then run all tests
+pytest tests/
+
+# Run with coverage
+pytest tests/ --cov=app --cov-report=html
+```
+
+### Known Limitations with SQLite
+
+The following models use PostgreSQL ARRAY types and will cause test setup to fail:
+
+- `Dataset.published_task_types` - affects platform dataset tests
+- `AnnotationProject.task_types` - affects project and class management tests
+- `AnnotationTask.image_ids` - affects annotation task tests
+
+**Workaround**: Tests will be automatically skipped if database setup fails due to type incompatibility.
 
 ## Test Structure
 

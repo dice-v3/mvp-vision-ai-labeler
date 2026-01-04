@@ -9,7 +9,7 @@ This package contains pytest fixtures for testing the backend API:
 All fixtures are automatically loaded by pytest through conftest.py.
 """
 
-from backend.tests.fixtures.auth_fixtures import (
+from tests.fixtures.auth_fixtures import (
     mock_current_user,
     mock_admin_user,
     mock_reviewer_user,
@@ -22,7 +22,7 @@ from backend.tests.fixtures.auth_fixtures import (
     admin_auth_headers,
 )
 
-from backend.tests.fixtures.db_fixtures import (
+from tests.fixtures.db_fixtures import (
     test_user_id,
     test_dataset_id,
     test_project_id,

@@ -15,8 +15,8 @@ from app.db.models.labeler import (
     AnnotationProject,
     ProjectPermission,
     DatasetPermission,
-    AnnotationClass,
-    ImageAnnotation,
+    Annotation,
+    ImageMetadata,
 )
 
 
@@ -345,13 +345,16 @@ def create_dataset_permission():
 @pytest.fixture
 def create_annotation_class():
     """
-    Factory fixture to create annotation classes.
+    Factory fixture to add annotation classes to a project.
+
+    Note: Classes are stored in task_classes JSONB field, not as separate models.
 
     Usage:
         def test_classes(labeler_db, create_annotation_class):
-            cls = create_annotation_class(
+            cls_dict = create_annotation_class(
                 labeler_db,
                 project_id="proj_test_001",
+                task_type="detection",
                 name="person",
                 color="#FF0000",
             )
@@ -359,26 +362,52 @@ def create_annotation_class():
     def _create_class(
         db: Session,
         project_id: str,
+        task_type: str = "detection",
         class_id: str = None,
         name: str = "test_class",
         color: str = "#FF0000",
+        order: int = None,
         **kwargs
-    ) -> AnnotationClass:
+    ) -> Dict[str, Any]:
         if class_id is None:
-            class_id = f"cls_{name}_{project_id}"
+            class_id = f"cls_{name}"
 
-        annotation_class = AnnotationClass(
-            id=class_id,
-            project_id=project_id,
-            name=name,
-            color=color,
-            created_at=datetime.utcnow(),
+        # Get the project
+        project = db.query(AnnotationProject).filter(AnnotationProject.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        # Initialize task_classes if not exists
+        if project.task_classes is None:
+            project.task_classes = {}
+
+        # Initialize task type if not exists
+        if task_type not in project.task_classes:
+            project.task_classes[task_type] = []
+
+        # Determine order if not provided
+        if order is None:
+            order = len(project.task_classes[task_type])
+
+        # Create class dict
+        class_dict = {
+            "id": class_id,
+            "name": name,
+            "color": color,
+            "order": order,
             **kwargs
-        )
-        db.add(annotation_class)
+        }
+
+        # Add to task_classes
+        project.task_classes[task_type].append(class_dict)
+
+        # Mark as modified for SQLAlchemy to detect change
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(project, "task_classes")
+
         db.commit()
-        db.refresh(annotation_class)
-        return annotation_class
+        db.refresh(project)
+        return class_dict
 
     return _create_class
 
@@ -390,7 +419,7 @@ def create_annotation_class():
 @pytest.fixture
 def create_annotation():
     """
-    Factory fixture to create image annotations.
+    Factory fixture to create annotations.
 
     Usage:
         def test_annotations(labeler_db, create_annotation):
@@ -398,29 +427,40 @@ def create_annotation():
                 labeler_db,
                 image_id="img_001",
                 project_id="proj_test_001",
-                annotations_data=[...],
+                annotation_type="bbox",
+                geometry={"x": 100, "y": 100, "width": 200, "height": 200},
             )
     """
     def _create_annotation(
         db: Session,
-        annotation_id: str = "ann_test_001",
+        annotation_id: str = None,
         image_id: str = "img_test_001",
         project_id: str = "proj_test_001",
         user_id: str = "test-user-id",
-        annotations_data: list = None,
+        annotation_type: str = "bbox",
+        geometry: dict = None,
+        class_id: str = None,
+        task_type: str = "detection",
         **kwargs
-    ) -> ImageAnnotation:
-        if annotations_data is None:
-            annotations_data = []
+    ) -> Annotation:
+        if annotation_id is None:
+            import uuid
+            annotation_id = f"ann_{uuid.uuid4().hex[:8]}"
 
-        annotation = ImageAnnotation(
+        if geometry is None:
+            geometry = {"x": 100, "y": 100, "width": 200, "height": 200}
+
+        annotation = Annotation(
             id=annotation_id,
             image_id=image_id,
             project_id=project_id,
-            user_id=user_id,
-            annotations=annotations_data,
-            status="in_progress",
+            created_by=user_id,
+            annotation_type=annotation_type,
+            geometry=geometry,
+            class_id=class_id,
+            task_type=task_type,
             version=1,
+            is_confirmed=False,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
             **kwargs
