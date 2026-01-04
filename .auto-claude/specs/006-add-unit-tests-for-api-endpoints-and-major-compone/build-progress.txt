@@ -3,10 +3,13 @@
 ## Task Overview
 Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend components to improve code quality, enable safe refactoring, and catch regressions early.
 
-## Current Status: In Progress (1/30 subtasks complete)
+## Current Status: In Progress (3/30 subtasks complete)
 - Implementation plan created with 10 phases and 30 subtasks
-- Phase 1 (Testing Infrastructure) started
+- Phase 1 (Testing Infrastructure) COMPLETE
+- Phase 2 (Backend Core API Endpoint Tests) started
 - ✅ Subtask 1.1: Backend API test infrastructure complete
+- ✅ Subtask 1.2: Frontend component test utilities complete
+- ✅ Subtask 2.1: Auth endpoint tests complete
 
 ## Plan Summary
 
@@ -89,9 +92,92 @@ Created comprehensive test infrastructure for backend API testing:
 - Factory patterns for flexible test data creation
 - All fixtures validated with smoke tests
 
+### Subtask 1.2: Create Frontend Component Test Utilities ✅
+**Date**: 2026-01-04
+**Commit**: 261b144
+
+Created comprehensive test utilities for frontend component testing:
+
+**Files Created**:
+- `frontend/lib/test-utils/component-test-utils.ts` (276 lines)
+  - Custom renderWithProviders function with React Query and Auth context
+  - Mock canvas and image element creators
+  - Mock event creators (mouse, wheel, keyboard)
+  - Geometry helpers (point in bbox, bbox overlap, distance)
+  - Store update waiting utilities
+  - Re-exports of testing library utilities
+
+- `frontend/lib/test-utils/mock-stores.ts` (464 lines)
+  - MockAnnotationStore interface with full state and actions
+  - createMockAnnotationStore factory with configurable overrides
+  - Mock toast and confirm stores
+  - Factory functions for test data (projects, images, annotations, classes)
+  - createMockAnnotations/Images helpers for bulk data
+
+- `frontend/lib/test-utils/mock-api.ts` (400 lines)
+  - Mock API responses for annotations, projects, classes
+  - Mock image locks, export, and version diff APIs
+  - Response builders (error, paginated, success, error responses)
+  - setupAllAPIMocks and resetAllAPIMocks utilities
+  - All mocks use vi.fn() for call verification
+
+- `frontend/lib/test-utils/index.ts` (14 lines)
+  - Central export point for all test utilities
+
+- `frontend/lib/test-utils/__tests__/test-utils.test.ts` (190 lines)
+  - Verification tests for mock stores
+  - Tests for API response builders
+  - Tests for component test utilities
+  - Geometry helper tests
+
+**Key Features**:
+- Full Zustand store mocking with all state and actions
+- React Query and Auth context provider wrapping
+- Comprehensive API mocking for all endpoints used by components
+- Factory pattern for flexible test data generation
+- Canvas/image/event helpers for UI testing
+- Geometry utilities for annotation testing
+- All utilities verified with unit tests
+
+### Subtask 2.1: Test auth.py Endpoints ✅
+**Date**: 2026-01-04
+**Commit**: 0b454e1
+
+Created comprehensive test suite for authentication endpoints:
+
+**Files Created**:
+- `backend/tests/api/test_auth.py` (336 lines, 12 test methods)
+
+**Test Coverage**:
+- Valid token authentication with standard user
+- Valid token authentication with admin user
+- Missing authentication token (403 error)
+- Expired JWT token (401 error)
+- Invalid/malformed JWT token (401 error)
+- Invalid audience error handling
+- Invalid issuer error handling
+- Token claims extraction and verification
+- Custom roles handling
+- Minimal user data handling
+- Generic authentication error handling
+- Response model validation (KeycloakUserResponse schema)
+
+**Testing Approach**:
+- Uses pytest fixtures from auth_fixtures.py and conftest.py
+- Leverages authenticated_client, admin_client, and client fixtures
+- Uses dependency overrides to simulate error conditions
+- Tests all JWT validation error paths from security.py
+- Validates all required and optional fields in response
+
+**Verification**:
+- ✅ Python syntax check passed
+- ✅ All imports validated
+- ✅ 12 test scenarios covering all authentication flows
+- ✅ Tests follow pytest conventions and existing patterns
+
 ## Next Steps
-1. Continue Phase 1: Create frontend component test utilities (subtask 1.2)
-2. OR proceed to Phase 2: Begin writing API endpoint tests (starting with auth.py)
+1. Continue Phase 2: Write tests for users.py endpoints (subtask 2.2)
+2. OR begin Phase 7: Write frontend Canvas component tests (subtask 7.1)
 
 ---
-Last Updated: 2026-01-04 18:18:00
+Last Updated: 2026-01-04 18:40:00
