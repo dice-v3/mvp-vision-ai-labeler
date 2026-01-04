@@ -238,13 +238,13 @@
           "subtask_id": "6.1",
           "title": "Test admin_stats.py endpoints",
           "description": "Write tests for admin statistics retrieval, metrics calculation, user activity stats, and system health. Verify admin role requirement.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_admin_stats.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for admin statistics endpoints with 48 test scenarios covering GET /api/v1/admin/stats/overview (7 tests), GET /api/v1/admin/stats/users (8 tests), GET /api/v1/admin/stats/resources (10 tests), GET /api/v1/admin/stats/performance (12 tests), GET /api/v1/admin/stats/sessions (8 tests), and integration tests (3 tests). All tests verify admin role requirement and follow pytest conventions using fixtures from conftest.py and auth_fixtures.py. File: backend/tests/api/test_admin_stats.py (1,200 lines)."
         },
         {
           "subtask_id": "6.2",
