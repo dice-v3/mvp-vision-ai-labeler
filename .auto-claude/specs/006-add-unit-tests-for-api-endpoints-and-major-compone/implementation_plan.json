@@ -33,7 +33,7 @@
           "subtask_id": "1.2",
           "title": "Create frontend component test utilities",
           "description": "Setup test utilities for Canvas, ImageList, and RightPanel components including mock stores, mock API responses, and rendering helpers.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/lib/test-utils/component-test-utils.ts",
             "frontend/lib/test-utils/mock-stores.ts",
@@ -41,7 +41,7 @@
           ],
           "dependencies": [],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test utilities for frontend component testing including component-test-utils.ts (276 lines), mock-stores.ts (464 lines), and mock-api.ts (400 lines) with full support for Zustand stores, React Query, auth context, and all API endpoints. Includes verification tests and index.ts for easy imports."
         }
       ]
     },
@@ -54,13 +54,13 @@
           "subtask_id": "2.1",
           "title": "Test auth.py endpoints",
           "description": "Write tests for /me endpoint including valid token, invalid token, missing token, and token claims extraction.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_auth.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "small",
-          "notes": ""
+          "notes": "Created comprehensive test suite for GET /api/v1/auth/me endpoint with 12 test scenarios covering valid tokens, invalid tokens, missing tokens, expired tokens, invalid audience/issuer, token claims extraction, custom roles, minimal user data, authentication errors, and response model validation. 336 lines of test coverage following pytest conventions and using fixtures from auth_fixtures.py and conftest.py."
         },
         {
           "subtask_id": "2.2",
