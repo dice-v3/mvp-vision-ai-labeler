@@ -1634,119 +1634,70 @@ Created comprehensive test suite for Canvas component drawing functionality:
 
 Created comprehensive test suite for Canvas component zoom and pan functionality:
 
+### Subtask 7.4: Test Canvas.tsx Selection and Editing ✅
+**Date**: 2026-01-04
+**Commit**: f362dcf
+
+Created comprehensive test suite for Canvas component selection and editing functionality:
+
 **Files Created**:
-- `frontend/components/annotation/__tests__/Canvas-transforms.test.tsx` (988 lines, 70+ test scenarios)
+- `frontend/components/annotation/__tests__/Canvas-selection.test.tsx` (1,422 lines, 38 test scenarios)
 
 **Test Coverage**:
 
-**Zoom Functionality** (25 test scenarios):
-- Mouse wheel zoom in/out (4 tests)
-  - Zoom in on mouse wheel up (deltaY < 0)
-  - Zoom out on mouse wheel down (deltaY > 0)
-  - Handle multiple zoom events
-  - Prevent default wheel behavior
-- Zoom controls via buttons (6 tests)
-  - Zoom in button functionality
-  - Zoom out button functionality
-  - Display current zoom percentage
-  - Handle zoom at 100%, 200%, 50%
-- Fit to screen functionality (3 tests)
-  - Reset zoom to 1.0 when fit button clicked
-  - Reset pan to origin when fit button clicked
-  - Reset both zoom and pan together
-- Zoom limits and edge cases (4 tests)
-  - Handle very high zoom levels (10x, 1000%)
-  - Handle very low zoom levels (0.1x, 10%)
-  - Handle fractional zoom values (1.33x, 133%)
-  - Round zoom percentage for display (1.456x → 146%)
-- Zoom percentage display (4 tests)
-  - Display 150% for 1.5x zoom
-  - Display 100% for 1.0x zoom
-  - Display 200% for 2.0x zoom
-  - Display 50% for 0.5x zoom
-- Multiple zoom operations (4 tests)
-  - Zoom in followed by pan
-  - Pan followed by zoom out
-  - Multiple zoom and pan operations
-  - Rapid zoom changes
+**Annotation Selection** (8 test scenarios):
+- Click on bbox annotation to select
+- Click on polygon annotation to select
+- Click on polyline annotation to select
+- Click on circle annotation to select
+- Click outside to deselect
+- Hidden annotations cannot be selected
+- First annotation selected when multiple overlap
+- Cursor updates when hovering over annotation in select mode
 
-**Pan/Drag Functionality** (15 test scenarios):
-- Pan state management (4 tests)
-  - Initialize with no pan offset
-  - Update pan state
-  - Handle negative pan values
-  - Handle large pan values
-- Pan reset (2 tests)
-  - Reset pan when fit button clicked
-  - Maintain pan when only zoom changes
-- Cursor changes during pan (2 tests)
-  - Show default cursor when not panning
-  - Show grabbing cursor when panning
-- Pan with different zoom levels (3 tests)
-  - Allow pan at 100% zoom
-  - Allow pan at 200% zoom
-  - Allow pan at 50% zoom
-- Pan value handling (4 tests)
-  - Handle positive pan offsets
-  - Handle negative pan offsets
-  - Handle large pan offsets (10000, 10000)
-  - Handle fractional pan values (123.456, 789.012)
+**Bbox Resizing** (6 test scenarios):
+- Start bbox resize when clicking on handle
+- Resize bbox when dragging handle
+- Handle all bbox resize handles (n, s, e, w, ne, nw, se, sw)
+- Block bbox resize when image is not locked
+- Update cursor based on handle position
 
-**Coordinate Transformations** (18 test scenarios):
-- Screen to canvas transformation (2 tests)
-  - Transform screen coordinates to canvas coordinates
-  - Handle canvas at different positions
-- Canvas to image transformation (2 tests)
-  - Transform canvas coordinates to image coordinates
-  - Handle transformation with zoom
-- Image to canvas transformation (2 tests)
-  - Transform image coordinates to canvas coordinates
-  - Handle transformation with zoom
-- Screen to image transformation (2 tests)
-  - Transform screen coordinates directly to image coordinates
-  - Combine screen and canvas transformations
-- Image bounds calculation (3 tests)
-  - Calculate image bounds with no zoom or pan
-  - Calculate image bounds with zoom
-  - Calculate image bounds with pan
-- Point in image detection (2 tests)
-  - Detect point inside image bounds
-  - Detect point outside image bounds
-- Coordinate clamping (2 tests)
-  - Clamp coordinates to image bounds
-  - Clamp coordinates outside bounds
-- Transform matrix tests (3 tests)
-  - Verify screen-to-canvas-to-image conversions
-  - Verify inverse transformations
-  - Verify transform composition
+**Polygon Editing** (6 test scenarios):
+- Select vertex when clicked on polygon vertex
+- Drag vertex when vertex is selected
+- Add vertex when clicking on polygon edge
+- Move entire polygon when clicking inside polygon
+- Block vertex editing when image is not locked
+- Maintain minimum 3 vertices when deleting polygon vertex
 
-**Integration Tests** (8 test scenarios):
-- Zoom + pan combinations (4 tests)
-  - Handle zoom in followed by pan
-  - Handle pan followed by zoom out
-  - Handle multiple zoom and pan operations
-  - Reset both zoom and pan to defaults
-- Multiple operations (2 tests)
-  - Maintain transform state across re-renders
-  - Handle rapid zoom changes
-- State persistence (2 tests)
-  - Handle mixed zoom in and zoom out
-  - Preserve pan when image changes
+**Polyline Editing** (4 test scenarios):
+- Select vertex when clicked on polyline vertex
+- Add vertex when clicking on polyline edge
+- Move entire polyline when clicking on line
+- Maintain minimum 2 vertices when deleting polyline vertex
 
-**Edge Cases** (9 test scenarios):
-- No image loaded (1 test)
-  - Handle zoom controls when no image is loaded
-- Boundary values (3 tests)
-  - Handle zoom at boundary values (0.01x, 1%)
-  - Handle zero zoom value
-  - Handle negative zoom values gracefully
-- Large/negative values (3 tests)
-  - Handle very large pan offsets (10000, 10000)
-  - Handle pan when canvas is not mounted
-  - Handle very large zoom values
-- Fractional values (2 tests)
-  - Handle fractional pan values
-  - Handle fractional zoom values
+**Circle Editing** (6 test scenarios):
+- Drag circle when clicking on center
+- Resize circle when clicking on radius handle
+- Handle all circle resize handles (n, s, e, w)
+- Move circle when clicking inside circle area
+- Block circle editing when image is not locked
+
+**Annotation Deletion** (2 test scenarios):
+- Handle annotation deletion via delete key
+- Delete all annotations when no annotation is selected
+
+**State Management** (3 test scenarios):
+- Clear vertex selection when clicking elsewhere
+- Clear bbox handle selection when clicking elsewhere
+- Maintain selection state when editing
+
+**Edge Cases** (5 test scenarios):
+- Handle selection when no annotations exist
+- Handle selection when annotation has invalid geometry
+- Handle rapid selection changes
+- Handle editing at zoom boundaries
+- Handle editing with large pan offset
 
 **Testing Approach**:
 - Uses vitest, React Testing Library
@@ -1754,20 +1705,32 @@ Created comprehensive test suite for Canvas component zoom and pan functionality
   - Annotation store with useAnnotationStore mock
   - API modules (annotations, projects, image-locks)
   - Toast and confirm stores
-  - Annotation tools (bbox, polygon, polyline, circle, circle3p)
-  - Annotation utilities
-  - Coordinate transform utilities
+  - Annotation tools (bbox, polygon, polyline, circle)
+  - Annotation utilities (getHandleAtPosition, pointInBbox, getCursorForHandle, getPointOnEdge)
   - Custom hooks (useCanvasState, useImageManagement, useToolState, useCanvasTransform, useAnnotationSync, useMagnifier, useMouseHandlers, useToolRenderer, useCanvasRenderer, useCanvasKeyboardShortcuts, useBatchOperations)
-  - All UI components (LockOverlay, ToolSelector, ZoomControls, NavigationButtons, CanvasActionBar, ClassSelector)
-- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage, createMockAnnotation)
-- Mock ZoomControls component with test IDs for zoom-in, zoom-out, fit-screen buttons
-- Tests follow vitest conventions and existing patterns from Canvas.test.tsx and Canvas-drawing.test.tsx
-- Covers mouse wheel events, button clicks, state management, and coordinate transformations
-- Includes integration tests for realistic zoom+pan workflows
+  - All UI components
+- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage, createMockAnnotation, createMockClass)
+- Tests follow vitest conventions and existing patterns from Canvas.test.tsx, Canvas-drawing.test.tsx, and Canvas-transforms.test.tsx
+- Covers all annotation types (bbox, polygon, polyline, circle)
+- Includes lock checks to ensure editing operations are blocked without image lock
+- Tests for all resize handles and vertex manipulation operations
 
 **Verification**:
-- ✅ 988 lines of comprehensive test coverage
-- ✅ 70+ test scenarios covering all zoom/pan/transform functionality
-- ✅ Tests follow existing patterns from Canvas.test.tsx and Canvas-drawing.test.tsx
+- ✅ 1,422 lines of comprehensive test coverage
+- ✅ 38 test scenarios covering all selection and editing functionality
+- ✅ Tests follow existing patterns from Canvas.test.tsx, Canvas-drawing.test.tsx, and Canvas-transforms.test.tsx
 - ✅ Proper mocking of all dependencies
-- ✅ Tests cover zoom (wheel + buttons), pan (drag + reset), fit-to-screen, coordinate transformations, integration scenarios, and edge cases
+- ✅ Tests cover annotation selection, bbox resizing, polygon/polyline editing, circle editing, deletion, state management, and edge cases
+
+---
+
+**Phase 7 Progress Update**:
+- ✅ Subtask 7.1: Canvas core rendering (49 tests, 863 lines)
+- ✅ Subtask 7.2: Canvas annotation drawing (82 tests, 1,211 lines)
+- ✅ Subtask 7.3: Canvas zoom and pan (70+ tests, 988 lines)
+- ✅ Subtask 7.4: Canvas selection and editing (38 tests, 1,422 lines)
+
+**Total Canvas Tests**: 239+ test scenarios, 4,484 lines
+
+---
+Last Updated: 2026-01-04
