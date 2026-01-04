@@ -145,13 +145,13 @@
           "subtask_id": "3.3",
           "title": "Test admin_datasets.py endpoints",
           "description": "Write tests for admin dataset management, dataset approval, deletion, and bulk operations. Verify admin role requirement.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_admin_datasets.py"
           ],
           "dependencies": ["1.1", "3.1"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for admin dataset endpoints with 41 test scenarios covering GET /overview (6 tests), GET /recent (8 tests), GET /{dataset_id}/details (7 tests), GET /{dataset_id}/progress (8 tests), and GET /{dataset_id}/activity (12 tests). All tests verify admin role requirement and follow pytest conventions using fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py. File: backend/tests/api/test_admin_datasets.py (1,106 lines)."
         }
       ]
     },
@@ -164,25 +164,25 @@
           "subtask_id": "4.1",
           "title": "Test annotations.py endpoints",
           "description": "Write tests for annotation CRUD, annotation versioning, annotation validation, and batch operations.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_annotations.py"
           ],
           "dependencies": ["1.1", "2.3"],
           "estimated_effort": "large",
-          "notes": ""
+          "notes": "Created comprehensive test suite for annotation endpoints with 52 test scenarios covering POST /annotations (create), GET /{id} (retrieve), PUT /{id} (update), DELETE /{id} (delete), GET /project/{id} (list), POST /batch (batch create), GET /history/project/{id} and /history/annotation/{id} (history), POST /{id}/confirm and /{id}/unconfirm (confirmation), and POST /bulk-confirm (bulk operations). Tests include CRUD operations, optimistic locking with version conflicts, permission validation (annotator role required), image lock checking, history tracking, no_object annotation auto-confirmation, task type inference, and comprehensive error handling. File: backend/tests/api/test_annotations.py (1,663 lines)."
         },
         {
           "subtask_id": "4.2",
           "title": "Test image_locks.py endpoints",
           "description": "Write tests for image locking/unlocking, lock expiration, lock stealing prevention, and concurrent access handling.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_image_locks.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for image lock endpoints with 60+ test scenarios covering POST /{project_id}/{image_id}/acquire (acquire new lock, refresh lock, lock stealing prevention, expired lock takeover), DELETE /{project_id}/{image_id} (release lock, not locked, not owner), POST /{project_id}/{image_id}/heartbeat (heartbeat success, extends expiration, not locked, not owner), GET /{project_id} (get all locks, empty list, cleanup expired locks, project isolation), GET /{project_id}/{image_id}/status (locked status, not locked, expired cleanup), DELETE /{project_id}/{image_id}/force (admin force release), and concurrent access handling scenarios. Tests include authentication validation, permission validation (annotator/viewer/admin roles), lock expiration mechanisms, heartbeat functionality, and prevention of lock stealing. All tests follow pytest conventions and use fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py. File: backend/tests/api/test_image_locks.py (1,210 lines)."
         },
         {
           "subtask_id": "4.3",

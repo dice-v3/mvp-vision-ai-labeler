@@ -3,11 +3,11 @@
 ## Task Overview
 Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend components to improve code quality, enable safe refactoring, and catch regressions early.
 
-## Current Status: In Progress (9/30 subtasks complete)
+## Current Status: In Progress (12/30 subtasks complete)
 - Implementation plan created with 10 phases and 30 subtasks
 - Phase 1 (Testing Infrastructure) COMPLETE
 - Phase 2 (Backend Core API Endpoint Tests) COMPLETE
-- Phase 3 (Backend Dataset API Tests) in progress
+- Phase 3 (Backend Dataset API Tests) COMPLETE
 - ✅ Subtask 1.1: Backend API test infrastructure complete
 - ✅ Subtask 1.2: Frontend component test utilities complete
 - ✅ Subtask 2.1: Auth endpoint tests complete
@@ -17,6 +17,9 @@ Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend c
 - ✅ Subtask 2.5: Projects classes endpoint tests complete
 - ✅ Subtask 3.1: Dataset endpoint tests complete
 - ✅ Subtask 3.2: Platform dataset endpoint tests complete
+- ✅ Subtask 3.3: Admin dataset endpoint tests complete
+- ✅ Subtask 4.1: Annotation endpoint tests complete
+- ✅ Subtask 4.2: Image locks endpoint tests complete
 
 ## Plan Summary
 
@@ -686,10 +689,289 @@ Created comprehensive test suite for platform dataset endpoints (service-to-serv
 - ✅ Tests follow pytest conventions and existing patterns
 - ✅ Covers service authentication, filtering, permissions, and downloads
 
+### Subtask 3.3: Test admin_datasets.py Endpoints ✅
+**Date**: 2026-01-04
+**Commit**: 87ddb1a
+
+Created comprehensive test suite for admin dataset endpoints:
+
+**Files Created**:
+- `backend/tests/api/test_admin_datasets.py` (1,106 lines, 5 test classes, 41 test methods)
+
+**Test Coverage**:
+
+**GetDatasetsOverview** (6 test scenarios):
+- Empty database (no datasets)
+- Single dataset with image metadata
+- Multiple datasets with different statuses (active, completed, archived)
+- Datasets with annotations
+- Verify admin role requirement
+- Unauthenticated access (403)
+
+**GetRecentDatasets** (8 test scenarios):
+- Empty recent updates
+- Recent datasets with default limit (10)
+- Recent datasets with custom limit
+- Limit validation (min 1, max 100)
+- Response structure validation
+- Verify recent datasets sorted by updated_at descending
+- Verify admin role requirement
+- Unauthenticated access (403)
+
+**GetDatasetDetails** (7 test scenarios):
+- Successful dataset details retrieval
+- Dataset with associated projects
+- Dataset with storage information
+- Dataset not found (404)
+- Complete response structure validation
+- Verify admin role requirement
+- Unauthenticated access (403)
+
+**GetLabelingProgress** (8 test scenarios):
+- Progress for entire dataset (all projects)
+- Progress for specific project
+- Progress with annotations grouped by task type
+- Progress with user contribution statistics
+- Empty dataset (no projects)
+- Completion rate calculation
+- Verify admin role requirement
+- Unauthenticated access (403)
+
+**GetRecentActivity** (12 test scenarios):
+- Recent activity with default parameters (7 days, 50 limit)
+- Custom days parameter
+- Custom limit parameter
+- Empty activity (no projects)
+- Days validation (min 1, max 90)
+- Limit validation (min 1, max 200)
+- Response structure validation with activity details
+- Verify admin role requirement
+- Unauthenticated access (403)
+
+**Key Features**:
+- Admin authentication requirement for all endpoints
+- Database aggregation queries (overview statistics)
+- Recent activity timeline tracking
+- Labeling progress calculation with completion rates
+- User contribution tracking
+- Storage statistics (image count, size, average)
+- Project association and annotation counts
+- Comprehensive validation of query parameters
+
+**Testing Approach**:
+- Uses pytest fixtures from conftest.py and auth_fixtures.py
+- Leverages admin_client and authenticated_client fixtures
+- Uses create_dataset and create_project factory fixtures
+- Creates ImageMetadata, ImageAnnotationStatus, and Annotation models
+- Comprehensive validation of all query parameters
+- Response structure and permission validation
+- Integration tests for real-world admin workflows
+
+**Verification**:
+- ✅ Python syntax check passed
+- ✅ 41 test scenarios covering all admin dataset endpoints
+- ✅ Tests follow pytest conventions and existing patterns
+- ✅ Covers statistics, recent updates, details, progress, and activity
+
+### Subtask 4.2: Test image_locks.py Endpoints ✅
+**Date**: 2026-01-04
+**Commit**: d1c023f
+
+Created comprehensive test suite for image lock endpoints:
+
+**Files Created**:
+- `backend/tests/api/test_image_locks.py` (1,210 lines, 60+ test scenarios, 9 test classes)
+
+**Test Coverage**:
+
+**AcquireLock** (8 test scenarios):
+- Acquire new lock successfully (status: "acquired")
+- Refresh lock when same user acquires again (status: "refreshed")
+- Lock already held by another user (status: "already_locked") - lock stealing prevention
+- Take over expired lock from another user
+- Requires authentication (401)
+- Requires annotator permission or higher (403)
+- Image ID with path separators (e.g., "folder/subfolder/image.jpg")
+
+**ReleaseLock** (5 test scenarios):
+- Successfully release owned lock (status: "released")
+- Release non-existent lock (status: "not_locked")
+- Cannot release lock owned by another user (status: "not_owner")
+- Requires authentication (401)
+- Requires annotator permission (403)
+
+**Heartbeat** (6 test scenarios):
+- Successfully update heartbeat (status: "updated")
+- Heartbeat extends expiration time (~5 minutes from now)
+- Heartbeat on non-existent lock (status: "not_locked")
+- Cannot heartbeat lock owned by another user (status: "not_owner")
+- Requires authentication (401)
+- Requires annotator permission (403)
+
+**GetProjectLocks** (6 test scenarios):
+- Get all active locks for a project
+- Empty list when no locks
+- Automatically cleans up expired locks
+- Returns only locks for specified project (project isolation)
+- Requires authentication (401)
+- Requires viewer permission or higher (403)
+
+**GetLockStatus** (5 test scenarios):
+- Get lock status when image is locked (returns lock info)
+- Return null when image is not locked
+- Expired locks automatically cleaned up (returns null)
+- Requires authentication (401)
+- Requires viewer permission (403)
+
+**ForceReleaseLock** (4 test scenarios):
+- Admin can force release any lock (status: "released")
+- Force release non-existent lock (status: "not_locked")
+- Requires authentication (401)
+- Requires admin permission (non-admin gets 403)
+
+**ConcurrentAccessHandling** (3 test scenarios):
+- Multiple users concurrent acquire (first succeeds, second rejected)
+- Expired lock takeover workflow
+- Heartbeat prevents expiration during active editing
+
+**Key Features Tested**:
+- **Lock Acquisition**: New lock creation, lock refresh, concurrent access prevention
+- **Lock Stealing Prevention**: Active locks cannot be stolen by other users
+- **Lock Expiration**: 5-minute automatic expiration with cleanup
+- **Heartbeat Mechanism**: Keep-alive functionality with expiration extension
+- **Lock Release**: Ownership validation before release
+- **Admin Override**: Force release for admin users
+- **Concurrent Access**: Multiple users trying to edit same image
+- **Lock Cleanup**: Automatic cleanup of expired locks
+- **Permission Validation**: Annotator for acquire/release/heartbeat, viewer for status, admin for force release
+- **Project Isolation**: Locks scoped to specific projects
+
+**Testing Approach**:
+- Uses pytest fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py
+- Leverages authenticated_client, admin_client, client fixtures
+- Creates ImageLock models with various expiration states
+- Tests all response status codes and structures
+- Comprehensive validation of concurrent access scenarios
+- Integration tests for real-world locking workflows
+
+**Verification**:
+- ✅ Python syntax check passed
+- ✅ 60+ test scenarios covering all image lock endpoints
+- ✅ Tests follow pytest conventions and existing patterns
+- ✅ Covers locking, expiration, heartbeat, concurrent access, and admin override
+
 ## Next Steps
-1. Continue Phase 3: Write tests for admin_datasets.py (subtask 3.3)
-2. OR continue Phase 4: Write tests for annotations.py (subtask 4.1)
-3. OR continue Phase 4: Write tests for image_locks.py (subtask 4.2)
+1. Continue Phase 4: Write tests for version_diff.py (subtask 4.3)
+2. OR continue Phase 5: Write tests for export.py (subtask 5.1)
+3. OR continue Phase 5: Write tests for invitations.py (subtask 5.2)
 
 ---
-Last Updated: 2026-01-04 19:50:00
+Last Updated: 2026-01-04 19:00:00
+
+### Subtask 4.1: Test annotations.py Endpoints ✅
+**Date**: 2026-01-04
+**Commit**: 4915457
+
+Created comprehensive test suite for annotation endpoints:
+
+**Files Created**:
+- `backend/tests/api/test_annotations.py` (1,663 lines, 52 test methods, 9 test classes)
+
+**Test Coverage**:
+
+**CreateAnnotation** (13 test scenarios):
+- Successful creation with all fields specified
+- Creation with minimal required fields
+- no_object annotation type (auto-confirmed)
+- Polygon, bbox, and other geometry types
+- Project not found (404)
+- No permission (403)
+- Viewer role denied (annotator role required)
+- Annotator role success
+- Image locked by different user (423)
+- Auto-acquires lock if none exists
+- Invalid annotation type (400)
+- Unauthenticated access (403)
+- Task type inference validation
+
+**GetAnnotation** (3 test scenarios):
+- Successful annotation retrieval
+- Annotation not found (404)
+- Unauthenticated access (403)
+
+**UpdateAnnotation** (11 test scenarios):
+- Update geometry field
+- Update class field
+- Update multiple fields simultaneously
+- Optimistic locking with correct version
+- Optimistic locking conflict with stale version (409)
+- Annotation not found (404)
+- Not creator nor owner (403)
+- Owner can update any annotation
+- Image locked by different user (423)
+
+**DeleteAnnotation** (5 test scenarios):
+- Successful deletion
+- Annotation not found (404)
+- Not creator nor owner (403)
+- Owner can delete any annotation
+- Image locked by different user (423)
+
+**ListProjectAnnotations** (6 test scenarios):
+- Empty annotation list
+- Multiple annotations listing
+- Filter by image_id
+- Pagination with skip/limit
+- Max limit enforcement (1000)
+- Requires viewer permission
+
+**BatchCreateAnnotations** (4 test scenarios):
+- Successful batch creation (multiple annotations)
+- Partial success with some failures
+- no_object annotations auto-confirmed
+- Requires annotator permission
+
+**AnnotationHistory** (3 test scenarios):
+- List project history with pagination
+- List annotation-specific history
+- History entry creation verification
+
+**ConfirmAnnotation** (4 test scenarios):
+- Confirm annotation (draft → confirmed)
+- Unconfirm annotation (confirmed → draft)
+- Bulk confirm multiple annotations
+- Bulk confirm with partial failures
+
+**AnnotationValidation** (4 test scenarios):
+- Missing required fields (422)
+- Invalid geometry type (422)
+- Empty update handling
+- Confidence range validation
+- Task type inference and storage
+
+**Key Features Tested**:
+- **CRUD Operations**: Full create, read, update, delete lifecycle
+- **Optimistic Locking**: Version-based conflict detection (409 on stale version)
+- **Permission Validation**: Annotator role for create, creator/owner for update/delete
+- **Image Lock Checking**: Prevents concurrent edits, auto-acquisition, lock refresh
+- **Annotation History**: Audit trail for all create/update/delete actions
+- **Batch Operations**: Bulk import and bulk confirm with partial failure handling
+- **Confirmation Workflow**: Draft/confirmed state transitions with metadata
+- **Task Type Inference**: Automatic task_type assignment from annotation_type
+- **no_object Handling**: Auto-confirmation for explicit "no objects" annotations
+- **Response Validation**: All endpoints return proper response models
+
+**Testing Approach**:
+- Uses pytest fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py
+- Leverages authenticated_client, admin_client, client fixtures
+- Mocks update_image_status service to avoid side effects
+- Creates Annotation, AnnotationHistory, and ImageLock models for testing
+- Comprehensive validation of all error paths and edge cases
+- Integration tests for real-world annotation workflows
+
+**Verification**:
+- ✅ Python syntax check passed
+- ✅ 52 test scenarios covering all annotation endpoints
+- ✅ Tests follow pytest conventions and existing patterns
+- ✅ Covers CRUD, versioning, validation, batch operations, and history
+
