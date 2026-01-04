@@ -386,8 +386,22 @@ uv pip install -e ".[dev]"
 pip install -e ".[dev]"
 ```
 
+## Testing Patterns and Guidelines
+
+For comprehensive testing patterns, best practices, and detailed examples, see **[TESTING.md](../TESTING.md)**.
+
+Key topics covered:
+- Testing patterns for API endpoints
+- Authentication and permission testing
+- Database testing strategies
+- Error handling and edge cases
+- Mocking external services
+- Common testing scenarios
+- Troubleshooting guide
+
 ## Related Documentation
 
+- **[Backend Testing Guide](../TESTING.md)** - Comprehensive testing patterns and best practices
 - [FastAPI Testing Guide](https://fastapi.tiangolo.com/tutorial/testing/)
 - [Pytest Documentation](https://docs.pytest.org/)
 - [SQLAlchemy Testing](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#joining-a-session-into-an-external-transaction-such-as-for-test-suites)
