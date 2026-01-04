@@ -293,13 +293,13 @@
           "subtask_id": "7.3",
           "title": "Test Canvas.tsx zoom and pan",
           "description": "Write tests for zoom functionality, pan/drag, fit-to-screen, and coordinate transformations.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/components/annotation/__tests__/Canvas-transforms.test.tsx"
           ],
           "dependencies": ["1.2", "7.1"],
           "estimated_effort": "medium",
-          "notes": "Test viewport transformations and user interactions"
+          "notes": "Created comprehensive test suite for Canvas component zoom and pan functionality with 70+ test scenarios covering: zoom functionality (mouse wheel zoom, zoom controls/buttons, fit-to-screen, zoom limits/edge cases, zoom percentage display - 25 tests), pan/drag functionality (pan state management, pan reset, cursor changes during pan, pan with different zoom levels - 15 tests), coordinate transformations (screen-to-canvas, canvas-to-image, image-to-canvas, screen-to-image, image bounds calculation, point in image detection, coordinate clamping - 18 tests), integration tests (zoom+pan combinations, multiple operations, state persistence - 8 tests), and edge cases (no image loaded, boundary values, large/negative values, fractional values - 9 tests). All tests follow vitest conventions and use comprehensive mocking of stores, APIs, hooks, and UI components. File: frontend/components/annotation/__tests__/Canvas-transforms.test.tsx (988 lines)."
         },
         {
           "subtask_id": "7.4",

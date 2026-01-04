@@ -1627,3 +1627,147 @@ Created comprehensive test suite for Canvas component drawing functionality:
 - ✅ Proper mocking of all dependencies
 - ✅ Tests cover all annotation types (bbox, polygon, point, polyline, circle, circle3p), tool interactions, drawing state management, and edge cases
 
+
+### Subtask 7.3: Test Canvas.tsx Zoom and Pan ✅
+**Date**: 2026-01-04
+**Commit**: 14a8ba5
+
+Created comprehensive test suite for Canvas component zoom and pan functionality:
+
+**Files Created**:
+- `frontend/components/annotation/__tests__/Canvas-transforms.test.tsx` (988 lines, 70+ test scenarios)
+
+**Test Coverage**:
+
+**Zoom Functionality** (25 test scenarios):
+- Mouse wheel zoom in/out (4 tests)
+  - Zoom in on mouse wheel up (deltaY < 0)
+  - Zoom out on mouse wheel down (deltaY > 0)
+  - Handle multiple zoom events
+  - Prevent default wheel behavior
+- Zoom controls via buttons (6 tests)
+  - Zoom in button functionality
+  - Zoom out button functionality
+  - Display current zoom percentage
+  - Handle zoom at 100%, 200%, 50%
+- Fit to screen functionality (3 tests)
+  - Reset zoom to 1.0 when fit button clicked
+  - Reset pan to origin when fit button clicked
+  - Reset both zoom and pan together
+- Zoom limits and edge cases (4 tests)
+  - Handle very high zoom levels (10x, 1000%)
+  - Handle very low zoom levels (0.1x, 10%)
+  - Handle fractional zoom values (1.33x, 133%)
+  - Round zoom percentage for display (1.456x → 146%)
+- Zoom percentage display (4 tests)
+  - Display 150% for 1.5x zoom
+  - Display 100% for 1.0x zoom
+  - Display 200% for 2.0x zoom
+  - Display 50% for 0.5x zoom
+- Multiple zoom operations (4 tests)
+  - Zoom in followed by pan
+  - Pan followed by zoom out
+  - Multiple zoom and pan operations
+  - Rapid zoom changes
+
+**Pan/Drag Functionality** (15 test scenarios):
+- Pan state management (4 tests)
+  - Initialize with no pan offset
+  - Update pan state
+  - Handle negative pan values
+  - Handle large pan values
+- Pan reset (2 tests)
+  - Reset pan when fit button clicked
+  - Maintain pan when only zoom changes
+- Cursor changes during pan (2 tests)
+  - Show default cursor when not panning
+  - Show grabbing cursor when panning
+- Pan with different zoom levels (3 tests)
+  - Allow pan at 100% zoom
+  - Allow pan at 200% zoom
+  - Allow pan at 50% zoom
+- Pan value handling (4 tests)
+  - Handle positive pan offsets
+  - Handle negative pan offsets
+  - Handle large pan offsets (10000, 10000)
+  - Handle fractional pan values (123.456, 789.012)
+
+**Coordinate Transformations** (18 test scenarios):
+- Screen to canvas transformation (2 tests)
+  - Transform screen coordinates to canvas coordinates
+  - Handle canvas at different positions
+- Canvas to image transformation (2 tests)
+  - Transform canvas coordinates to image coordinates
+  - Handle transformation with zoom
+- Image to canvas transformation (2 tests)
+  - Transform image coordinates to canvas coordinates
+  - Handle transformation with zoom
+- Screen to image transformation (2 tests)
+  - Transform screen coordinates directly to image coordinates
+  - Combine screen and canvas transformations
+- Image bounds calculation (3 tests)
+  - Calculate image bounds with no zoom or pan
+  - Calculate image bounds with zoom
+  - Calculate image bounds with pan
+- Point in image detection (2 tests)
+  - Detect point inside image bounds
+  - Detect point outside image bounds
+- Coordinate clamping (2 tests)
+  - Clamp coordinates to image bounds
+  - Clamp coordinates outside bounds
+- Transform matrix tests (3 tests)
+  - Verify screen-to-canvas-to-image conversions
+  - Verify inverse transformations
+  - Verify transform composition
+
+**Integration Tests** (8 test scenarios):
+- Zoom + pan combinations (4 tests)
+  - Handle zoom in followed by pan
+  - Handle pan followed by zoom out
+  - Handle multiple zoom and pan operations
+  - Reset both zoom and pan to defaults
+- Multiple operations (2 tests)
+  - Maintain transform state across re-renders
+  - Handle rapid zoom changes
+- State persistence (2 tests)
+  - Handle mixed zoom in and zoom out
+  - Preserve pan when image changes
+
+**Edge Cases** (9 test scenarios):
+- No image loaded (1 test)
+  - Handle zoom controls when no image is loaded
+- Boundary values (3 tests)
+  - Handle zoom at boundary values (0.01x, 1%)
+  - Handle zero zoom value
+  - Handle negative zoom values gracefully
+- Large/negative values (3 tests)
+  - Handle very large pan offsets (10000, 10000)
+  - Handle pan when canvas is not mounted
+  - Handle very large zoom values
+- Fractional values (2 tests)
+  - Handle fractional pan values
+  - Handle fractional zoom values
+
+**Testing Approach**:
+- Uses vitest, React Testing Library
+- Comprehensive mocking of all dependencies:
+  - Annotation store with useAnnotationStore mock
+  - API modules (annotations, projects, image-locks)
+  - Toast and confirm stores
+  - Annotation tools (bbox, polygon, polyline, circle, circle3p)
+  - Annotation utilities
+  - Coordinate transform utilities
+  - Custom hooks (useCanvasState, useImageManagement, useToolState, useCanvasTransform, useAnnotationSync, useMagnifier, useMouseHandlers, useToolRenderer, useCanvasRenderer, useCanvasKeyboardShortcuts, useBatchOperations)
+  - All UI components (LockOverlay, ToolSelector, ZoomControls, NavigationButtons, CanvasActionBar, ClassSelector)
+- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage, createMockAnnotation)
+- Mock ZoomControls component with test IDs for zoom-in, zoom-out, fit-screen buttons
+- Tests follow vitest conventions and existing patterns from Canvas.test.tsx and Canvas-drawing.test.tsx
+- Covers mouse wheel events, button clicks, state management, and coordinate transformations
+- Includes integration tests for realistic zoom+pan workflows
+
+**Verification**:
+- ✅ 988 lines of comprehensive test coverage
+- ✅ 70+ test scenarios covering all zoom/pan/transform functionality
+- ✅ Tests follow existing patterns from Canvas.test.tsx and Canvas-drawing.test.tsx
+- ✅ Proper mocking of all dependencies
+- ✅ Tests cover zoom (wheel + buttons), pan (drag + reset), fit-to-screen, coordinate transformations, integration scenarios, and edge cases
