@@ -90,13 +90,13 @@
           "subtask_id": "2.4",
           "title": "Test project_permissions.py endpoints",
           "description": "Write tests for permission management, role assignment, permission validation, and access control checks.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_project_permissions.py"
           ],
           "dependencies": ["1.1", "2.3"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for project permission endpoints with 38 test scenarios covering GET /permissions, POST /permissions, PATCH /permissions/{user_id}, DELETE /permissions/{user_id}, and POST /transfer-ownership. Tests cover all 5 roles (owner, admin, reviewer, annotator, viewer), RBAC validation, access control checks, error handling, and both project_id and dataset_id formats. File: backend/tests/api/test_project_permissions.py (1,272 lines)."
         },
         {
           "subtask_id": "2.5",
