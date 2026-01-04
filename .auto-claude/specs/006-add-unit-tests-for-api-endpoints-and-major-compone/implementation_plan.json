@@ -78,13 +78,13 @@
           "subtask_id": "2.3",
           "title": "Test projects.py endpoints",
           "description": "Write tests for project CRUD operations, project listing, filtering, pagination, and access control.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_projects.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "large",
-          "notes": ""
+          "notes": "Created comprehensive test suite for project endpoints with 85+ test scenarios covering POST /, GET /, GET /{project_id}, PATCH /{project_id}, DELETE /{project_id}, POST /{project_id}/task-types, GET /{project_id}/images, GET /{project_id}/stats, and access control. Updated db_fixtures.py to use new AnnotationProject schema (task_types array, task_config, task_classes). File: backend/tests/api/test_projects.py (1,460 lines)"
         },
         {
           "subtask_id": "2.4",

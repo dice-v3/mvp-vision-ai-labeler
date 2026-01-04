@@ -171,7 +171,11 @@ def test_project(
         description="A test project for unit tests",
         dataset_id=test_dataset.id,
         owner_id=test_user_id,
-        task_type="detection",
+        task_types=["detection"],
+        task_config={"detection": {"show_labels": True}},
+        task_classes={},
+        settings={},
+        total_images=test_dataset.num_images,
         status="active",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -206,7 +210,8 @@ def create_project():
                 labeler_db,
                 project_id="proj_custom",
                 name="Custom Project",
-                task_type="segmentation",
+                task_types=["segmentation"],
+                task_config={"segmentation": {"show_labels": True}},
             )
     """
     def _create_project(
@@ -215,15 +220,28 @@ def create_project():
         name: str = "Custom Project",
         dataset_id: str = "ds_test_001",
         owner_id: str = "test-user-id",
-        task_type: str = "detection",
+        task_types: list = None,
+        task_config: dict = None,
+        task_classes: dict = None,
         **kwargs
     ) -> AnnotationProject:
+        if task_types is None:
+            task_types = ["detection"]
+        if task_config is None:
+            task_config = {"detection": {"show_labels": True}}
+        if task_classes is None:
+            task_classes = {}
+
         project = AnnotationProject(
             id=project_id,
             name=name,
             dataset_id=dataset_id,
             owner_id=owner_id,
-            task_type=task_type,
+            task_types=task_types,
+            task_config=task_config,
+            task_classes=task_classes,
+            settings={},
+            total_images=10,
             status="active",
             **kwargs
         )
