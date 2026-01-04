@@ -22,8 +22,10 @@ import {
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import * as annotationsAPI from '@/lib/api/annotations';
 
-// Create mock function for annotation store
-const mockUseAnnotationStore = vi.fn();
+// Create mock function for annotation store with vi.hoisted()
+const { mockUseAnnotationStore } = vi.hoisted(() => ({
+  mockUseAnnotationStore: vi.fn(),
+}));
 
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
