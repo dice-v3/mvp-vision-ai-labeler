@@ -281,13 +281,13 @@
           "subtask_id": "7.2",
           "title": "Test Canvas.tsx annotation drawing",
           "description": "Write tests for drawing annotations (bbox, polygon, point, line), tool interactions, and drawing state management.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/components/annotation/__tests__/Canvas-drawing.test.tsx"
           ],
           "dependencies": ["1.2", "7.1"],
           "estimated_effort": "large",
-          "notes": "Test all annotation types and drawing interactions"
+          "notes": "Created comprehensive test suite for Canvas component drawing functionality with 82 test scenarios covering: bbox drawing (10 tests), polygon drawing (10 tests), point drawing (4 tests), line/polyline drawing (9 tests), circle drawing (7 tests), circle 3-point drawing (6 tests), tool interactions (6 tests), drawing state management (10 tests), drawing with existing annotations (4 tests), drawing with different task types (4 tests), drawing preview rendering (6 tests), and edge cases (6 tests). All tests follow vitest conventions and use comprehensive mocking of stores, APIs, hooks, and tools. File: frontend/components/annotation/__tests__/Canvas-drawing.test.tsx (1,211 lines)."
         },
         {
           "subtask_id": "7.3",

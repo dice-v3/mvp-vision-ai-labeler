@@ -1502,3 +1502,128 @@ Created comprehensive test suite for Canvas component core rendering:
 - ✅ Proper mocking of all dependencies
 - ✅ Tests cover initialization, canvas creation, image loading, rendering logic, store integration, refs, responsive design, and edge cases
 
+### Subtask 7.2: Test Canvas.tsx Annotation Drawing ✅
+**Date**: 2026-01-04
+**Commit**: 41191b1
+
+Created comprehensive test suite for Canvas component drawing functionality:
+
+**Files Created**:
+- `frontend/components/annotation/__tests__/Canvas-drawing.test.tsx` (1,211 lines, 82 test scenarios)
+
+**Test Coverage**:
+
+**Bbox Drawing** (10 test scenarios):
+- Start bbox drawing on mouse down
+- Update bbox during mouse move
+- Finish bbox drawing on mouse up
+- Render bbox preview while drawing
+- Handle bbox with minimal size
+- Handle bbox with negative dimensions
+- Handle bbox at canvas edges
+- Show pending bbox state
+- Handle bbox resize start
+- Handle bbox resize with different handles (n, s, e, w, ne, nw, se, sw)
+
+**Polygon Drawing** (10 test scenarios):
+- Start polygon on first click
+- Add vertices on subsequent clicks
+- Render polygon preview while drawing
+- Handle polygon with minimum vertices (3)
+- Handle polygon with many vertices (20)
+- Handle vertex dragging
+- Handle polygon dragging
+- Handle closing polygon on double-click
+- Handle polygon with self-intersection
+- Clear polygon vertices on reset
+
+**Point Drawing** (4 test scenarios):
+- Create point annotation on click
+- Handle point at specific coordinates
+- Handle point at canvas edge
+- Handle multiple points creation
+
+**Line (Polyline) Drawing** (9 test scenarios):
+- Start line on first click
+- Add line segments on subsequent clicks
+- Render polyline preview while drawing
+- Handle polyline with minimum segments (2 points)
+- Handle polyline with many segments (15)
+- Handle horizontal line
+- Handle vertical line
+- Handle diagonal line
+- Clear polyline vertices on reset
+
+**Circle Drawing** (7 test scenarios):
+- Set circle center on first click
+- Render circle preview while drawing
+- Handle circle with small radius
+- Handle circle with large radius
+- Handle circle dragging
+- Handle circle resizing
+- Handle circle at canvas edge
+
+**Circle 3-Point Drawing** (6 test scenarios):
+- Add first, second, and third points
+- Create circle on third point
+- Render circle3p preview while drawing
+- Handle collinear points
+- Clear circle3p points on reset
+
+**Tool Interactions** (6 test scenarios):
+- Change cursor for different tools (bbox, polygon, select)
+- Handle tool switch during drawing
+- Cancel drawing on Escape key
+- Reset tool state on tool change
+
+**Drawing State Management** (10 test scenarios):
+- Set isDrawing to true on mouse down
+- Track drawingStart position
+- Update cursor position during mouse move
+- Clear drawing state on finish
+- Handle drawing state with zoom
+- Handle drawing state with pan
+- Prevent/allow drawing based on image lock
+- Handle rapid tool state changes
+- Maintain annotation list during drawing
+
+**Drawing with Existing Annotations** (4 test scenarios):
+- Render existing bbox/polygon annotations while drawing
+- Handle selection while drawing tool is active
+- Not interfere with existing annotations during new drawing
+
+**Drawing with Different Task Types** (4 test scenarios):
+- Handle drawing in detection, segmentation, keypoint tasks
+- Handle drawing with multiple task types
+
+**Drawing Preview Rendering** (6 test scenarios):
+- Call bbox, polygon, polyline, circle, circle3p preview renderers
+- Not render preview when not drawing
+
+**Edge Cases** (6 test scenarios):
+- Handle drawing without project/task
+- Handle drawing with empty task classes
+- Handle drawing start at negative coordinates
+- Handle cursor outside canvas bounds
+- Handle tool state reset
+
+**Testing Approach**:
+- Uses vitest, React Testing Library
+- Comprehensive mocking of all dependencies:
+  - Annotation store with useAnnotationStore mock
+  - API modules (annotations, projects, image-locks)
+  - Toast and confirm stores
+  - Annotation tools (bbox, polygon, polyline, circle, circle3p)
+  - Annotation utilities
+  - Custom hooks (useToolState, useMouseHandlers, useToolRenderer, etc.)
+  - All UI components
+- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage, createMockAnnotation, createMockClass)
+- All tests follow vitest conventions and existing patterns from Canvas.test.tsx
+
+**Verification**:
+- ✅ 1,211 lines of comprehensive test coverage
+- ✅ 82 test scenarios covering all drawing functionality
+- ✅ Tests follow existing patterns from Canvas.test.tsx
+- ✅ Proper mocking of all dependencies
+- ✅ Tests cover all annotation types (bbox, polygon, point, polyline, circle, circle3p), tool interactions, drawing state management, and edge cases
+
