@@ -102,13 +102,13 @@
           "subtask_id": "2.5",
           "title": "Test projects_classes.py endpoints",
           "description": "Write tests for class CRUD in projects, class validation, and class assignment to annotations.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_projects_classes.py"
           ],
           "dependencies": ["1.1", "2.3"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for project class management endpoints with 48 test scenarios covering POST, PATCH, DELETE, and PUT operations. Tests include: POST /{project_id}/classes (add class with all fields, auto-generated IDs, minimal fields, multiple classes ordering, different task types, error handling), PATCH /{project_id}/classes/{class_id} (update class name, color, description, order, multiple fields, error handling), DELETE /{project_id}/classes/{class_id} (delete unused class, conflict with annotations, error handling), and PUT /{project_id}/classes/reorder (reorder classes successfully, partial list, empty list, error handling). All tests follow pytest conventions and use fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py. File: backend/tests/api/test_projects_classes.py (1,209 lines)."
         }
       ]
     },
@@ -121,13 +121,13 @@
           "subtask_id": "3.1",
           "title": "Test datasets.py endpoints",
           "description": "Write tests for dataset CRUD operations, dataset listing, filtering by task type, and dataset statistics.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_datasets.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "large",
-          "notes": ""
+          "notes": "Created comprehensive test suite for dataset endpoints with 94 test scenarios covering POST /datasets (create with all task types, permissions, project), GET /datasets (list with pagination, access control for owned/public/permitted datasets), GET /datasets/{dataset_id} (get by ID), PUT /datasets/{dataset_id} (update name, description, visibility), GET /datasets/{dataset_id}/images (list images with presigned URLs, random vs sequential ordering), and GET /datasets/{dataset_id}/size (size statistics). All tests follow pytest conventions and use fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py. File: backend/tests/api/test_datasets.py (1,217 lines)."
         },
         {
           "subtask_id": "3.2",
