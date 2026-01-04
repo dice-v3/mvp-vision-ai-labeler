@@ -1408,3 +1408,97 @@ Created comprehensive test suite for export and version endpoints:
 - ✅ Tests follow pytest conventions and existing patterns
 - ✅ Covers export, versioning, snapshots, and platform sync
 
+
+### Subtask 7.1: Test Canvas.tsx Core Rendering ✅
+**Date**: 2026-01-04
+**Commit**: 38fb4e3
+
+Created comprehensive test suite for Canvas component core rendering:
+
+**Files Created**:
+- `frontend/components/annotation/__tests__/Canvas.test.tsx` (863 lines, 49 test scenarios)
+
+**Test Coverage**:
+
+**Component Initialization** (5 test scenarios):
+- Render without crashing
+- Display "No image selected" when currentImage is null
+- Correct container styling for empty state
+- Proper text styling for empty message
+- No canvas element when no image selected
+
+**Canvas Element Creation** (6 test scenarios):
+- Create canvas element when image is selected
+- Apply correct CSS classes (w-full, h-full)
+- Set canvas cursor style
+- Create container ref element
+- Apply container classes (relative, overflow-hidden)
+- Set canvasRef in store on mount
+
+**Image Loading** (7 test scenarios):
+- Render with valid image data
+- Handle different image dimensions
+- Handle minimal image data
+- Update when currentImage changes
+- Transition from no image to image
+- Transition from image to no image
+
+**Basic Rendering Logic** (10 test scenarios):
+- Render with project and image present
+- Render with annotations
+- Render without annotations
+- Render with selected annotation
+- Render with different tools (select, bbox, polygon, polyline, circle, circle3p, classification)
+- Render with different zoom levels
+- Render with pan offset
+- Render with drawing state active
+- Render in diff mode
+
+**Store Integration** (8 test scenarios):
+- Read currentImage from store
+- Read project from store
+- Read annotations from store
+- Read canvas state (zoom, pan, cursor)
+- Read tool from store
+- Read preferences from store
+- Read images list from store
+- Handle empty images array
+
+**Ref Management** (3 test scenarios):
+- Create canvasRef
+- Create containerRef
+- Update store with refs on mount
+
+**Responsive Rendering** (5 test scenarios):
+- Render with small image dimensions (320x240)
+- Render with large image dimensions (4096x3072)
+- Render with portrait image (600x800)
+- Render with landscape image (1920x1080)
+- Render with square image (1024x1024)
+
+**Edge Cases** (5 test scenarios):
+- Handle project without task types
+- Handle project without task classes
+- Handle image with zero dimensions
+- Handle annotation with no geometry
+- Handle rapid image switching
+
+**Testing Approach**:
+- Uses vitest, React Testing Library
+- Comprehensive mocking of all dependencies:
+  - Annotation store with useAnnotationStore mock
+  - API modules (annotations, projects, image-locks)
+  - Toast and confirm stores
+  - Annotation tools and utilities
+  - Custom hooks (useCanvasState, useImageManagement, useToolState, etc.)
+  - Overlay and UI components
+- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage, createMockAnnotation)
+- All tests follow vitest conventions and existing patterns
+
+**Verification**:
+- ✅ 863 lines of comprehensive test coverage
+- ✅ 49 test scenarios covering all core rendering functionality
+- ✅ Tests follow existing patterns from canvas-ui tests
+- ✅ Proper mocking of all dependencies
+- ✅ Tests cover initialization, canvas creation, image loading, rendering logic, store integration, refs, responsive design, and edge cases
+
