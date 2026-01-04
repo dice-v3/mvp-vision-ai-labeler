@@ -1,0 +1,9 @@
+{
+  "sourceType": "ideation",
+  "ideationType": "code_quality",
+  "ideaId": "cq-003",
+  "rationale": "API endpoints and UI components are critical integration points. Without tests, refactoring becomes risky, regressions go unnoticed, and developers lose confidence making changes. The existing tests for hooks are good, but the components that use them and the backend APIs they call are untested.",
+  "category": "refactoring",
+  "codeQualitySeverity": "major",
+  "priority": "high"
+}

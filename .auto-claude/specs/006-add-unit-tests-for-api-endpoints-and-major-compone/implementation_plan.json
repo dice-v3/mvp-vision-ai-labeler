@@ -250,13 +250,13 @@
           "subtask_id": "6.2",
           "title": "Test admin_audit.py endpoints",
           "description": "Write tests for audit log retrieval, filtering, search, and log retention. Verify admin role requirement.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_admin_audit.py"
           ],
           "dependencies": ["1.1"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for admin audit log endpoints with 60+ test scenarios covering GET /api/v1/admin/audit-logs (list with pagination and filters), GET /api/v1/admin/audit-logs/{log_id} (detail), GET /api/v1/admin/audit-logs/stats/summary (statistics), GET /api/v1/admin/audit-logs/meta/actions (available actions), and GET /api/v1/admin/audit-logs/meta/resource-types (available resource types). Tests include filtering by user_id, action, resource_type, status, and date ranges, pagination validation, response structure validation, and admin role requirement verification. All tests follow pytest conventions and use fixtures from conftest.py and auth_fixtures.py. File: backend/tests/api/test_admin_audit.py (1,132 lines)."
         }
       ]
     },
@@ -269,13 +269,13 @@
           "subtask_id": "7.1",
           "title": "Test Canvas.tsx core rendering",
           "description": "Write tests for Canvas component initialization, canvas element creation, image loading, and basic rendering logic.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/components/annotation/__tests__/Canvas.test.tsx"
           ],
           "dependencies": ["1.2"],
           "estimated_effort": "large",
-          "notes": "Canvas.tsx is 1,420 lines - split tests into logical groups"
+          "notes": "Created comprehensive test suite for Canvas component core rendering with 863 lines of tests covering: component initialization (5 tests), canvas element creation (6 tests), image loading (7 tests), basic rendering logic (10 tests), store integration (8 tests), ref management (3 tests), responsive rendering (5 tests), and edge cases (5 tests). Total of 49 test scenarios covering Canvas component initialization, canvas element creation, image loading, and basic rendering logic. Tests use vitest, React Testing Library, and comprehensive mock utilities from test-utils. File: frontend/components/annotation/__tests__/Canvas.test.tsx (863 lines)."
         },
         {
           "subtask_id": "7.2",
