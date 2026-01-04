@@ -305,13 +305,13 @@
           "subtask_id": "7.4",
           "title": "Test Canvas.tsx selection and editing",
           "description": "Write tests for annotation selection, editing, resizing, moving, and deletion.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/components/annotation/__tests__/Canvas-selection.test.tsx"
           ],
           "dependencies": ["1.2", "7.1"],
           "estimated_effort": "medium",
-          "notes": "Test annotation modification workflows"
+          "notes": "Created comprehensive test suite for Canvas component selection and editing functionality with 38 test scenarios covering: annotation selection (8 tests for bbox/polygon/polyline/circle selection, deselection, hidden annotations, overlapping annotations, cursor updates), bbox resizing (6 tests for handle-based resizing, all 8 handles, lock checks, cursor updates), polygon editing (6 tests for vertex selection/drag, vertex addition on edges, polygon moving, lock checks, minimum vertices), polyline editing (4 tests for vertex selection, vertex addition, polyline moving, minimum vertices), circle editing (6 tests for center drag, radius handle resize, all 4 handles, area-based moving, lock checks), annotation deletion (2 tests for delete key, delete all), state management (3 tests for clearing vertex/handle selection, maintaining selection during edit), and edge cases (5 tests for empty annotations, invalid geometry, rapid changes, zoom/pan boundaries). All tests follow vitest conventions and use comprehensive mocking of stores, APIs, hooks, and tools. File: frontend/components/annotation/__tests__/Canvas-selection.test.tsx (1,422 lines)."
         }
       ]
     },
