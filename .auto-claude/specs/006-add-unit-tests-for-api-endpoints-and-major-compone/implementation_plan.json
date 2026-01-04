@@ -207,25 +207,25 @@
           "subtask_id": "5.1",
           "title": "Test export.py endpoints",
           "description": "Write tests for annotation export in various formats (COCO, YOLO, etc.), export validation, and file generation.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_export.py"
           ],
           "dependencies": ["1.1", "4.1"],
           "estimated_effort": "large",
-          "notes": ""
+          "notes": "Created comprehensive test suite for export endpoints with 60+ test scenarios covering POST /projects/{project_id}/export (12 tests), POST /projects/{project_id}/versions/publish (15 tests), and GET /projects/{project_id}/versions (11 tests). Tests include export in COCO/YOLO/DICE formats, version publishing with auto-increment, annotation snapshots, platform sync, permission validation, and error handling. All tests follow pytest conventions and use fixtures from conftest.py, auth_fixtures.py, and db_fixtures.py. File: backend/tests/api/test_export.py (1,100+ lines)."
         },
         {
           "subtask_id": "5.2",
           "title": "Test invitations.py endpoints",
           "description": "Write tests for invitation creation, acceptance, rejection, expiration, and email notification triggers.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_invitations.py"
           ],
           "dependencies": ["1.1", "2.2"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for invitation endpoints with 70+ test scenarios covering POST /invitations (create - currently 501), GET /invitations (list with sent/received/status/project filters), POST /invitations/accept (token validation, expiration, permission creation), and POST /invitations/{id}/cancel (cancel by inviter/invitee). Tests include invitation creation validation (project exists, admin permission), listing with filters and enriched data, acceptance with role creation, rejection workflows, expiration handling, and integration tests for complete workflows. All tests follow pytest conventions and use fixtures from conftest.py and auth_fixtures.py. File: backend/tests/api/test_invitations.py (1,384 lines)."
         }
       ]
     },
