@@ -3,7 +3,7 @@
 ## Task Overview
 Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend components to improve code quality, enable safe refactoring, and catch regressions early.
 
-## Current Status: In Progress (17/30 subtasks complete)
+## Current Status: In Progress (22/30 subtasks complete)
 - Implementation plan created with 10 phases and 30 subtasks
 - Phase 1 (Testing Infrastructure) COMPLETE
 - Phase 2 (Backend Core API Endpoint Tests) COMPLETE
@@ -11,6 +11,8 @@ Add comprehensive unit tests for 15 backend API endpoints and 3 major frontend c
 - Phase 4 (Backend Annotation API Tests) COMPLETE
 - Phase 5 (Backend Supporting API Tests) COMPLETE
 - Phase 6 (Backend Admin API Tests) COMPLETE
+- Phase 7 (Frontend Canvas Component Tests) COMPLETE
+- Phase 8 (Frontend ImageList Component Tests) IN PROGRESS (1/3 complete)
 - ✅ Subtask 1.1: Backend API test infrastructure complete
 - ✅ Subtask 1.2: Frontend component test utilities complete
 - ✅ Subtask 2.1: Auth endpoint tests complete
@@ -1731,6 +1733,127 @@ Created comprehensive test suite for Canvas component selection and editing func
 - ✅ Subtask 7.4: Canvas selection and editing (38 tests, 1,422 lines)
 
 **Total Canvas Tests**: 239+ test scenarios, 4,484 lines
+
+---
+
+### Subtask 8.1: Test ImageList.tsx Rendering and Navigation ✅
+**Date**: 2026-01-04
+**Commit**: 70392ae
+
+Created comprehensive test suite for ImageList component rendering and navigation:
+
+**Files Created**:
+- `frontend/components/annotation/__tests__/ImageList.test.tsx` (1,072 lines, 70+ test scenarios)
+
+**Test Coverage**:
+
+**Basic Rendering** (6 test scenarios):
+- Render component with header
+- Render filter dropdown with all options (all, not-started, in-progress, completed)
+- Render search input
+- Render view toggle button
+- Show image count (e.g., "3 / 3")
+- Show "No images match filter" when no images
+
+**Grid View Rendering** (11 test scenarios):
+- Render images in grid layout
+- Display thumbnails with correct src (thumbnail_url with fallback to url)
+- Use original URL as fallback when thumbnail_url is missing
+- Display image numbers (1, 2, 3...)
+- Highlight current image with violet ring
+- Display status badges (not-started, in-progress, completed)
+- Display selection checkmark for selected images
+- Use lazy loading for images (loading="lazy")
+
+**List View Rendering** (5 test scenarios):
+- Render images in list/table layout
+- Display table headers (#, Name, Ann, St)
+- Display image file names
+- Display annotation counts
+- Highlight current row with violet background
+
+**Image Selection** (6 test scenarios):
+- Call setCurrentIndex on normal click
+- Call toggleImageSelection on ctrl+click
+- Call toggleImageSelection on meta+click (Mac)
+- Call selectImageRange on shift+click
+- Show selected count when images are selected ("2 selected")
+- Clear selection when clear button is clicked
+
+**View Toggle** (2 test scenarios):
+- Toggle from grid to list view
+- Toggle from list to grid view
+
+**Filtering** (5 test scenarios):
+- Show all images by default
+- Filter to show only not-started images
+- Filter to show only in-progress images
+- Filter to show only completed images
+- Show "No images match filter" when filter excludes all images
+
+**Search Functionality** (5 test scenarios):
+- Filter images by file name
+- Filter images by folder path
+- Case-insensitive search
+- Show no results when search matches nothing
+- Combine search and filter
+
+**Lock Indicators** (3 test scenarios):
+- Display lock indicator for locked image (by other user)
+- Show "Locked by you" for own locks (green indicator)
+- Show available indicator for unlocked images (gray opacity)
+
+**Diff Mode** (2 test scenarios):
+- Display diff badge instead of status badge in diff mode
+- Not show diff badge for images without changes
+
+**No Object Indicator** (1 test scenario):
+- Display no object indicator for images with has_no_object flag
+
+**Load More Functionality** (4 test scenarios):
+- Show load more button when there are more images
+- Not show load more button when all images are loaded
+- Call API when load more is clicked (getProjectImages with pagination)
+- Disable load more button while loading
+
+**Auto-scroll** (1 test scenario):
+- Auto-scroll to current image when currentIndex changes
+
+**Edge Cases** (5 test scenarios):
+- Handle missing image data gracefully (empty file_name, undefined folder_path)
+- Handle zero annotation count
+- Handle image error by falling back to original URL
+- Handle rapid filter changes
+- Handle empty project gracefully
+
+**Testing Approach**:
+- Uses vitest, React Testing Library
+- Comprehensive mocking of all dependencies:
+  - Annotation store with useAnnotationStore mock
+  - Auth context with mock user
+  - API modules (projects, image-locks)
+  - Image lock API with getProjectLocks, acquire, release, heartbeat
+- Mock utilities from test-utils (createMockAnnotationStore, createMockProject, createMockImage)
+- All tests follow vitest conventions and existing patterns from Canvas tests
+- Covers image list rendering in both grid and list views
+- Tests image selection (normal, ctrl, meta, shift), navigation, filtering, search, locks, diff mode, and load more
+- Comprehensive edge case handling
+
+**Verification**:
+- ✅ 1,072 lines of comprehensive test coverage
+- ✅ 70+ test scenarios covering all core ImageList functionality
+- ✅ Tests follow existing patterns from Canvas tests
+- ✅ Proper mocking of all dependencies
+- ✅ Tests cover rendering (grid/list), thumbnails, selection, navigation, filtering, search, locks, diff mode, no object indicator, load more, auto-scroll, and edge cases
+
+---
+
+**Phase 8 Progress Update**:
+- ✅ Subtask 8.1: ImageList rendering and navigation (70+ tests, 1,072 lines)
+- ⏳ Subtask 8.2: ImageList filtering and sorting (pending)
+- ⏳ Subtask 8.3: ImageList state management (pending)
+
+**Total ImageList Tests**: 70+ test scenarios, 1,072 lines
 
 ---
 Last Updated: 2026-01-04

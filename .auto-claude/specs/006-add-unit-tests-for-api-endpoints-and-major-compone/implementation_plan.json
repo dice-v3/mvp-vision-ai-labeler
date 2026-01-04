@@ -324,13 +324,13 @@
           "subtask_id": "8.1",
           "title": "Test ImageList.tsx rendering and navigation",
           "description": "Write tests for image list rendering, thumbnail display, image selection, navigation (prev/next), and keyboard shortcuts.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "frontend/components/annotation/__tests__/ImageList.test.tsx"
           ],
           "dependencies": ["1.2"],
           "estimated_effort": "large",
-          "notes": "ImageList.tsx is 607 lines - test core list functionality"
+          "notes": "Created comprehensive test suite for ImageList component with 70+ test scenarios covering: basic rendering (header, filters, search, view toggle), grid view rendering (thumbnails, status badges, image numbers), list view rendering (table layout, file names, annotation counts), image selection (normal click, ctrl+click, meta+click, shift+click), view toggle (grid ↔ list), filtering (all statuses), search functionality (file name, folder path, case-insensitive), lock indicators (locked, available, own locks), diff mode (diff badges, change counts), no object indicator, load more functionality (button visibility, API calls, loading state), auto-scroll to current image, and edge cases (missing data, errors, rapid changes). File: frontend/components/annotation/__tests__/ImageList.test.tsx (1,072 lines)."
         },
         {
           "subtask_id": "8.2",
