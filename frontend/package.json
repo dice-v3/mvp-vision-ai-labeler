@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "build:keycloak-css": "npx tailwindcss -i ./styles/keycloak-login.css -o ./keycloak-theme/login/resources/css/login.css --minify"
   },
   "dependencies": {

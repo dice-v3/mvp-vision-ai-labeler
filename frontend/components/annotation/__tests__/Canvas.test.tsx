@@ -19,9 +19,12 @@ import {
 } from '@/lib/test-utils/mock-stores';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock API modules

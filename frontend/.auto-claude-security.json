@@ -128,16 +128,28 @@
     "zsh"
   ],
   "stack_commands": [
+    "composer",
     "dive",
     "docker",
     "docker-buildx",
     "docker-compose",
     "dockerfile",
     "eslint",
+    "ipython",
+    "jupyter",
     "next",
     "node",
+    "notebook",
     "npm",
     "npx",
+    "pdb",
+    "php",
+    "pip",
+    "pip3",
+    "pipx",
+    "pudb",
+    "python",
+    "python3",
     "react-scripts",
     "ts-node",
     "tsc",
@@ -153,8 +165,10 @@
   "custom_commands": [],
   "detected_stack": {
     "languages": [
+      "python",
       "javascript",
-      "typescript"
+      "typescript",
+      "php"
     ],
     "package_managers": [
       "npm"
@@ -179,6 +193,10 @@
       "build",
       "start",
       "lint",
+      "test",
+      "test:watch",
+      "test:ui",
+      "test:coverage",
       "build:keycloak-css"
     ],
     "make_targets": [],
@@ -187,6 +205,6 @@
     "shell_scripts": []
   },
   "project_dir": "/home/test/repo/mvp-vision-ai-labeler/.auto-claude/worktrees/tasks/006-add-unit-tests-for-api-endpoints-and-major-compone/frontend",
-  "created_at": "2026-01-04T20:04:31.531501",
-  "project_hash": "27f6c5573af3e32e3f7c3c8a78c7e8de"
+  "created_at": "2026-01-04T21:17:50.568283",
+  "project_hash": "a8571aa2dc9ebd3f4a1dff83ab8f04bf"
 }

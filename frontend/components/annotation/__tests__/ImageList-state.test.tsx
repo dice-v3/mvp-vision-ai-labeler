@@ -20,9 +20,12 @@ import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import { getProjectImages, getProjectImageStatuses } from '@/lib/api/projects';
 import { imageLockAPI } from '@/lib/api/image-locks';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock useAuth hook
@@ -57,7 +60,7 @@ describe('ImageList - State Management', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     mockStore = createMockAnnotationStore();
-    (useAnnotationStore as any).mockReturnValue(mockStore);
+    mockUseAnnotationStore.mockReturnValue(mockStore);
 
     // Default mock implementations
     (getProjectImages as any).mockResolvedValue({ images: [], total: 0 });
@@ -74,7 +77,7 @@ describe('ImageList - State Management', () => {
     it('should display loading state when backgroundLoading is true', () => {
       mockStore.backgroundLoading = true;
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -91,7 +94,7 @@ describe('ImageList - State Management', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 50; // More images available
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -110,7 +113,7 @@ describe('ImageList - State Management', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 3; // All images loaded
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -130,7 +133,7 @@ describe('ImageList - State Management', () => {
         new Promise((resolve) => setTimeout(() => resolve([]), 100))
       );
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -152,7 +155,7 @@ describe('ImageList - State Management', () => {
       mockStore.totalImages = 10; // More images available
       mockStore.loadMoreImages = vi.fn();
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const newImages = [
         { id: '3', file_name: 'image3.jpg', url: 'http://example.com/3.jpg' },
@@ -191,7 +194,7 @@ describe('ImageList - State Management', () => {
       });
 
       (imageLockAPI.getProjectLocks as any).mockReturnValue(locksPromise);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -210,7 +213,7 @@ describe('ImageList - State Management', () => {
       mockStore.images = [
         createMockImage({ id: '1', file_name: 'image1.jpg' }),
       ];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -233,7 +236,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -262,7 +265,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -283,7 +286,7 @@ describe('ImageList - State Management', () => {
       mockStore.totalImages = 10;
       mockStore.loadMoreImages = vi.fn();
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -310,7 +313,7 @@ describe('ImageList - State Management', () => {
       // Mock locks API error
       (imageLockAPI.getProjectLocks as any).mockRejectedValue(new Error('Failed to load locks'));
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -336,7 +339,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -359,7 +362,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -380,7 +383,7 @@ describe('ImageList - State Management', () => {
       mockStore.totalImages = 10;
       mockStore.loadMoreImages = vi.fn();
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -408,7 +411,7 @@ describe('ImageList - State Management', () => {
   describe('Empty States', () => {
     it('should show "No images match filter" when no images exist', () => {
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -422,7 +425,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const user = userEvent.setup({ delay: null });
       render(<ImageList />);
@@ -448,7 +451,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const user = userEvent.setup({ delay: null });
       render(<ImageList />);
@@ -474,7 +477,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const user = userEvent.setup({ delay: null });
       render(<ImageList />);
@@ -497,7 +500,7 @@ describe('ImageList - State Management', () => {
       mockStore.project = project;
       mockStore.images = [];
       mockStore.totalImages = 0;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -507,7 +510,7 @@ describe('ImageList - State Management', () => {
     it('should handle empty project gracefully', () => {
       mockStore.project = null;
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -520,7 +523,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const user = userEvent.setup({ delay: null });
       render(<ImageList />);
@@ -549,7 +552,7 @@ describe('ImageList - State Management', () => {
       mockStore.totalImages = 10;
       mockStore.loadMoreImages = vi.fn();
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const newImages = [
         { id: '3', file_name: 'image3.jpg', url: 'http://example.com/3.jpg' },
@@ -587,7 +590,7 @@ describe('ImageList - State Management', () => {
       mockStore.images = [createMockImage({ id: '1', file_name: 'image1.jpg' })];
 
       (imageLockAPI.getProjectLocks as any).mockResolvedValue([]);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -631,7 +634,7 @@ describe('ImageList - State Management', () => {
       ];
 
       (imageLockAPI.getProjectLocks as any).mockResolvedValue(initialLocks);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -666,7 +669,7 @@ describe('ImageList - State Management', () => {
     it('should not refetch locks when project is null', () => {
       mockStore.project = null;
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -680,7 +683,7 @@ describe('ImageList - State Management', () => {
       mockStore.images = [createMockImage({ id: '1', file_name: 'image1.jpg' })];
 
       (imageLockAPI.getProjectLocks as any).mockResolvedValue([]);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { unmount } = render(<ImageList />);
 
@@ -713,7 +716,7 @@ describe('ImageList - State Management', () => {
         ];
       });
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -748,7 +751,7 @@ describe('ImageList - State Management', () => {
       mockStore.loadMoreImages = vi.fn();
       mockStore.backgroundLoading = false;
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const newImages = Array.from({ length: 10 }, (_, i) =>
         ({ id: `${i + 11}`, file_name: `image${i + 11}.jpg`, url: `http://example.com/${i + 11}.jpg` })
@@ -802,7 +805,7 @@ describe('ImageList - State Management', () => {
       mockStore.loadMoreImages = vi.fn();
       mockStore.backgroundLoading = true; // Already loading
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -835,7 +838,7 @@ describe('ImageList - State Management', () => {
       mockStore.totalImages = 10; // All loaded
       mockStore.loadMoreImages = vi.fn();
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -863,7 +866,7 @@ describe('ImageList - State Management', () => {
       mockStore.images = [createMockImage({ id: '1', file_name: 'image1.jpg' })];
       mockStore.totalImages = 10;
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { unmount } = render(<ImageList />);
 
@@ -883,7 +886,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = initialImages;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -898,7 +901,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = updatedImages;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       rerender(<ImageList />);
 
@@ -913,13 +916,13 @@ describe('ImageList - State Management', () => {
       mockStore.images = [createMockImage({ id: '1', file_name: 'image1.jpg' })];
       mockStore.totalImages = 1;
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
       // Update totalImages
       mockStore.totalImages = 10;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       rerender(<ImageList />);
 
@@ -935,13 +938,13 @@ describe('ImageList - State Management', () => {
       mockStore.images = images;
       mockStore.currentIndex = 0;
 
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
       // Change current index
       mockStore.currentIndex = 3;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       rerender(<ImageList />);
 
@@ -958,7 +961,7 @@ describe('ImageList - State Management', () => {
       mockStore.images = [createMockImage({ id: '1', file_name: 'image1.jpg' })];
 
       (imageLockAPI.getProjectLocks as any).mockResolvedValue([]);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -969,7 +972,7 @@ describe('ImageList - State Management', () => {
       // Change project
       const project2 = createMockProject({ id: 'proj_456' });
       mockStore.project = project2;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       rerender(<ImageList />);
 
@@ -986,7 +989,7 @@ describe('ImageList - State Management', () => {
       );
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const startTime = performance.now();
       render(<ImageList />);
@@ -1009,7 +1012,7 @@ describe('ImageList - State Management', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -1033,7 +1036,7 @@ describe('ImageList - State Management', () => {
       );
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const user = userEvent.setup({ delay: null });
       render(<ImageList />);

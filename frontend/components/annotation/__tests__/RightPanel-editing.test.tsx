@@ -22,9 +22,12 @@ import {
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import * as annotationsAPI from '@/lib/api/annotations';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock toast store
@@ -135,7 +138,7 @@ describe('RightPanel - Annotation Editing', () => {
       selectedAnnotationId: null,
     });
 
-    (useAnnotationStore as any).mockReturnValue(mockStore);
+    mockUseAnnotationStore.mockReturnValue(mockStore);
   });
 
   afterEach(() => {
@@ -152,7 +155,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = [annotation];
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -176,7 +179,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -201,7 +204,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -225,7 +228,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -249,7 +252,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -276,7 +279,7 @@ describe('RightPanel - Annotation Editing', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -296,7 +299,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -317,7 +320,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -338,7 +341,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -359,7 +362,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -385,7 +388,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -420,7 +423,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -441,7 +444,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -466,7 +469,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -495,7 +498,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -524,7 +527,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -547,7 +550,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -575,7 +578,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -609,7 +612,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -637,7 +640,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -659,7 +662,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -723,7 +726,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = annotations;
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -740,7 +743,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = [annotation];
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -759,7 +762,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = [annotation];
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -779,7 +782,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -795,7 +798,7 @@ describe('RightPanel - Annotation Editing', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle updating non-existent annotation gracefully', () => {
       mockStore.annotations = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -810,7 +813,7 @@ describe('RightPanel - Annotation Editing', () => {
       const annotation = createMockAnnotation({ id: 'ann-1' });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -828,7 +831,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -847,7 +850,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = [annotation];
       mockStore.project = null;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -861,7 +864,7 @@ describe('RightPanel - Annotation Editing', () => {
       const annotation = createMockAnnotation({ id: 'ann-1' });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -903,7 +906,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -926,7 +929,7 @@ describe('RightPanel - Annotation Editing', () => {
       const annotation = createMockAnnotation({ id: 'ann-1' });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -948,7 +951,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -974,7 +977,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -993,7 +996,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -1014,7 +1017,7 @@ describe('RightPanel - Annotation Editing', () => {
       });
 
       mockStore.annotations = [annotation];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -1040,7 +1043,7 @@ describe('RightPanel - Annotation Editing', () => {
 
       mockStore.annotations = annotations;
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 

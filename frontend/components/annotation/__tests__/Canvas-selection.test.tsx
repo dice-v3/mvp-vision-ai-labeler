@@ -21,9 +21,12 @@ import { createMouseEvent } from '@/lib/test-utils/component-test-utils';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 import * as annotationUtils from '@/lib/annotation/utils';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock API modules

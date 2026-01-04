@@ -21,9 +21,12 @@ import {
 } from '@/lib/test-utils/mock-stores';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock toast store
@@ -123,7 +126,7 @@ describe('RightPanel - Annotation List Display', () => {
       selectedAnnotationId: null,
     });
 
-    (useAnnotationStore as any).mockReturnValue(mockStore);
+    mockUseAnnotationStore.mockReturnValue(mockStore);
   });
 
   afterEach(() => {
@@ -133,7 +136,7 @@ describe('RightPanel - Annotation List Display', () => {
   describe('Panel Visibility', () => {
     it('should render collapsed panel when right panel is closed', () => {
       mockStore.panels.right = false;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -144,7 +147,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should expand panel when toggle button is clicked', async () => {
       mockStore.panels.right = false;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -173,7 +176,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -183,7 +186,7 @@ describe('RightPanel - Annotation List Display', () => {
     it('should show empty state when no annotations', () => {
       mockStore.annotations = [];
       mockStore.currentTask = 'detection';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -194,7 +197,7 @@ describe('RightPanel - Annotation List Display', () => {
     it('should show classification-specific empty state', () => {
       mockStore.annotations = [];
       mockStore.currentTask = 'classification';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -217,7 +220,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -235,7 +238,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -253,7 +256,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -271,7 +274,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -290,7 +293,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -309,7 +312,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -332,7 +335,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -349,7 +352,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.selectedAnnotationId = 'ann-1';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { container } = render(<RightPanel />);
 
@@ -365,7 +368,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -382,7 +385,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -404,7 +407,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.isAnnotationVisible = vi.fn().mockReturnValue(true);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -421,7 +424,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.isAnnotationVisible = vi.fn().mockReturnValue(false);
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -436,7 +439,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.showAllAnnotations = true;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -453,7 +456,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.showAllAnnotations = false;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -475,7 +478,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -500,7 +503,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -526,7 +529,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -549,7 +552,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -575,7 +578,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -599,7 +602,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -621,7 +624,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -641,7 +644,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -664,7 +667,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -679,7 +682,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { container } = render(<RightPanel />);
 
@@ -690,7 +693,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should not display current image section when no annotations', () => {
       mockStore.annotations = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -703,7 +706,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -782,7 +785,7 @@ describe('RightPanel - Annotation List Display', () => {
         },
       });
       mockStore.currentTask = 'detection';
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -791,7 +794,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should show message when project is null', () => {
       mockStore.project = null;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -937,7 +940,7 @@ describe('RightPanel - Annotation List Display', () => {
   describe('Edge Cases', () => {
     it('should handle missing project gracefully', () => {
       mockStore.project = null;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -955,7 +958,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -971,7 +974,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -997,7 +1000,7 @@ describe('RightPanel - Annotation List Display', () => {
       mockStore.canvasRef = { current: document.createElement('canvas') } as any;
       mockStore.imageRef = { current: new Image() } as any;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -1006,7 +1009,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should not render Minimap when disabled', () => {
       mockStore.showMinimap = false;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 
@@ -1017,7 +1020,7 @@ describe('RightPanel - Annotation List Display', () => {
       mockStore.showMinimap = true;
       mockStore.canvasRef = null;
       mockStore.imageRef = null;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<RightPanel />);
 

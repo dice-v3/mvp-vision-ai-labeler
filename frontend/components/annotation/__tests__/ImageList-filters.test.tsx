@@ -19,9 +19,12 @@ import {
 } from '@/lib/test-utils/mock-stores';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
 
+// Create mock function for annotation store
+const mockUseAnnotationStore = vi.fn();
+
 // Mock the annotation store
 vi.mock('@/lib/stores/annotationStore', () => ({
-  useAnnotationStore: vi.fn(),
+  useAnnotationStore: mockUseAnnotationStore,
 }));
 
 // Mock useAuth hook
@@ -60,7 +63,7 @@ describe('ImageList - Filtering and Sorting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore = createMockAnnotationStore();
-    (useAnnotationStore as any).mockReturnValue(mockStore);
+    mockUseAnnotationStore.mockReturnValue(mockStore);
   });
 
   afterEach(() => {
@@ -76,7 +79,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -95,7 +98,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -113,7 +116,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -137,7 +140,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -160,7 +163,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -188,7 +191,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -200,7 +203,7 @@ describe('ImageList - Filtering and Sorting', () => {
         ...images,
         createMockImage({ id: '3', status: 'in-progress' }),
       ];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       rerender(<ImageList />);
 
@@ -225,7 +228,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
     });
 
     it('should search by file extension', async () => {
@@ -280,7 +283,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -348,7 +351,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -375,7 +378,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
     });
 
     it('should combine search (filename) + filter (status)', async () => {
@@ -534,7 +537,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 10;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -558,7 +561,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 20; // More images exist on server
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -579,7 +582,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 2; // All images loaded
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -601,7 +604,7 @@ describe('ImageList - Filtering and Sorting', () => {
       mockStore.totalImages = 5;
       mockStore.project = createMockProject();
       mockStore.loadMoreImages = vi.fn();
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { getProjectImages, getProjectImageStatuses } = await import('@/lib/api/projects');
       (getProjectImages as any).mockResolvedValue({
@@ -642,7 +645,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 10;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -666,7 +669,7 @@ describe('ImageList - Filtering and Sorting', () => {
       mockStore.loadMoreImages = vi.fn((newImages) => {
         mockStore.images = [...mockStore.images, ...newImages];
       });
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { getProjectImages, getProjectImageStatuses } = await import('@/lib/api/projects');
       (getProjectImages as any).mockResolvedValue({
@@ -707,7 +710,7 @@ describe('ImageList - Filtering and Sorting', () => {
       );
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const startTime = Date.now();
       render(<ImageList />);
@@ -734,7 +737,7 @@ describe('ImageList - Filtering and Sorting', () => {
       );
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -764,7 +767,7 @@ describe('ImageList - Filtering and Sorting', () => {
       );
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -798,7 +801,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       expect(() => render(<ImageList />)).not.toThrow();
 
@@ -810,7 +813,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
     it('should handle filter with empty image list', async () => {
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -822,7 +825,7 @@ describe('ImageList - Filtering and Sorting', () => {
 
     it('should handle search with empty image list', async () => {
       mockStore.images = [];
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -839,7 +842,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -861,7 +864,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -881,7 +884,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -905,7 +908,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -930,7 +933,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -956,7 +959,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       const { rerender } = render(<ImageList />);
 
@@ -987,7 +990,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -1007,7 +1010,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 
@@ -1027,7 +1030,7 @@ describe('ImageList - Filtering and Sorting', () => {
       ];
 
       mockStore.images = images;
-      (useAnnotationStore as any).mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockReturnValue(mockStore);
 
       render(<ImageList />);
 

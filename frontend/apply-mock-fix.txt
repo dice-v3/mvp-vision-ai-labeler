@@ -1,0 +1,9 @@
+Canvas.test.tsx
+Canvas-drawing.test.tsx
+Canvas-transforms.test.tsx
+Canvas-selection.test.tsx
+ImageList.test.tsx
+ImageList-filters.test.tsx
+ImageList-state.test.tsx
+RightPanel-editing.test.tsx
+RightPanel-classes.test.tsx

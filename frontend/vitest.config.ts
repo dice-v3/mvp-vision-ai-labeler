@@ -14,12 +14,18 @@ export default defineConfig({
       include: [
         'lib/annotation/utils/**/*.ts',
         'lib/annotation/hooks/**/*.ts',
+        'components/annotation/Canvas.tsx',
+        'components/annotation/ImageList.tsx',
+        'components/annotation/RightPanel.tsx',
+        'components/annotation/canvas-ui/**/*.tsx',
+        'components/annotation/overlays/**/*.tsx',
       ],
       exclude: [
         '**/*.test.ts',
         '**/*.test.tsx',
         '**/index.ts',
         '**/__tests__/**',
+        '**/node_modules/**',
       ],
       thresholds: {
         lines: 70,
