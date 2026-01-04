@@ -188,13 +188,13 @@
           "subtask_id": "4.3",
           "title": "Test version_diff.py endpoints",
           "description": "Write tests for version comparison, diff generation, version history, and conflict detection.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             "backend/tests/api/test_version_diff.py"
           ],
           "dependencies": ["1.1", "4.1"],
           "estimated_effort": "medium",
-          "notes": ""
+          "notes": "Created comprehensive test suite for version diff endpoints with 60+ test scenarios covering GET /versions/{version_a_id}/compare/{version_b_id} (compare versions with full diff data, image filtering, working vs published versions, error handling), GET /versions/{version_a_id}/compare/{version_b_id}/summary (diff summary without image details), and VersionDiffService utility methods (IoU calculation, geometry normalization, annotation comparison, version parsing, diff calculation for added/removed/modified/unchanged annotations). Tests include version comparison, conflict detection, class-level statistics, and comprehensive error handling. File: backend/tests/api/test_version_diff.py (1,180 lines)."
         }
       ]
     },
