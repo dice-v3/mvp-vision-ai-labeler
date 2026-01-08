@@ -115,9 +115,13 @@ vi.mock('../AddClassModal', () => ({
         <button
           data-testid="modal-add-button"
           onClick={async () => {
-            await classesAPI.addClass(projectId, { name: 'New Class', color: '#0000ff' }, currentTask);
-            onClassAdded();
-            onClose();
+            try {
+              await classesAPI.addClass(projectId, { name: 'New Class', color: '#0000ff' }, currentTask);
+              onClassAdded();
+              onClose();
+            } catch (error) {
+              // Error handled - do nothing in mock
+            }
           }}
         >
           Add Class
