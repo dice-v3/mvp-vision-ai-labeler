@@ -182,7 +182,11 @@ vi.mock('@/lib/annotation/hooks', () => ({
   })),
   useCanvasRenderer: vi.fn(),
   useCanvasKeyboardShortcuts: vi.fn(),
-  useBatchOperations: vi.fn(),
+  useBatchOperations: vi.fn(() => ({
+    handleNoObject: vi.fn(),
+    handleDeleteAllAnnotations: vi.fn(),
+    handleConfirmImage: vi.fn(),
+  })),
   useMouseHandlers: vi.fn(() => ({
     handleMouseDown: vi.fn(),
     handleMouseMove: vi.fn(),
@@ -383,9 +387,9 @@ describe('Canvas Component - Core Rendering', () => {
       mockStore.currentImage = mockImage;
       mockStore.project = createMockProject();
 
-      render(<Canvas />);
+      const { container } = render(<Canvas />);
 
-      const canvas = screen.getByRole('img', { hidden: true }) || document.querySelector('canvas');
+      const canvas = container.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
     });
 

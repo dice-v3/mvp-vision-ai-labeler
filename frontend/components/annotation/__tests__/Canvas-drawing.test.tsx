@@ -209,7 +209,11 @@ vi.mock('@/lib/annotation/hooks', () => ({
   useToolRenderer: vi.fn(() => mockUseToolRenderer),
   useCanvasRenderer: vi.fn(),
   useCanvasKeyboardShortcuts: vi.fn(),
-  useBatchOperations: vi.fn(),
+  useBatchOperations: vi.fn(() => ({
+    handleNoObject: vi.fn(),
+    handleDeleteAllAnnotations: vi.fn(),
+    handleConfirmImage: vi.fn(),
+  })),
   useMouseHandlers: vi.fn(() => mockUseMouseHandlers),
 }));
 

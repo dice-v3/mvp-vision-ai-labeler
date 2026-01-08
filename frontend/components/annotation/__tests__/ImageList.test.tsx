@@ -65,7 +65,22 @@ describe('ImageList - Component Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore = createMockAnnotationStore();
-    mockUseAnnotationStore.mockReturnValue(mockStore);
+
+    // Override getCurrentClasses to return classes from the project
+    mockStore.getCurrentClasses = vi.fn(() => {
+      if (!mockStore.project || !mockStore.currentTask) return {};
+      return mockStore.project.taskClasses?.[mockStore.currentTask] || {};
+    });
+
+    mockUseAnnotationStore.mockImplementation((selector?: any) =>
+      selector ? selector(mockStore) : mockStore
+    );
+
+    // Add setState and getState to the mock for direct store access
+    (mockUseAnnotationStore as any).setState = vi.fn((updates: any) => {
+      Object.assign(mockStore, typeof updates === 'function' ? updates(mockStore) : updates);
+    });
+    (mockUseAnnotationStore as any).getState = vi.fn(() => mockStore);
   });
 
   afterEach(() => {
@@ -115,7 +130,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -124,7 +139,7 @@ describe('ImageList - Component Rendering', () => {
 
     it('should show "No images match filter" when no images', () => {
       mockStore.images = [];
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -145,7 +160,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -164,7 +179,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -184,7 +199,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -199,7 +214,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -215,7 +230,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.currentIndex = 1;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -236,7 +251,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.diffMode = { enabled: false };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -258,7 +273,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.diffMode = { enabled: false };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -280,7 +295,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.diffMode = { enabled: false };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -297,12 +312,13 @@ describe('ImageList - Component Rendering', () => {
       mockStore.images = images;
       mockStore.selectedImageIds = ['1'];
       mockStore.isImageSelected = vi.fn((id: string) => id === '1');
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
-      const selectedIndicators = screen.getAllByRole('button', { name: /Selected/ });
-      expect(selectedIndicators.length).toBeGreaterThan(0);
+      // The button title includes "(Selected)" when image is selected
+      const selectedButtons = screen.getAllByTitle(/\(Selected\)/);
+      expect(selectedButtons.length).toBeGreaterThan(0);
     });
 
     it('should use lazy loading for images', () => {
@@ -311,7 +327,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -332,7 +348,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -341,8 +357,14 @@ describe('ImageList - Component Rendering', () => {
     });
 
     it('should display table headers', () => {
+      // Need images for table to render (otherwise shows "No images match filter")
+      const images = [
+        createMockImage({ id: '1', file_name: 'image1.jpg' }),
+      ];
+
+      mockStore.images = images;
       mockStore.preferences.imageListView = 'list';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -359,7 +381,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -373,7 +395,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -388,7 +410,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.currentIndex = 1;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -407,7 +429,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.setCurrentIndex = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -425,12 +447,13 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.toggleImageSelection = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
       const secondImage = screen.getByRole('button', { name: /image2\.jpg/ });
-      await userEvent.click(secondImage, { ctrlKey: true });
+      // Use fireEvent.click with ctrlKey option
+      fireEvent.click(secondImage, { ctrlKey: true });
 
       expect(mockStore.toggleImageSelection).toHaveBeenCalledWith('2', 1);
     });
@@ -442,12 +465,13 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.toggleImageSelection = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
       const firstImage = screen.getByRole('button', { name: /image1\.jpg/ });
-      await userEvent.click(firstImage, { metaKey: true });
+      // Use fireEvent.click with metaKey option
+      fireEvent.click(firstImage, { metaKey: true });
 
       expect(mockStore.toggleImageSelection).toHaveBeenCalledWith('1', 0);
     });
@@ -461,12 +485,13 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.selectImageRange = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
       const thirdImage = screen.getByRole('button', { name: /image3\.jpg/ });
-      await userEvent.click(thirdImage, { shiftKey: true });
+      // Use fireEvent.click with shiftKey option
+      fireEvent.click(thirdImage, { shiftKey: true });
 
       expect(mockStore.selectImageRange).toHaveBeenCalledWith(2);
     });
@@ -480,7 +505,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.selectedImageIds = ['1', '2'];
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -496,7 +521,7 @@ describe('ImageList - Component Rendering', () => {
       mockStore.images = images;
       mockStore.selectedImageIds = ['1', '2'];
       mockStore.clearImageSelection = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -511,7 +536,7 @@ describe('ImageList - Component Rendering', () => {
     it('should toggle from grid to list view', async () => {
       mockStore.preferences.imageListView = 'grid';
       mockStore.setPreference = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -524,7 +549,7 @@ describe('ImageList - Component Rendering', () => {
     it('should toggle from list to grid view', async () => {
       mockStore.preferences.imageListView = 'list';
       mockStore.setPreference = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -544,7 +569,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
     });
 
     it('should show all images by default', () => {
@@ -604,7 +629,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -626,7 +651,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
     });
 
     it('should filter images by file name', async () => {
@@ -689,7 +714,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -718,7 +743,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.project = createMockProject();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { imageLockAPI } = await import('@/lib/api/image-locks');
       (imageLockAPI.getProjectLocks as any).mockResolvedValue([
@@ -745,7 +770,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.project = createMockProject();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { imageLockAPI } = await import('@/lib/api/image-locks');
       (imageLockAPI.getProjectLocks as any).mockResolvedValue([
@@ -772,7 +797,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.project = createMockProject();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -810,7 +835,7 @@ describe('ImageList - Component Rendering', () => {
           showUnchanged: true,
         },
       };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -846,7 +871,7 @@ describe('ImageList - Component Rendering', () => {
           showUnchanged: true,
         },
       };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -868,7 +893,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.diffMode = { enabled: false };
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -885,7 +910,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 10;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -900,7 +925,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.totalImages = 1;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -917,7 +942,7 @@ describe('ImageList - Component Rendering', () => {
       mockStore.totalImages = 10;
       mockStore.project = createMockProject();
       mockStore.loadMoreImages = vi.fn();
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { getProjectImages, getProjectImageStatuses } = await import('@/lib/api/projects');
       (getProjectImages as any).mockResolvedValue({
@@ -954,7 +979,7 @@ describe('ImageList - Component Rendering', () => {
       mockStore.totalImages = 10;
       mockStore.project = createMockProject();
       mockStore.backgroundLoading = true;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -971,13 +996,13 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.currentIndex = 0;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { rerender } = render(<ImageList />);
 
       // Change current index
       mockStore.currentIndex = 10;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       rerender(<ImageList />);
 
@@ -995,7 +1020,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       expect(() => render(<ImageList />)).not.toThrow();
     });
@@ -1007,7 +1032,7 @@ describe('ImageList - Component Rendering', () => {
 
       mockStore.images = images;
       mockStore.preferences.imageListView = 'list';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -1025,7 +1050,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -1046,7 +1071,7 @@ describe('ImageList - Component Rendering', () => {
       ];
 
       mockStore.images = images;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<ImageList />);
 
@@ -1069,7 +1094,7 @@ describe('ImageList - Component Rendering', () => {
 
     it('should handle empty project gracefully', () => {
       mockStore.project = null;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       expect(() => render(<ImageList />)).not.toThrow();
     });

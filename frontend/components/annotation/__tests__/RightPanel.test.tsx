@@ -128,7 +128,21 @@ describe('RightPanel - Annotation List Display', () => {
       selectedAnnotationId: null,
     });
 
-    mockUseAnnotationStore.mockReturnValue(mockStore);
+    // Override getCurrentClasses to return classes from the project
+    mockStore.getCurrentClasses = vi.fn(() => {
+      if (!mockStore.project || !mockStore.currentTask) return {};
+      return mockStore.project.taskClasses?.[mockStore.currentTask] || {};
+    });
+
+    mockUseAnnotationStore.mockImplementation((selector?: any) =>
+      selector ? selector(mockStore) : mockStore
+    );
+
+    // Add setState and getState to the mock
+    (useAnnotationStore as any).setState = vi.fn((updates: any) => {
+      Object.assign(mockStore, typeof updates === 'function' ? updates(mockStore) : updates);
+    });
+    (useAnnotationStore as any).getState = vi.fn(() => mockStore);
   });
 
   afterEach(() => {
@@ -138,7 +152,7 @@ describe('RightPanel - Annotation List Display', () => {
   describe('Panel Visibility', () => {
     it('should render collapsed panel when right panel is closed', () => {
       mockStore.panels.right = false;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -149,7 +163,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should expand panel when toggle button is clicked', async () => {
       mockStore.panels.right = false;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -178,7 +192,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -188,7 +202,7 @@ describe('RightPanel - Annotation List Display', () => {
     it('should show empty state when no annotations', () => {
       mockStore.annotations = [];
       mockStore.currentTask = 'detection';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -199,7 +213,7 @@ describe('RightPanel - Annotation List Display', () => {
     it('should show classification-specific empty state', () => {
       mockStore.annotations = [];
       mockStore.currentTask = 'classification';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -222,12 +236,16 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
-      expect(screen.getByText('Person')).toBeInTheDocument();
-      expect(screen.getByText('Car')).toBeInTheDocument();
+      // Use getAllByText since class names appear in both annotations and class list
+      const personElements = screen.getAllByText('Person');
+      const carElements = screen.getAllByText('Car');
+
+      expect(personElements.length).toBeGreaterThan(0);
+      expect(carElements.length).toBeGreaterThan(0);
     });
 
     it('should render unlabeled annotation when no class assigned', () => {
@@ -240,7 +258,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -258,7 +276,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -276,7 +294,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -295,7 +313,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -314,7 +332,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -337,11 +355,13 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
-      expect(screen.getByText('Person')).toBeInTheDocument();
+      // Person appears in both annotation list and class list
+      const personElements = screen.getAllByText('Person');
+      expect(personElements.length).toBeGreaterThan(0);
     });
   });
 
@@ -354,7 +374,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.selectedAnnotationId = 'ann-1';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { container } = render(<RightPanel />);
 
@@ -370,11 +390,16 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
-      const personAnnotation = screen.getByText('Person').closest('div');
+      // Get all "Person" texts and find the one in the annotation list (smaller text)
+      const personElements = screen.getAllByText('Person');
+      // The annotation list item has a specific structure - get the first one which is in the annotation list
+      const personAnnotation = personElements[0].closest('div[role="button"]') ||
+        personElements[0].closest('[data-annotation-item]') ||
+        personElements[0].closest('div');
       await userEvent.click(personAnnotation!);
 
       expect(mockStore.selectAnnotation).toHaveBeenCalledWith('ann-1');
@@ -387,15 +412,17 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
-      const personAnnotation = screen.getByText('Person').closest('div');
+      const personElements = screen.getAllByText('Person');
+      const personAnnotation = personElements[0].closest('div');
       await userEvent.click(personAnnotation!);
       expect(mockStore.selectAnnotation).toHaveBeenCalledWith('ann-1');
 
-      const carAnnotation = screen.getByText('Car').closest('div');
+      const carElements = screen.getAllByText('Car');
+      const carAnnotation = carElements[0].closest('div');
       await userEvent.click(carAnnotation!);
       expect(mockStore.selectAnnotation).toHaveBeenCalledWith('ann-2');
     });
@@ -409,7 +436,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.isAnnotationVisible = vi.fn().mockReturnValue(true);
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -426,7 +453,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.isAnnotationVisible = vi.fn().mockReturnValue(false);
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -441,7 +468,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.showAllAnnotations = true;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -458,7 +485,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.showAllAnnotations = false;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -480,7 +507,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -505,7 +532,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -531,7 +558,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -554,7 +581,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       mockStore.annotations = annotations;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -569,18 +596,32 @@ describe('RightPanel - Annotation List Display', () => {
   });
 
   describe('Annotation Deletion', () => {
+    // Set up window.confirm mock for all deletion tests
+    let originalConfirm: typeof window.confirm;
+
+    beforeEach(() => {
+      originalConfirm = window.confirm;
+      window.confirm = vi.fn();
+    });
+
+    afterEach(() => {
+      window.confirm = originalConfirm;
+    });
+
     it('should delete annotation when delete button is clicked and confirmed', async () => {
       const { deleteAnnotation } = await import('@/lib/api/annotations');
 
       // Mock window.confirm
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      (window.confirm as any).mockReturnValue(true);
 
       const annotations = [
         createMockAnnotation({ id: 'ann-1', className: 'Person' }),
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) =>
+        selector ? selector(mockStore) : mockStore
+      );
 
       render(<RightPanel />);
 
@@ -597,14 +638,16 @@ describe('RightPanel - Annotation List Display', () => {
       const { deleteAnnotation } = await import('@/lib/api/annotations');
 
       // Mock window.confirm to return false
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
+      (window.confirm as any).mockReturnValue(false);
 
       const annotations = [
         createMockAnnotation({ id: 'ann-1', className: 'Person' }),
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) =>
+        selector ? selector(mockStore) : mockStore
+      );
 
       render(<RightPanel />);
 
@@ -619,14 +662,16 @@ describe('RightPanel - Annotation List Display', () => {
       const { deleteAnnotation } = await import('@/lib/api/annotations');
       (deleteAnnotation as any).mockImplementation(() => new Promise(() => {})); // Never resolves
 
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      (window.confirm as any).mockReturnValue(true);
 
       const annotations = [
         createMockAnnotation({ id: 'ann-1', className: 'Person' }),
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) =>
+        selector ? selector(mockStore) : mockStore
+      );
 
       render(<RightPanel />);
 
@@ -639,14 +684,16 @@ describe('RightPanel - Annotation List Display', () => {
     });
 
     it('should stop event propagation when delete button is clicked', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      (window.confirm as any).mockReturnValue(true);
 
       const annotations = [
         createMockAnnotation({ id: 'ann-1', className: 'Person' }),
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) =>
+        selector ? selector(mockStore) : mockStore
+      );
 
       render(<RightPanel />);
 
@@ -669,7 +716,9 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) =>
+        selector ? selector(mockStore) : mockStore
+      );
 
       render(<RightPanel />);
 
@@ -684,7 +733,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       const { container } = render(<RightPanel />);
 
@@ -695,7 +744,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should not display current image section when no annotations', () => {
       mockStore.annotations = [];
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -708,7 +757,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -787,7 +836,7 @@ describe('RightPanel - Annotation List Display', () => {
         },
       });
       mockStore.currentTask = 'detection';
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -796,7 +845,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should show message when project is null', () => {
       mockStore.project = null;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -813,9 +862,9 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(personClass!);
 
-      // After focusing, reorder buttons should be visible
-      const moveUpButton = screen.getByTitle('Move up');
-      const moveDownButton = screen.getByTitle('Move down');
+      // After focusing, reorder buttons should be visible within the class item
+      const moveUpButton = personClass?.querySelector('button[title="Move up"]');
+      const moveDownButton = personClass?.querySelector('button[title="Move down"]');
 
       expect(moveUpButton).toBeInTheDocument();
       expect(moveDownButton).toBeInTheDocument();
@@ -829,7 +878,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(personClass!);
 
-      const moveUpButton = screen.getByTitle('Move up');
+      const moveUpButton = personClass?.querySelector('button[title="Move up"]') as HTMLButtonElement;
       expect(moveUpButton).toBeDisabled();
     });
 
@@ -841,7 +890,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(bikeClass!);
 
-      const moveDownButton = screen.getByTitle('Move down');
+      const moveDownButton = bikeClass?.querySelector('button[title="Move down"]') as HTMLButtonElement;
       expect(moveDownButton).toBeDisabled();
     });
 
@@ -855,7 +904,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(carClass!);
 
-      const moveUpButton = screen.getByTitle('Move up');
+      const moveUpButton = carClass?.querySelector('button[title="Move up"]') as HTMLButtonElement;
       await userEvent.click(moveUpButton);
 
       await waitFor(() => {
@@ -873,7 +922,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(carClass!);
 
-      const moveDownButton = screen.getByTitle('Move down');
+      const moveDownButton = carClass?.querySelector('button[title="Move down"]') as HTMLButtonElement;
       await userEvent.click(moveDownButton);
 
       await waitFor(() => {
@@ -892,7 +941,7 @@ describe('RightPanel - Annotation List Display', () => {
 
       await userEvent.click(carClass!);
 
-      const moveUpButton = screen.getByTitle('Move up');
+      const moveUpButton = carClass?.querySelector('button[title="Move up"]') as HTMLButtonElement;
       await userEvent.click(moveUpButton);
 
       // Try to click again while reordering
@@ -942,7 +991,7 @@ describe('RightPanel - Annotation List Display', () => {
   describe('Edge Cases', () => {
     it('should handle missing project gracefully', () => {
       mockStore.project = null;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -960,7 +1009,7 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -976,13 +1025,18 @@ describe('RightPanel - Annotation List Display', () => {
       ];
 
       mockStore.annotations = annotations;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
-      const personAnnotation = screen.getByText('Person').closest('div');
-      const carAnnotation = screen.getByText('Car').closest('div');
-      const bikeAnnotation = screen.getByText('Bike').closest('div');
+      // Get the first occurrence of each class name (in the annotation list, not class list)
+      const personElements = screen.getAllByText('Person');
+      const carElements = screen.getAllByText('Car');
+      const bikeElements = screen.getAllByText('Bike');
+
+      const personAnnotation = personElements[0].closest('div');
+      const carAnnotation = carElements[0].closest('div');
+      const bikeAnnotation = bikeElements[0].closest('div');
 
       await userEvent.click(personAnnotation!);
       await userEvent.click(carAnnotation!);
@@ -1002,7 +1056,7 @@ describe('RightPanel - Annotation List Display', () => {
       mockStore.canvasRef = { current: document.createElement('canvas') } as any;
       mockStore.imageRef = { current: new Image() } as any;
       mockStore.currentImage = createMockImage({ id: 'img-1' });
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -1011,7 +1065,7 @@ describe('RightPanel - Annotation List Display', () => {
 
     it('should not render Minimap when disabled', () => {
       mockStore.showMinimap = false;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 
@@ -1022,7 +1076,7 @@ describe('RightPanel - Annotation List Display', () => {
       mockStore.showMinimap = true;
       mockStore.canvasRef = null;
       mockStore.imageRef = null;
-      mockUseAnnotationStore.mockReturnValue(mockStore);
+      mockUseAnnotationStore.mockImplementation((selector?: any) => selector ? selector(mockStore) : mockStore);
 
       render(<RightPanel />);
 

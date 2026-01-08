@@ -116,6 +116,8 @@ export interface MockAnnotationStore {
   setPreference: ReturnType<typeof vi.fn>;
   undo: ReturnType<typeof vi.fn>;
   redo: ReturnType<typeof vi.fn>;
+  canUndo: ReturnType<typeof vi.fn>;
+  canRedo: ReturnType<typeof vi.fn>;
   goToNextImage: ReturnType<typeof vi.fn>;
   goToPrevImage: ReturnType<typeof vi.fn>;
   toggleAnnotationVisibility: ReturnType<typeof vi.fn>;
@@ -250,6 +252,8 @@ export function createMockAnnotationStore(
     setPreference: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
+    canUndo: vi.fn(() => false),
+    canRedo: vi.fn(() => false),
     goToNextImage: vi.fn(),
     goToPrevImage: vi.fn(),
     toggleAnnotationVisibility: vi.fn(),
@@ -270,21 +274,23 @@ export function createMockAnnotationStore(
 }
 
 /**
- * Mocks the useAnnotationStore hook
+ * Creates a mock implementation for useAnnotationStore hook.
+ * NOTE: Do NOT use vi.mock inside functions - it has hoisting issues.
+ * Instead, use this function in your test file with vi.hoisted():
+ *
+ * @example
+ * const { mockStore } = vi.hoisted(() => ({
+ *   mockStore: createMockAnnotationStore(),
+ * }));
+ *
+ * vi.mock('@/lib/stores/annotationStore', () => ({
+ *   useAnnotationStore: (selector?: (state: any) => any) => {
+ *     return selector ? selector(mockStore) : mockStore;
+ *   },
+ * }));
  */
 export function mockUseAnnotationStore(store: Partial<MockAnnotationStore> = {}) {
-  const mockStore = createMockAnnotationStore(store);
-
-  vi.mock('@/lib/stores/annotationStore', () => ({
-    useAnnotationStore: (selector?: (state: any) => any) => {
-      if (selector) {
-        return selector(mockStore);
-      }
-      return mockStore;
-    },
-  }));
-
-  return mockStore;
+  return createMockAnnotationStore(store);
 }
 
 // ============================================================================
@@ -313,16 +319,22 @@ export function createMockToastStore(): MockToastStore {
 }
 
 /**
- * Mocks the toast store module
+ * Creates a mock toast store.
+ * NOTE: Do NOT use vi.mock inside functions - it has hoisting issues.
+ * Use createMockToastStore() directly and set up vi.mock in your test file.
+ *
+ * @example
+ * vi.mock('@/lib/stores/toastStore', () => ({
+ *   toast: {
+ *     success: vi.fn(),
+ *     error: vi.fn(),
+ *     info: vi.fn(),
+ *     warning: vi.fn(),
+ *   },
+ * }));
  */
 export function mockToastStore() {
-  const mockStore = createMockToastStore();
-
-  vi.mock('@/lib/stores/toastStore', () => ({
-    toast: mockStore,
-  }));
-
-  return mockStore;
+  return createMockToastStore();
 }
 
 // ============================================================================
@@ -343,16 +355,17 @@ export function createMockConfirmStore(): MockConfirmStore {
 }
 
 /**
- * Mocks the confirm store module
+ * Creates a mock confirm store.
+ * NOTE: Do NOT use vi.mock inside functions - it has hoisting issues.
+ * Use createMockConfirmStore() directly and set up vi.mock in your test file.
+ *
+ * @example
+ * vi.mock('@/lib/stores/confirmStore', () => ({
+ *   confirm: vi.fn().mockResolvedValue(true),
+ * }));
  */
 export function mockConfirmStore() {
-  const mockStore = createMockConfirmStore();
-
-  vi.mock('@/lib/stores/confirmStore', () => ({
-    confirm: mockStore.confirm,
-  }));
-
-  return mockStore;
+  return createMockConfirmStore();
 }
 
 // ============================================================================
@@ -460,5 +473,18 @@ export function createMockClasses(): Record<string, ClassInfo> {
     'class-1': { name: 'Person', color: '#ff0000', order: 0 },
     'class-2': { name: 'Car', color: '#00ff00', order: 1 },
     'class-3': { name: 'Bicycle', color: '#0000ff', order: 2 },
+  };
+}
+
+/**
+ * Creates a single mock class
+ */
+export function createMockClass(overrides: Partial<ClassInfo & { id: string }> = {}): ClassInfo & { id: string } {
+  return {
+    id: 'class-1',
+    name: 'Person',
+    color: '#ff0000',
+    order: 0,
+    ...overrides,
   };
 }
