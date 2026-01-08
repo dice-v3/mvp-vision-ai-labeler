@@ -173,16 +173,17 @@ export default function AnnotationPage() {
         useAnnotationStore.setState({ currentTask: initialTask });
       }
 
-      // Phase 2.12: Performance Optimization - Load only first 50 images
+      // Phase 2.12: Performance Optimization - Load first batch of images
       if (projectData.dataset_id) {
-        const imageResponse = await getProjectImages(projectId, 50, 0);
+        const imageResponse = await getProjectImages(projectId, 200, 0);
 
         // Phase 2.12: Store total image count for progress bar
         useAnnotationStore.setState({ totalImages: imageResponse.total });
 
         // Phase 2.12: Load image statuses for annotation counts (paginated)
         // (No longer loading all annotations upfront - lazy loading instead)
-        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined, 50, 0);
+        // Match the image count limit to ensure all loaded images have status info
+        const imageStatusesResponse = await getProjectImageStatuses(projectId, initialTask || undefined, 200, 0);
         const imageStatusMap = new Map(
           imageStatusesResponse.statuses.map(s => [s.image_id, s])
         );

@@ -14,7 +14,9 @@ import { useEffect, useCallback } from 'react';
 import type { CanvasRenderContext } from '@/lib/annotation';
 import type { Annotation } from '@/lib/types/annotation';
 import { ToolRegistry, bboxTool } from '@/lib/annotation';
-import { drawGrid, drawCrosshair, drawNoObjectBadge, snapshotToAnnotation } from '@/lib/annotation/utils';
+import { drawGrid, drawCrosshair, drawNoObjectBadge, snapshotToAnnotation, drawTextLabelButton } from '@/lib/annotation/utils';
+import { useTextLabelStore } from '@/lib/stores/textLabelStore';
+import { useAnnotationStore } from '@/lib/stores/annotationStore';
 
 /**
  * Hook parameters
@@ -120,6 +122,16 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
   const { x: panX, y: panY } = pan;
   const { darkMode, showGrid, showLabels } = preferences;
   const { enabled: diffModeEnabled, viewMode: diffModeViewMode } = diffMode;
+
+  // Get annotation visibility state
+  const showAllAnnotations = useAnnotationStore(state => state.showAllAnnotations);
+  const showTextLabelPreviews = useAnnotationStore(state => state.showTextLabelPreviews);
+  const hiddenAnnotationCount = useAnnotationStore(state => state.hiddenAnnotationIds.size);
+
+  // Get text label store for Phase 19 - VLM Text Labeling
+  const { hasTextLabel, getTextLabelForAnnotation } = useTextLabelStore();
+  // Subscribe to textLabels to trigger re-render when labels change
+  const textLabelsCount = useTextLabelStore(state => state.textLabels.length);
 
   /**
    * Draw all annotations on the canvas
@@ -256,10 +268,67 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     darkMode,
     diffModeEnabled,
     diffModeViewMode,
+    showAllAnnotations, // Annotation visibility toggle
+    hiddenAnnotationCount, // Individual annotation visibility
+    textLabelsCount, // Text label changes trigger re-render
     // getDiffForCurrentImage, getCurrentClasses, isAnnotationVisible are stable store methods
     annotations,
     selectedAnnotationId,
   ]);
+
+  /**
+   * Draw text label buttons on annotations (Phase 19 - VLM Text Labeling)
+   */
+  const drawTextLabelButtons = useCallback((ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number, zoom: number) => {
+    if (diffModeEnabled) return; // Don't show buttons in diff mode
+
+    annotations.forEach((ann) => {
+      // Skip if annotation is hidden or not supported
+      if (!isAnnotationVisible(ann.id)) return;
+      if (ann.geometry.type === 'no_object' || ann.geometry.type === 'classification') return;
+
+      // Get bounding box for the annotation
+      let bbox: { x: number; y: number; width: number; height: number } | null = null;
+
+      if (ann.geometry.type === 'bbox') {
+        const [x, y, width, height] = ann.geometry.bbox;
+        bbox = { x, y, width, height };
+      } else if (ann.geometry.type === 'polygon' && ann.geometry.bbox) {
+        const [x, y, width, height] = ann.geometry.bbox;
+        bbox = { x, y, width, height };
+      } else if (ann.geometry.type === 'circle') {
+        const [cx, cy] = ann.geometry.center;
+        const radius = ann.geometry.radius;
+        bbox = {
+          x: cx - radius,
+          y: cy - radius,
+          width: radius * 2,
+          height: radius * 2,
+        };
+      }
+
+      if (!bbox) return;
+
+      // Check if annotation has text label and get content
+      const annotationId = parseInt(ann.id);
+      const hasLabel = !isNaN(annotationId) && hasTextLabel(annotationId);
+      const textLabel = !isNaN(annotationId) ? getTextLabelForAnnotation(annotationId) : undefined;
+      // Only show text content if preview toggle is enabled
+      const textContent = showTextLabelPreviews ? textLabel?.text_content : undefined;
+
+      // Draw text label button
+      drawTextLabelButton(
+        ctx,
+        bbox.x * zoom + offsetX,
+        bbox.y * zoom + offsetY,
+        bbox.width * zoom,
+        bbox.height * zoom,
+        hasLabel,
+        zoom,
+        textContent
+      );
+    });
+  }, [annotations, isAnnotationVisible, hasTextLabel, getTextLabelForAnnotation, showTextLabelPreviews, diffModeEnabled, textLabelsCount]);
 
   /**
    * Main rendering useEffect
@@ -298,6 +367,9 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
 
     // Draw annotations
     drawAnnotations(ctx, x, y, zoom);
+
+    // Draw text label buttons (Phase 19)
+    drawTextLabelButtons(ctx, x, y, zoom);
 
     // Draw drawing preview
     if (isDrawing && drawingStart && tool === 'bbox') {
@@ -453,6 +525,7 @@ export function useCanvasRenderer(params: UseCanvasRendererParams): void {
     circleCenter,
     circle3pPoints,
     drawAnnotations,
+    drawTextLabelButtons,
     drawBboxPreview,
     drawPolygonPreview,
     drawPolylinePreview,
