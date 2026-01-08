@@ -799,3 +799,133 @@ class SystemStatsCache(LabelerBase):
     def is_valid(self) -> bool:
         """Check if cache is still valid."""
         return not self.is_expired
+
+
+class TextLabel(LabelerBase):
+    """
+    Text Label model for VLM training (Phase 19).
+
+    Supports:
+    - Image-level labels (captions, descriptions, VQA)
+    - Region-level labels (bbox/polygon text descriptions)
+
+    Design:
+    - If annotation_id is NULL → image-level label
+    - If annotation_id is set → region-level label (linked to bbox/polygon)
+    """
+
+    __tablename__ = "text_labels"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Foreign keys (no actual FK constraints - different databases)
+    project_id = Column(String(50), nullable=False, index=True)
+    image_id = Column(String(255), nullable=False, index=True)
+    annotation_id = Column(BigInteger, nullable=True, index=True)  # NULL = image-level, set = region-level
+
+    # Label type: caption, description, qa, region
+    label_type = Column(String(20), nullable=False, default="caption", index=True)
+
+    # Text content
+    text_content = Column(Text, nullable=False)  # Main text (caption/description/answer)
+    question = Column(Text, nullable=True)  # For VQA type
+
+    # Language
+    language = Column(String(10), nullable=False, default="en")
+
+    # Confidence/quality (optional, for AI-generated or reviewed labels)
+    confidence = Column(Integer, nullable=True)  # 0-100
+
+    # Additional metadata (use 'additional_metadata' to avoid SQLAlchemy reserved name)
+    additional_metadata = Column("metadata", JSONB, default={})
+
+    # Optimistic locking
+    version = Column(Integer, nullable=False, default=1, index=True)
+
+    # Audit fields
+    created_by = Column(Integer, nullable=False)  # References User DB user.id
+    updated_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Indexes for efficient querying
+    __table_args__ = (
+        # Project + image lookup (most common)
+        Index("ix_text_labels_project_image", "project_id", "image_id"),
+
+        # Annotation-level lookup (region-level labels)
+        Index("ix_text_labels_annotation", "annotation_id"),
+
+        # Type filtering
+        Index("ix_text_labels_project_type", "project_id", "label_type"),
+
+        # Language filtering
+        Index("ix_text_labels_language", "language"),
+
+        # Full-text search on text_content and question
+        # Note: PostgreSQL GIN index for full-text search
+        # Index("ix_text_labels_fts_content", text_content, postgresql_using="gin", postgresql_ops={"text_content": "gin_trgm_ops"}),
+        # Index("ix_text_labels_fts_question", question, postgresql_using="gin", postgresql_ops={"question": "gin_trgm_ops"}),
+
+        # Audit/tracking
+        Index("ix_text_labels_created_by", "created_by"),
+    )
+
+    def __repr__(self):
+        return f"<TextLabel(id={self.id}, type='{self.label_type}', image_id='{self.image_id}')>"
+
+
+class TextLabelVersion(LabelerBase):
+    """
+    Text Label Version model for publish/snapshot functionality (Phase 19.8).
+
+    Stores immutable snapshots of text labels when a version is published.
+    Enables version history, rollback, and trainer access to specific versions.
+
+    Storage Strategy:
+    - Internal S3: All versions (projects/{project_id}/annotations/text_labels/{version}/)
+    - External S3: Latest only (datasets/{dataset_id}/annotations/text_labels.json)
+    """
+
+    __tablename__ = "text_label_versions"
+
+    # Primary key
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Foreign key (no actual FK constraint - different database)
+    project_id = Column(String(50), nullable=False, index=True)
+
+    # Version identifier (e.g., "v1.0", "v2.0")
+    version = Column(String(20), nullable=False)
+
+    # Snapshot data (immutable) - stores all text labels at publish time
+    text_labels_snapshot = Column(JSONB, nullable=False)
+
+    # Metadata
+    notes = Column(Text, nullable=True)  # Optional publish notes
+    published_by = Column(Integer, nullable=False)  # References User DB user.id
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    # Computed fields (stored for query performance)
+    label_count = Column(Integer, nullable=False, default=0)  # Total number of labels in snapshot
+    image_level_count = Column(Integer, nullable=False, default=0)  # Image-level labels count
+    region_level_count = Column(Integer, nullable=False, default=0)  # Region-level labels count
+
+    # Indexes
+    __table_args__ = (
+        # Unique constraint: one version per project
+        Index(
+            "uq_text_label_versions_project_version",
+            "project_id",
+            "version",
+            unique=True,
+        ),
+        # Timeline queries (list versions chronologically)
+        Index("ix_text_label_versions_project_created", "project_id", "created_at"),
+        # Publisher tracking
+        Index("ix_text_label_versions_published_by", "published_by"),
+    )
+
+    def __repr__(self):
+        return f"<TextLabelVersion(id={self.id}, project_id='{self.project_id}', version='{self.version}', labels={self.label_count})>"

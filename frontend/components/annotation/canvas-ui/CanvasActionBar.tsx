@@ -20,31 +20,62 @@ export interface CanvasActionBarProps {
   onNoObject: () => void;
   /** Callback for "Delete All" button */
   onDeleteAll: () => void;
+  /** Callback for "Image-level Text Label" button (Phase 19) */
+  onImageLevelTextLabel?: () => void;
+  /** Number of image-level text labels (Phase 19) */
+  imageLevelLabelCount?: number;
 }
 
 /**
  * Canvas action bar component
  *
- * Displays two action buttons in the top-right corner:
- * 1. **No Object** (gray button, keyboard: 0):
+ * Displays action buttons in the top-right corner:
+ * 1. **Image-level Text Label** (violet button, Phase 19):
+ *    - Opens image-level text label dialog (caption, description, VQA)
+ *    - Badge shows count when labels exist
+ *
+ * 2. **No Object** (gray button, keyboard: 0):
  *    - Marks image(s) as having no objects to annotate
  *
- * 2. **Delete All Annotations** (red button, keyboard: Del):
+ * 3. **Delete All Annotations** (red button, keyboard: Del):
  *    - Deletes all annotations from image(s)
  *    - Disabled when no annotations exist and no images selected
  *    - Button color indicates state (gray when disabled, red when enabled)
  *
- * Both buttons support batch operations when multiple images are selected
- *
  * Phase 18.8.3: Extracted from Canvas component
+ * Phase 19: Added image-level text label button
  */
 export const CanvasActionBar = React.memo(function CanvasActionBar(props: CanvasActionBarProps): JSX.Element {
-  const { annotationCount, selectedImageCount, onNoObject, onDeleteAll } = props;
+  const { annotationCount, selectedImageCount, onNoObject, onDeleteAll, onImageLevelTextLabel, imageLevelLabelCount = 0 } = props;
 
   const hasAnnotationsOrSelection = annotationCount > 0 || selectedImageCount > 0;
+  const hasImageLevelLabels = imageLevelLabelCount > 0;
 
   return (
     <div className="absolute top-4 right-4 flex flex-row gap-2">
+      {/* Phase 19: Image-level text label button */}
+      {onImageLevelTextLabel && (
+        <button
+          onClick={onImageLevelTextLabel}
+          className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105 relative ${
+            hasImageLevelLabels
+              ? 'bg-violet-600 hover:bg-violet-700'
+              : 'bg-violet-500 hover:bg-violet-600'
+          }`}
+          title="Image-level Text Label (Caption, Description, VQA)"
+        >
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <text x="6" y="18" fontSize="16" fontWeight="bold" fontFamily="Georgia, Times New Roman, serif" fill="white" stroke="none">T</text>
+          </svg>
+          {/* Badge showing label count */}
+          {hasImageLevelLabels && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+              <span className="text-violet-600 text-xs font-bold">{imageLevelLabelCount}</span>
+            </div>
+          )}
+        </button>
+      )}
+
       {/* No Object button */}
       <button
         onClick={onNoObject}

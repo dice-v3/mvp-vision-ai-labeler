@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from app.db.models.labeler import Dataset, Annotation, AnnotationProject
+from app.db.models.labeler import Dataset, Annotation, AnnotationProject, TextLabel
 from app.core.config import settings
 
 # Korea Standard Time (UTC+9)
@@ -29,6 +29,7 @@ def export_to_coco(
     include_draft: bool = False,
     image_ids: Optional[List[str]] = None,
     task_type: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Export annotations to COCO format.
@@ -40,6 +41,7 @@ def export_to_coco(
         include_draft: Include draft annotations (default: False, only confirmed)
         image_ids: List of image IDs to export (None = all images)
         task_type: Task type to export (detection, segmentation) - required for multi-task projects
+        version: Version number (e.g., "v1.0", "v2.0")
 
     Returns:
         COCO format dictionary
@@ -72,6 +74,12 @@ def export_to_coco(
         query = query.filter(Annotation.image_id.in_(image_ids))
 
     annotations = query.all()
+
+    # Phase 19: Query text labels for export
+    text_labels_query = db.query(TextLabel).filter(TextLabel.project_id == project_id)
+    if image_ids:
+        text_labels_query = text_labels_query.filter(TextLabel.image_id.in_(image_ids))
+    text_labels = text_labels_query.all()
 
     # Extract unique image IDs from annotations
     # Sort to ensure consistent order (image_id is now file_path)
@@ -106,7 +114,7 @@ def export_to_coco(
 
     # Build COCO structure
     coco_data = {
-        "info": _build_info(project, dataset),
+        "info": _build_info(project, dataset, version),
         "licenses": _build_licenses(),
         "images": _build_images(unique_image_ids),
         "annotations": _build_annotations(annotations, class_id_to_category),
@@ -114,16 +122,28 @@ def export_to_coco(
         "storage_info": storage_info,  # Phase 16.6: Image storage location
     }
 
+    # Phase 19: Add text label sections (COCO extensions)
+    if text_labels:
+        captions, region_descriptions, vqa = _build_text_label_sections(
+            text_labels, unique_image_ids, annotations
+        )
+        if captions:
+            coco_data["captions"] = captions
+        if region_descriptions:
+            coco_data["region_descriptions"] = region_descriptions
+        if vqa:
+            coco_data["vqa"] = vqa
+
     return coco_data
 
 
-def _build_info(project: AnnotationProject, dataset: Dataset) -> Dict[str, Any]:
+def _build_info(project: AnnotationProject, dataset: Dataset, version: Optional[str] = None) -> Dict[str, Any]:
     """Build COCO info section."""
     now_kst = datetime.now(KST)
     return {
         "description": project.description or f"{project.name} - Annotations",
         "url": "",
-        "version": "1.0",
+        "version": version or "1.0",
         "year": now_kst.year,
         "contributor": "",
         "date_created": now_kst.strftime("%Y-%m-%d %H:%M:%S"),
@@ -306,10 +326,86 @@ def _build_categories(task_classes: Dict[str, Any]) -> List[Dict[str, Any]]:
     return categories
 
 
+def _build_text_label_sections(
+    text_labels: List[TextLabel],
+    image_ids: List[str],
+    annotations: List[Annotation]
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Build COCO text label sections (Phase 19).
+
+    Returns:
+        Tuple of (captions, region_descriptions, vqa)
+    """
+    # Create image_id to index mapping
+    image_id_to_idx = {image_id: idx + 1 for idx, image_id in enumerate(image_ids)}
+
+    # Create annotation_id to COCO ann_id mapping
+    ann_id_to_coco_id = {ann.id: idx + 1 for idx, ann in enumerate(annotations)}
+
+    captions = []
+    region_descriptions = []
+    vqa = []
+
+    caption_id = 1
+    region_desc_id = 1
+    vqa_id = 1
+
+    for label in text_labels:
+        image_idx = image_id_to_idx.get(label.image_id)
+        if image_idx is None:
+            continue  # Skip if image not in export
+
+        # Image-level labels (caption, description, VQA)
+        if label.annotation_id is None:
+            if label.label_type in ["caption", "description"]:
+                captions.append({
+                    "id": caption_id,
+                    "image_id": image_idx,
+                    "caption": label.text_content,
+                    "language": label.language,
+                    "label_type": label.label_type,
+                })
+                caption_id += 1
+            elif label.label_type == "qa" and label.question:
+                vqa.append({
+                    "id": vqa_id,
+                    "image_id": image_idx,
+                    "question": label.question,
+                    "answer": label.text_content,
+                    "language": label.language,
+                })
+                vqa_id += 1
+        # Region-level labels
+        else:
+            coco_ann_id = ann_id_to_coco_id.get(label.annotation_id)
+            if coco_ann_id:
+                region_descriptions.append({
+                    "id": region_desc_id,
+                    "image_id": image_idx,
+                    "annotation_id": coco_ann_id,
+                    "phrase": label.text_content,
+                    "language": label.language,
+                })
+                region_desc_id += 1
+
+    return captions, region_descriptions, vqa
+
+
 def get_export_stats(coco_data: Dict[str, Any]) -> Dict[str, int]:
     """Get statistics about the COCO export."""
-    return {
+    stats = {
         "image_count": len(coco_data.get("images", [])),
         "annotation_count": len(coco_data.get("annotations", [])),
         "category_count": len(coco_data.get("categories", [])),
     }
+
+    # Phase 19: Add text label stats
+    if "captions" in coco_data:
+        stats["caption_count"] = len(coco_data["captions"])
+    if "region_descriptions" in coco_data:
+        stats["region_description_count"] = len(coco_data["region_descriptions"])
+    if "vqa" in coco_data:
+        stats["vqa_count"] = len(coco_data["vqa"])
+
+    return stats

@@ -15,6 +15,7 @@ import { imageLockAPI } from '@/lib/api/image-locks';
 import type { LockAcquireResponse } from '@/lib/api/image-locks';
 import { toast } from '@/lib/stores/toastStore';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { getOrLoadImage } from './useImagePrefetch';
 
 /**
  * Image object from annotation store
@@ -277,19 +278,26 @@ export function useImageManagement(params: UseImageManagementParams): UseImageMa
     // Acquire lock first
     acquireImageLock();
 
-    // Load image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    // Load image with caching
+    const img = getOrLoadImage(
+      currentImage.url,
+      (loadedImg) => {
+        setImage(loadedImg);
+        imageRef.current = loadedImg;
+        setImageLoaded(true);
+      },
+      () => {
+        console.error('Failed to load image:', currentImage.url);
+        setImageLoaded(false);
+      }
+    );
+
+    // If image is already cached and complete, set it immediately
+    if (img.complete) {
       setImage(img);
       imageRef.current = img;
       setImageLoaded(true);
-    };
-    img.onerror = () => {
-      console.error('Failed to load image:', currentImage.url);
-      setImageLoaded(false);
-    };
-    img.src = currentImage.url;
+    }
 
     // Cleanup: Release lock when unmounting or changing image
     return () => {

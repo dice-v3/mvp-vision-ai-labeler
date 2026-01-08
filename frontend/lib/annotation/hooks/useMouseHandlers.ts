@@ -20,6 +20,7 @@ import type { Annotation } from '@/lib/types/annotation';
 import type { AnnotationCreateRequest, AnnotationUpdateRequest } from '@/lib/api/annotations';
 import { updateAnnotation, createAnnotation, deleteAnnotation as deleteAnnotationAPI, getProjectAnnotations } from '@/lib/api/annotations';
 import { useAnnotationStore } from '@/lib/stores/annotationStore';
+import { useTextLabelStore } from '@/lib/stores/textLabelStore';
 import { toast } from '@/lib/stores/toastStore';
 import { Circle3pTool } from '@/lib/annotation/tools/Circle3pTool';
 import {
@@ -222,6 +223,9 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
     drawingStart,
   } = params;
 
+  // Phase 19: VLM Text Labeling store
+  const { openDialogForAnnotation, openImageLevelDialog } = useTextLabelStore();
+
   /**
    * Mouse down handler
    *
@@ -243,6 +247,71 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
     const scaledHeight = image.height * zoom;
     const imgX = (rect.width - scaledWidth) / 2 + pan.x;
     const imgY = (rect.height - scaledHeight) / 2 + pan.y;
+
+    // Phase 19.6: Check if clicking on image-level text label button (first priority)
+    const IMAGE_BUTTON_SIZE = 28;
+    const IMAGE_BUTTON_MARGIN = 8;
+    const imageButtonX = imgX + IMAGE_BUTTON_MARGIN;
+    const imageButtonY = imgY + scaledHeight - IMAGE_BUTTON_SIZE - IMAGE_BUTTON_MARGIN;
+
+    if (
+      x >= imageButtonX &&
+      x <= imageButtonX + IMAGE_BUTTON_SIZE &&
+      y >= imageButtonY &&
+      y <= imageButtonY + IMAGE_BUTTON_SIZE
+    ) {
+      // Open image-level text label dialog
+      openImageLevelDialog('caption'); // Default to caption type
+      return; // Prevent other click handlers
+    }
+
+    // Phase 19: Check if clicking on region-level text label button
+    const BUTTON_SIZE = 24;
+    for (const ann of annotations) {
+      if (!isAnnotationVisible(ann.id)) continue;
+      if (ann.geometry.type === 'no_object' || ann.geometry.type === 'classification') continue;
+
+      // Get bounding box for the annotation
+      let bbox: { x: number; y: number; width: number; height: number } | null = null;
+
+      if (ann.geometry.type === 'bbox') {
+        const [bx, by, bw, bh] = ann.geometry.bbox;
+        bbox = { x: bx, y: by, width: bw, height: bh };
+      } else if (ann.geometry.type === 'polygon' && ann.geometry.bbox) {
+        const [bx, by, bw, bh] = ann.geometry.bbox;
+        bbox = { x: bx, y: by, width: bw, height: bh };
+      } else if (ann.geometry.type === 'circle') {
+        const [cx, cy] = ann.geometry.center;
+        const radius = ann.geometry.radius;
+        bbox = {
+          x: cx - radius,
+          y: cy - radius,
+          width: radius * 2,
+          height: radius * 2,
+        };
+      }
+
+      if (!bbox) continue;
+
+      // Calculate button position (bottom-left of bbox)
+      const buttonX = bbox.x * zoom + imgX;
+      const buttonY = bbox.y * zoom + imgY + bbox.height * zoom - BUTTON_SIZE;
+
+      // Check if click is within button bounds
+      if (
+        x >= buttonX &&
+        x <= buttonX + BUTTON_SIZE &&
+        y >= buttonY &&
+        y <= buttonY + BUTTON_SIZE
+      ) {
+        // Open text label dialog for this annotation
+        const annotationId = parseInt(ann.id);
+        if (!isNaN(annotationId)) {
+          openDialogForAnnotation(annotationId);
+        }
+        return; // Prevent other click handlers
+      }
+    }
 
     // Phase 8.5.2: Block annotation creation without lock (strict lock policy)
     // Allow pan and selection (read-only), block creation tools
@@ -278,7 +347,7 @@ export function useMouseHandlers(params: UseMouseHandlersParams): UseMouseHandle
             setSelectedBboxHandle(handle);
             setIsResizing(true);
             setResizeHandle(handle);
-            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH] });
+            setResizeStart({ x, y, bbox: [bboxX, bboxY, bboxW, bboxH], handle });
             setCanvasCursor(getCursorForHandle(handle));
             return;
           }
