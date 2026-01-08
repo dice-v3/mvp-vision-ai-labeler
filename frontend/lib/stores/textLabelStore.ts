@@ -62,7 +62,7 @@ export interface TextLabelState {
   // Utility
   getTextLabelForAnnotation: (annotationId: number) => TextLabel | undefined;
   hasTextLabel: (annotationId: number) => boolean;
-  imageLevelLabels: TextLabel[];  // Computed: labels with annotation_id = null
+  getImageLevelLabels: () => TextLabel[];  // Get labels with annotation_id = null
   getImageLevelLabelCount: () => number;
 }
 
@@ -242,8 +242,8 @@ export const useTextLabelStore = create<TextLabelState>()(
         return get().deleteLabel(labelId);
       },
 
-      // Computed: Get only image-level labels (annotation_id = null)
-      get imageLevelLabels() {
+      // Get only image-level labels (annotation_id = null)
+      getImageLevelLabels: () => {
         return get().textLabels.filter(label => label.annotation_id === null);
       },
 
