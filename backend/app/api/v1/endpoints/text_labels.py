@@ -6,9 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
-from app.core.database import get_labeler_db, get_user_db
+from app.core.database import get_labeler_db
 from app.core.security import get_current_user, require_project_permission
-from app.db.models.user import User
 from app.db.models.labeler import TextLabel, AnnotationProject, TextLabelVersion
 from app.services.text_label_version_service import (
     publish_text_labels,
@@ -34,25 +33,20 @@ from app.schemas.text_label import (
 router = APIRouter()
 
 
-def _get_user_info(user_db: Session, user_id: Optional[int]) -> tuple[Optional[str], Optional[str]]:
-    """Get user name and email from User DB."""
-    if not user_id:
-        return None, None
+def _get_user_info(user_id: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Get user name and email.
 
-    user = user_db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return None, None
-
-    return user.full_name, user.email
+    Note: With Keycloak authentication, user info is obtained from the token.
+    For historical records, we return None. If needed, use Keycloak Admin API.
+    """
+    # Keycloak environment - user info from token, not separate DB
+    return None, None
 
 
-def _build_text_label_response(
-    label: TextLabel,
-    user_db: Session
-) -> TextLabelResponse:
+def _build_text_label_response(label: TextLabel) -> TextLabelResponse:
     """Build TextLabelResponse with user information."""
-    created_by_name, _ = _get_user_info(user_db, label.created_by)
-    updated_by_name, _ = _get_user_info(user_db, label.updated_by)
+    created_by_name, _ = _get_user_info(label.created_by)
+    updated_by_name, _ = _get_user_info(label.updated_by)
 
     return TextLabelResponse(
         id=label.id,
@@ -89,8 +83,7 @@ async def list_text_labels(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -125,7 +118,7 @@ async def list_text_labels(
 
     # Build responses with user info
     label_responses = [
-        _build_text_label_response(label, user_db)
+        _build_text_label_response(label)
         for label in labels
     ]
 
@@ -143,8 +136,7 @@ async def list_text_labels(
 async def get_text_label(
     label_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
     Get a single text label by ID.
@@ -171,7 +163,7 @@ async def get_text_label(
             detail=f"Project {label.project_id} not found"
         )
 
-    return _build_text_label_response(label, user_db)
+    return _build_text_label_response(label)
 
 
 @router.get(
@@ -182,8 +174,7 @@ async def get_text_label(
 async def get_text_labels_for_annotation(
     annotation_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
     Get all text labels for a specific annotation (region-level labels).
@@ -196,7 +187,7 @@ async def get_text_labels_for_annotation(
 
     # Build responses
     label_responses = [
-        _build_text_label_response(label, user_db)
+        _build_text_label_response(label)
         for label in labels
     ]
 
@@ -215,8 +206,7 @@ async def get_text_labels_for_annotation(
 async def create_text_label(
     label_data: TextLabelCreate,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("annotator")),
 ):
     """
@@ -249,7 +239,7 @@ async def create_text_label(
     labeler_db.commit()
     labeler_db.refresh(new_label)
 
-    return _build_text_label_response(new_label, user_db)
+    return _build_text_label_response(new_label)
 
 
 @router.put(
@@ -261,8 +251,7 @@ async def update_text_label(
     label_id: int,
     label_data: TextLabelUpdate,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("annotator")),
 ):
     """
@@ -308,7 +297,7 @@ async def update_text_label(
     labeler_db.commit()
     labeler_db.refresh(label)
 
-    return _build_text_label_response(label, user_db)
+    return _build_text_label_response(label)
 
 
 @router.delete(
@@ -477,8 +466,7 @@ async def publish_text_label_version(
     project_id: str,
     publish_request: TextLabelVersionPublishRequest,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("admin")),
 ):
     """
@@ -513,7 +501,6 @@ async def publish_text_label_version(
         # Publish text labels
         text_label_version = publish_text_labels(
             labeler_db=labeler_db,
-            user_db=user_db,
             project_id=project_id,
             version=version_number,
             user_id=current_user.id,
@@ -521,7 +508,7 @@ async def publish_text_label_version(
         )
 
         # Get user info
-        published_by_name, published_by_email = _get_user_info(user_db, current_user.id)
+        published_by_name, published_by_email = _get_user_info(current_user.id)
 
         return TextLabelVersionResponse(
             id=text_label_version.id,
@@ -557,8 +544,7 @@ async def publish_text_label_version(
 async def list_text_label_versions(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -585,7 +571,7 @@ async def list_text_label_versions(
     # Build response with user info
     version_responses = []
     for version in versions:
-        published_by_name, published_by_email = _get_user_info(user_db, version.published_by)
+        published_by_name, published_by_email = _get_user_info(version.published_by)
 
         version_responses.append(TextLabelVersionResponse(
             id=version.id,
@@ -615,8 +601,7 @@ async def list_text_label_versions(
 async def get_latest_text_label_version(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -645,7 +630,7 @@ async def get_latest_text_label_version(
         )
 
     # Get user info
-    published_by_name, published_by_email = _get_user_info(user_db, version.published_by)
+    published_by_name, published_by_email = _get_user_info(version.published_by)
 
     return TextLabelVersionResponse(
         id=version.id,
@@ -671,8 +656,7 @@ async def get_text_label_version(
     project_id: str,
     version: str,
     labeler_db: Session = Depends(get_labeler_db),
-    user_db: Session = Depends(get_user_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -703,7 +687,7 @@ async def get_text_label_version(
         )
 
     # Get user info
-    published_by_name, published_by_email = _get_user_info(user_db, version_record.published_by)
+    published_by_name, published_by_email = _get_user_info(version_record.published_by)
 
     return TextLabelVersionDetail(
         id=version_record.id,
