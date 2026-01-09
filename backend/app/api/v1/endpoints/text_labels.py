@@ -230,7 +230,7 @@ async def create_text_label(
         confidence=label_data.confidence,
         additional_metadata=label_data.metadata or {},
         version=1,
-        created_by=current_user.id,
+        created_by=current_user.get("sub"),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -290,7 +290,7 @@ async def update_text_label(
         label.additional_metadata = label_data.metadata
 
     # Update metadata
-    label.updated_by = current_user.id
+    label.updated_by = current_user.get("sub")
     label.updated_at = datetime.utcnow()
     label.version += 1
 
@@ -308,7 +308,7 @@ async def update_text_label(
 async def delete_text_label(
     label_id: int,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("annotator")),
 ):
     """
@@ -337,7 +337,7 @@ async def delete_text_label(
 async def bulk_create_text_labels(
     batch_data: TextLabelBatchCreate,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("annotator")),
 ):
     """
@@ -365,7 +365,7 @@ async def bulk_create_text_labels(
                 confidence=label_data.confidence,
                 additional_metadata=label_data.metadata or {},
                 version=1,
-                created_by=current_user.id,
+                created_by=current_user.get("sub"),
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )
@@ -403,7 +403,7 @@ async def bulk_create_text_labels(
 async def get_text_label_stats(
     project_id: str,
     labeler_db: Session = Depends(get_labeler_db),
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     _permission = Depends(require_project_permission("viewer")),
 ):
     """
@@ -503,12 +503,12 @@ async def publish_text_label_version(
             labeler_db=labeler_db,
             project_id=project_id,
             version=version_number,
-            user_id=current_user.id,
+            user_id=current_user.get("sub"),
             notes=publish_request.notes,
         )
 
         # Get user info
-        published_by_name, published_by_email = _get_user_info(current_user.id)
+        published_by_name, published_by_email = _get_user_info(current_user.get("sub"))
 
         return TextLabelVersionResponse(
             id=text_label_version.id,
