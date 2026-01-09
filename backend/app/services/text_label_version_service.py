@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db.models.labeler import TextLabel, TextLabelVersion, AnnotationProject, Dataset
-from app.db.models.platform import User
 from app.core.storage import storage_client
 from app.core.config import settings
 
@@ -38,7 +37,7 @@ def to_kst_isoformat(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(KST).isoformat()
 
 
-def serialize_text_labels_by_type(text_labels: List[TextLabel], user_db: Session) -> Dict[str, Any]:
+def serialize_text_labels_by_type(text_labels: List[TextLabel]) -> Dict[str, Any]:
     """
     Serialize TextLabel objects into type-separated sections.
 
@@ -49,10 +48,13 @@ def serialize_text_labels_by_type(text_labels: List[TextLabel], user_db: Session
 
     Args:
         text_labels: List of TextLabel model instances
-        user_db: User database session for querying user information
 
     Returns:
         Dictionary with separated sections: {captions: [...], region_descriptions: [...], vqa: [...]}
+
+    Note:
+        With Keycloak authentication, user info is obtained from tokens.
+        The labeled_by field uses user_id directly (Keycloak UUID).
     """
     captions = []
     region_descriptions = []
@@ -63,14 +65,10 @@ def serialize_text_labels_by_type(text_labels: List[TextLabel], user_db: Session
     vqa_id = 1
 
     for label in text_labels:
-        # Get labeled_by user info
-        labeled_by_user = None
-        if label.created_by:
-            labeled_by_user = user_db.query(User).filter(User.id == label.created_by).first()
-
         # Build metadata (DICE annotation format)
+        # Note: With Keycloak, labeled_by stores user_id (UUID string)
         metadata = {
-            "labeled_by": labeled_by_user.email if labeled_by_user else None,
+            "labeled_by": label.created_by,  # Keycloak user ID
             "labeled_at": to_kst_isoformat(label.created_at) if label.created_at else None,
             "source": "platform_labeler_v1.0"
         }
@@ -145,10 +143,9 @@ def calculate_label_counts(text_labels_by_type: Dict[str, Any]) -> Tuple[int, in
 
 def publish_text_labels(
     labeler_db: Session,
-    user_db: Session,
     project_id: str,
     version: str,
-    user_id: int,
+    user_id: str,
     notes: Optional[str] = None,
 ) -> TextLabelVersion:
     """
@@ -163,10 +160,9 @@ def publish_text_labels(
 
     Args:
         labeler_db: Labeler database session
-        user_db: User database session
         project_id: Project ID
         version: Version number (e.g., "v1.0", "v2.0")
-        user_id: User ID who is publishing
+        user_id: User ID who is publishing (Keycloak UUID)
         notes: Optional publish notes
 
     Returns:
@@ -196,7 +192,7 @@ def publish_text_labels(
     logger.info(f"[TextLabelVersion] Found {len(text_labels)} text labels to publish")
 
     # 3. Serialize to JSON snapshot (type-separated structure)
-    text_labels_snapshot = serialize_text_labels_by_type(text_labels, user_db)
+    text_labels_snapshot = serialize_text_labels_by_type(text_labels)
 
     # 4. Calculate counts for query performance
     total_count, image_level_count, region_level_count = calculate_label_counts(text_labels_snapshot)
