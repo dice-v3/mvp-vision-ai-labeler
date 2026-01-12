@@ -383,6 +383,35 @@ class StorageClient:
             logger.error(f"Failed to upload export for {project_id}: {e}")
             raise Exception(f"Failed to upload export: {str(e)}")
 
+    def get_json(self, key: str, bucket: Optional[str] = None) -> Optional[Dict]:
+        """
+        Get JSON data from S3.
+
+        Args:
+            key: S3 object key
+            bucket: Bucket name (default: datasets bucket)
+
+        Returns:
+            Parsed JSON as dict, or None if not found
+        """
+        import json
+        target_bucket = bucket or self.datasets_bucket
+        try:
+            response = self.s3_client.get_object(
+                Bucket=target_bucket,
+                Key=key
+            )
+            return json.loads(response['Body'].read().decode('utf-8'))
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                logger.warning(f"Object not found: {target_bucket}/{key}")
+                return None
+            logger.error(f"Failed to get JSON from {target_bucket}/{key}: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from {target_bucket}/{key}: {e}")
+            return None
+
     def regenerate_presigned_url(
         self,
         s3_key: str,

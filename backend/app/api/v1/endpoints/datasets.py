@@ -109,25 +109,8 @@ def generate_distinct_color(index: int, total: int) -> str:
 
 def load_annotations_from_s3(annotation_path: str) -> Optional[Dict]:
     """Load annotations.json from S3/MinIO storage."""
-    try:
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=settings.S3_ENDPOINT,
-            aws_access_key_id=settings.S3_ACCESS_KEY,
-            aws_secret_access_key=settings.S3_SECRET_KEY,
-            region_name=settings.S3_REGION,
-            config=Config(signature_version='s3v4')
-        )
-
-        response = s3_client.get_object(
-            Bucket=settings.S3_BUCKET_DATASETS,
-            Key=annotation_path
-        )
-        content = response['Body'].read().decode('utf-8')
-        return json.loads(content)
-    except Exception as e:
-        print(f"Error loading annotations from S3: {e}")
-        return None
+    from app.core.storage import storage_client
+    return storage_client.get_json(annotation_path)
 
 
 def calculate_class_statistics(project_id: str, labeler_db: Session) -> Dict[str, Dict]:
