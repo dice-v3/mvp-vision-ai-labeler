@@ -460,10 +460,9 @@ async def publish_version(
         try:
             text_label_version = publish_text_labels(
                 labeler_db=labeler_db,
-                user_db=user_db,
                 project_id=project_id,
                 version=new_version_number,  # Use same version number as annotations
-                user_id=current_user.id,
+                user_id=current_user["sub"],
                 notes=f"Published with {task_type} annotations v{new_version_number}",
             )
             logger.info(
